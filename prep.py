@@ -360,10 +360,14 @@ class Preparer:
 
     # ------------------------------------------------------------ processing
 
-    def _update(self, conn, key: str, **kw) -> None:
+    def _update(self, conn, key: str, when: str | None = None, **kw) -> None:
+        """Update a row; with `when`, only while it is still in that state
+        (an undo may have put a working job back meanwhile)."""
         kw["updated"] = time.time()
+        guard = " AND state = ?" if when else ""
         with conn:
-            conn.execute(f"UPDATE prep SET {', '.join(k + ' = ?' for k in kw)} WHERE job_key = ?", (*kw.values(), key))
+            conn.execute(f"UPDATE prep SET {', '.join(k + ' = ?' for k in kw)} WHERE job_key = ?{guard}",
+                         (*kw.values(), key, *([when] if when else [])))
 
     def next_job(self, conn, cap_left: bool) -> tuple[str, str] | None:
         sql = "SELECT job_key, decision FROM prep WHERE state = 'queued'"
@@ -390,7 +394,7 @@ class Preparer:
             tailored_id, notes = "", []
             if decision == "tailor":
                 if not self.reserve(conn, s["daily_cap"]):
-                    self._update(conn, key, state="queued",
+                    self._update(conn, key, when="working", state="queued",
                                  error=f"Waiting: today's {s['daily_cap']} model runs are used up. Continues tomorrow.")
                     return "requeued"
                 result = tailor.tailor(master, meta, jd, s["backend"], self.out_dir)
@@ -403,7 +407,7 @@ class Preparer:
             answers = json.loads(drafted or "[]")
             if not answers and s["draft_answers"]:
                 answers = self._draft(conn, s, master, meta, jd, apply_url, notes)
-            self._update(conn, key, state="ready", tailored_id=tailored_id,
+            self._update(conn, key, when="working", state="ready", tailored_id=tailored_id,
                          choice="tailored" if tailored_id else "master", answers=json.dumps(answers),
                          error="; ".join(notes))
             self.log(f"prep: ready {company} / {title} ({'tailored' if tailored_id else 'master'}, {len(answers)} answers)")
@@ -411,16 +415,16 @@ class Preparer:
         except (tailor.BackendError, rt.CompileError, ValueError) as e:
             msg = str(e)
             if FATAL.search(msg):
-                self._update(conn, key, state="queued", error=msg)
+                self._update(conn, key, when="working", state="queued", error=msg)
                 self.status = msg
                 self.paused_until = time.time() + BACKOFF
                 return "stop"
             attempts += 1
-            self._update(conn, key, state="error" if attempts >= MAX_ATTEMPTS else "queued", attempts=attempts, error=msg)
+            self._update(conn, key, when="working", state="error" if attempts >= MAX_ATTEMPTS else "queued", attempts=attempts, error=msg)
             return "done"
         except Exception as e:
             self.log(f"prep: {key} failed:\n{traceback.format_exc()}")
-            self._update(conn, key, state="error", attempts=MAX_ATTEMPTS, error=f"Unexpected error: {e}")
+            self._update(conn, key, when="working", state="error", attempts=MAX_ATTEMPTS, error=f"Unexpected error: {e}")
             return "done"
         finally:
             self.current = None
@@ -528,9 +532,10 @@ class Preparer:
         """applied or dismissed, from the dashboard or the extension."""
         return bool(self.mark_many({key: state}))
 
-    def mark_many(self, marks: dict[str, str | None]) -> int:
+    def mark_many(self, marks: dict[str, str | None], recorded: list[str] | None = None) -> int:
         """Applied/dismissed marks (None undoes one). Jobs not queued yet get
-        a row too, so they are never prepared. Returns how many jobs matched."""
+        a row too, so they are never prepared. Returns how many jobs matched;
+        `recorded` collects the jobs newly added to an applications table."""
         now = time.time()
         n = 0
         conn = self.connect()
@@ -551,8 +556,8 @@ class Preparer:
                                  "ON CONFLICT(job_key) DO UPDATE SET state = excluded.state, updated = excluded.updated, "
                                  "applied = COALESCE(excluded.applied, prep.applied)",
                                  (key, state, now, now, now if state == "applied" else None))
-                    if state == "applied":
-                        self._record_application(conn, key, now)
+                    if state == "applied" and self._record_application(conn, key, now) and recorded is not None:
+                        recorded.append(key)
             return n
         finally:
             conn.close()
@@ -562,17 +567,57 @@ class Preparer:
         self.mark_many({key: None})
 
     @staticmethod
-    def _record_application(conn, key: str, now: float) -> None:
-        """Also record it in an `applications` table, if a tracker made one."""
+    def _record_application(conn, key: str, now: float) -> bool:
+        """Also record it in an `applications` table, if a tracker made one.
+        True when a row was added."""
         cols = {r[1] for r in conn.execute("PRAGMA table_info(applications)")}
         if "job_key" not in cols:
-            return
+            return False
         job = conn.execute("SELECT company, title, url FROM jobs WHERE key = ?", (key,)).fetchone()
         vals = {"job_key": key, "company": job[0], "title": job[1], "url": job[2], "status": "applied",
                 "applied_at": now, "created": now, "updated": now}
         vals = {k: v for k, v in vals.items() if k in cols}
-        conn.execute(f"INSERT OR IGNORE INTO applications ({', '.join(vals)}) VALUES ({', '.join('?' * len(vals))})",
-                     tuple(vals.values()))
+        cur = conn.execute(f"INSERT OR IGNORE INTO applications ({', '.join(vals)}) VALUES ({', '.join('?' * len(vals))})",
+                           tuple(vals.values()))
+        return cur.rowcount > 0
+
+    # ------------------------------------------------------------ undo
+
+    def snapshot(self, keys) -> dict[str, dict | None]:
+        """The queue rows of these jobs as they are now (None: no row), for
+        restore() to put back."""
+        conn = self.connect()
+        try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(prep)")]
+            out: dict[str, dict | None] = {}
+            for key in keys:
+                row = conn.execute(f"SELECT {', '.join(cols)} FROM prep WHERE job_key = ?", (key,)).fetchone()
+                out[key] = dict(zip(cols, row)) if row else None
+            return out
+        finally:
+            conn.close()
+
+    def restore(self, rows: dict[str, dict | None], applications: list[str] = ()) -> None:
+        """Put snapshot() rows back exactly, and take out the applications
+        rows the undone change added."""
+        conn = self.connect()
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(prep)")}
+            with conn:
+                for key, row in rows.items():
+                    if row is None:
+                        conn.execute("DELETE FROM prep WHERE job_key = ?", (key,))
+                        continue
+                    row = {k: v for k, v in row.items() if k in cols}
+                    conn.execute(f"INSERT OR REPLACE INTO prep ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
+                                 tuple(row.values()))
+                app_cols = {r[1] for r in conn.execute("PRAGMA table_info(applications)")}
+                if "job_key" in app_cols:
+                    for key in applications:
+                        conn.execute("DELETE FROM applications WHERE job_key = ?", (key,))
+        finally:
+            conn.close()
+        self.wake.set()
 
     def set_choice(self, key: str, choice: str) -> bool:
         conn = self.connect()

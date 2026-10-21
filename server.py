@@ -43,6 +43,7 @@ import resume_tex as rt
 import scheduler
 import tailor
 import texengine
+import undo
 
 # JOBRADAR_PORT only for tests next to a running copy: the extension talks to 8765.
 HOST, PORT = "127.0.0.1", int(os.environ.get("JOBRADAR_PORT") or 8765)
@@ -88,7 +89,7 @@ def log(msg: str) -> None:
 
 def db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.executescript(HISTORY_SCHEMA + prep.SCHEMA)
+    conn.executescript(HISTORY_SCHEMA + prep.SCHEMA + undo.SCHEMA)
     prep.migrate(conn)
     return conn
 
@@ -353,6 +354,117 @@ def master_meta(role: str = "") -> dict | None:
 
 
 # --------------------------------------------------------------------------
+# Undo (undo.py): each change records what it replaces
+
+class UndoFailed(Exception):
+    """An undo that can't be applied, with what to do instead."""
+
+
+def remember(kind: str, label: str, payload: dict) -> str:
+    conn = db()
+    try:
+        return undo.record(conn, kind, label, payload)
+    finally:
+        conn.close()
+
+
+def save_settings(patch: dict, label: str) -> str | None:
+    """STORE.update(patch), recording the sections it changed. Returns the
+    undo id, or None when nothing changed (or only the setup steps moved)."""
+    with STORE.lock:
+        before = STORE.load()
+        STORE.update(patch)
+        after = STORE.load()
+    changed = {k: before[k] for k in patch if k in before and before[k] != after.get(k) and k != "setup"}
+    return remember("settings", label, {"before": changed}) if changed else None
+
+
+def file_state(*paths: Path) -> dict[str, str | None]:
+    """Files as they are now, for an undo: base64 contents, None if missing."""
+    out = {}
+    for p in paths:
+        try:
+            out[str(p)] = base64.b64encode(p.read_bytes()).decode()
+        except FileNotFoundError:
+            out[str(p)] = None
+    return out
+
+
+def queue_undo(keys, label: str):
+    """Snapshot the queue rows of `keys`; call the result after the change
+    to record its undo (None when nothing changed)."""
+    before = PREP.snapshot(keys)
+
+    def done(applications=()) -> str | None:
+        if PREP.snapshot(keys) == before and not applications:
+            return None
+        return remember("prep", label, {"rows": before, "applications": list(applications)})
+    return done
+
+
+def _undo_settings(payload: dict, uid: str) -> dict:
+    before = payload["before"]
+    STORE.update(before, strict=False)
+    PREP.poke()
+    rerender = bool(set(before) - {"setup", "app", "ui"})
+    if rerender:
+        schedule_render()
+    return {"settings": settings_payload(), "rerender": rerender}
+
+
+def _undo_files(payload: dict, uid: str) -> dict:
+    allowed = {RESUME_DIR.resolve(), OUT_DIR.resolve()}
+    for name, data in payload["files"].items():
+        p = Path(name)
+        if p.resolve().parent not in allowed:
+            raise UndoFailed(f"{p.name} isn't in the resume folder any more, so it wasn't restored.")
+    for name, data in payload["files"].items():
+        p = Path(name)
+        if data is None:
+            p.unlink(missing_ok=True)
+        else:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(base64.b64decode(data))
+    if payload.get("settings"):
+        STORE.update(payload["settings"], strict=False)
+    PREP.poke()
+    return {}
+
+
+def _undo_prep(payload: dict, uid: str) -> dict:
+    PREP.restore(payload["rows"], payload.get("applications") or [])
+    return {}
+
+
+def _undo_tailored(payload: dict, uid: str) -> dict:
+    conn = db()
+    try:
+        with conn:
+            conn.execute("DELETE FROM tailored WHERE id = ?", (payload["id"],))
+    finally:
+        conn.close()
+    return {}
+
+
+def _undo_key(payload: dict, uid: str) -> dict:
+    provider = payload["provider"]
+    known, old = undo.pop_secret(uid)
+    if not known:
+        raise UndoFailed("It gets easier restarted since then, so the earlier key is gone. "
+                         "Paste it again in Settings, under AI models.")
+    if old is None:
+        ai.delete_key(provider)
+    else:
+        ai.save_key(provider, old)
+    PREP.poke()
+    return {"key": ai.key_status(provider)}
+
+
+UNDO_APPLY = {"settings": _undo_settings, "files": _undo_files, "prep": _undo_prep,
+              "tailored": _undo_tailored, "key": _undo_key}
+
+
+# --------------------------------------------------------------------------
 # Jobs
 
 def run_job(jid: str, params: dict) -> None:
@@ -378,7 +490,7 @@ def run_job(jid: str, params: dict) -> None:
                      result["pdf"], result["tex"], json.dumps(result)))
         finally:
             conn.close()
-        update(state="done", result=result)
+        update(state="done", result=result, undo=remember("tailored", "the new resume version", {"id": jid}))
     except (tailor.BackendError, rt.CompileError, ValueError) as e:
         update(state="error", error=str(e))
     except Exception as e:  # report, don't kill the worker
@@ -594,6 +706,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/settings":
             return self._settings(data)
+        if path == "/api/undo":
+            return self._undo(str(data.get("id", ""))[:40])
         if path == "/api/keys":
             return self._keys(data)
         if path == "/api/estimate":
@@ -613,33 +727,50 @@ class Handler(BaseHTTPRequestHandler):
             PREP.save_scoring(data)
             return self._json(200, {"ok": True})
         if path == "/api/prep/settings":
-            return self._json(200, PREP.save_settings(data))
+            before = STORE.section("queue")
+            s = PREP.save_settings(data)
+            uid = remember("settings", "the apply queue settings", {"before": {"queue": before}}) if s != before else None
+            return self._json(200, {**s, "undo": uid})
         if path == "/api/queue/choice":
             choice = data.get("choice")
             if choice not in ("tailored", "master"):
                 return self._err(HTTPStatus.BAD_REQUEST, "choice must be tailored or master")
-            if not PREP.set_choice(str(data.get("key", "")), choice):
-                return self._err(HTTPStatus.NOT_FOUND, "No tailored resume for this job")
-            return self._json(200, {"ok": True})
+            key = str(data.get("key", ""))
+            done = queue_undo([key], "the resume choice")
+            if not PREP.set_choice(key, choice):
+                return self._err(HTTPStatus.NOT_FOUND, "This job has no tailored resume any more. "
+                                 "Reload the queue to see where it stands.")
+            return self._json(200, {"ok": True, "undo": done()})
         if path == "/api/queue/tailor":
-            if not PREP.force_tailor(str(data.get("key", "")), str(data.get("instruction", ""))):
-                return self._err(HTTPStatus.CONFLICT, "This job is already tailored or no longer in the queue")
-            return self._json(200, {"ok": True})
+            key = str(data.get("key", ""))
+            done = queue_undo([key], "the tailoring request")
+            if not PREP.force_tailor(key, str(data.get("instruction", ""))):
+                return self._err(HTTPStatus.CONFLICT, "This job is being prepared right now, or it's no longer in the queue. "
+                                 "Wait until it's ready, then try again.")
+            return self._json(200, {"ok": True, "undo": done()})
         if path == "/api/queue/retry":
-            PREP.retry(str(data.get("key", "")))
-            return self._json(200, {"ok": True})
+            key = str(data.get("key", ""))
+            done = queue_undo([key], "the retry")
+            PREP.retry(key)
+            return self._json(200, {"ok": True, "undo": done()})
         if path == "/api/marks":
             # The dashboard's Applied / Dismiss marks, so the queue skips those jobs.
             marks = data.get("marks") if isinstance(data.get("marks"), dict) else {}
-            n = PREP.mark_many({str(k)[:500]: v for k, v in list(marks.items())[:5000]
-                                if v in ("applied", "dismissed", None)})
-            return self._json(200, {"ok": True, "matched": n})
+            marks = {str(k)[:500]: v for k, v in list(marks.items())[:5000] if v in ("applied", "dismissed", None)}
+            # A click marks one job; the bulk sync of older marks isn't a change to undo.
+            done = queue_undo(list(marks), "the mark") if len(marks) <= 20 else None
+            recorded: list[str] = []
+            n = PREP.mark_many(marks, recorded)
+            return self._json(200, {"ok": True, "matched": n, "undo": done(recorded) if done else None})
 
         if path == "/api/about":
             # The applicant's own notes on interests and motivations, used by
             # drafted answers. Kept in resume/, which never leaves this machine.
+            before = file_state(tailor.about_path())
             tailor.save_about_me(str(data.get("text", "")))
-            return self._json(200, {"ok": True})
+            changed = file_state(tailor.about_path()) != before
+            return self._json(200, {"ok": True, "undo": remember("files", "your About me notes", {"files": before})
+                                    if changed else None})
 
         if path == "/api/app/run":
             if not SCHEDULER.run_now("dashboard"):
@@ -673,6 +804,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(HTTPStatus.BAD_REQUEST, "Unknown role")
             # The PDF is kept next to the tailored ones, so the user can look at it.
             preview = OUT_DIR / (f"master-{role}-preview.pdf" if role else "master-preview.pdf")
+            old_preview = file_state(preview)
             try:
                 res = rt.parse(tex)
                 pages = rt.compile_pdf(tex, preview)
@@ -682,14 +814,19 @@ class Handler(BaseHTTPRequestHandler):
                     "no_engine": texengine.pick(rt.engine_for(tex)) is None})
             RESUME_DIR.mkdir(parents=True, exist_ok=True)
             target = RESUME_DIR / f"master-{role}.tex" if role else MASTER
+            # Undo puts back the previous master, its details and its preview.
+            before = {**file_state(target, target.with_suffix(".json")), **old_preview}
+            roles_before = STORE.load()["roles"] if role else None
             target.write_text(tex, encoding="utf-8")
             target.with_suffix(".json").write_text(json.dumps({"name": str(data.get("name", "master.tex"))[:200],
                                                                "uploaded": time.time(), "pages": pages}), encoding="utf-8")
             if role:
                 set_role_resume(role, target.name)
             PREP.poke()
+            uid = remember("files", "the new master resume",
+                           {"files": before, **({"settings": {"roles": roles_before}} if role else {})})
             return self._json(200, {**rt.summary(res), "pages": pages, "name": data.get("name"),
-                                    "preview": f"/files/{preview.name}"})
+                                    "preview": f"/files/{preview.name}", "undo": uid})
 
         if path in ("/api/tailor", "/api/prompt"):
             role = str(data.get("role") or "")[:40]
@@ -730,13 +867,37 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(HTTPStatus.BAD_REQUEST, "Expected {\"settings\": {...}}")
         patch.pop("version", None)
         try:
-            STORE.update(patch)
+            uid = save_settings(patch, str(data.get("label") or "the settings change")[:80])
         except config.SettingsError as e:
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": "Some settings aren't valid", "errors": e.errors})
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": "Some settings aren't valid. Fix the ones listed and save again.",
+                                                       "errors": e.errors})
         PREP.poke()
-        if set(patch) - {"setup", "app"}:      # the setup steps' progress doesn't change the job list
+        if set(patch) - {"setup", "app", "ui"}:      # neither changes the job list
             schedule_render()
-        return self._json(200, settings_payload())
+        return self._json(200, {**settings_payload(), "undo": uid})
+
+    def _undo(self, uid: str):
+        """Put back what an earlier change replaced (undo.py)."""
+        conn = db()
+        try:
+            kind, label, payload = undo.take(conn, uid)
+        except undo.Gone:
+            return self._err(HTTPStatus.GONE, "This can't be undone any more: it was undone already, or it's over a week old.")
+        finally:
+            conn.close()
+        try:
+            out = UNDO_APPLY[kind](payload, uid)
+        except UndoFailed as e:
+            return self._err(HTTPStatus.CONFLICT, str(e))
+        except Exception as e:
+            log(f"undo {uid} ({kind}) failed:\n{traceback.format_exc()}")
+            conn = db()
+            try:
+                undo.release(conn, uid)
+            finally:
+                conn.close()
+            return self._err(HTTPStatus.INTERNAL_SERVER_ERROR, f"Couldn't undo {label} ({e}). Nothing was lost; try Undo again.")
+        return self._json(200, {"ok": True, "label": label, **out})
 
     def _keys(self, data: dict):
         """Save ({"provider", "key"}) or remove ({"provider", "key": ""}) an
@@ -745,10 +906,18 @@ class Handler(BaseHTTPRequestHandler):
         if provider not in ai.PROVIDERS:
             return self._err(HTTPStatus.BAD_REQUEST, "Unknown provider")
         key = str(data.get("key") or "")
+        # The key being replaced is kept in memory only, for Undo.
+        old = ai.get_key(provider) if ai.key_status(provider)["where"] in ("keychain", "file") else None
+
+        def undo_id() -> str:
+            uid = remember("key", f"the {pricing.PROVIDER_NAMES[provider]} key change", {"provider": provider})
+            undo.keep_secret(uid, old)
+            return uid
         if not key.strip():
             ai.delete_key(provider)
             PREP.poke()
-            return self._json(200, {"provider": provider, "key": ai.key_status(provider), "warning": ""})
+            return self._json(200, {"provider": provider, "key": ai.key_status(provider), "warning": "",
+                                    "undo": undo_id() if old else None})
         try:
             key = ai.clean_key(key)
         except ValueError as e:
@@ -761,7 +930,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, problem)
         ai.save_key(provider, key)
         PREP.poke()
-        return self._json(200, {"provider": provider, "key": ai.key_status(provider), "warning": warning})
+        return self._json(200, {"provider": provider, "key": ai.key_status(provider), "warning": warning, "undo": undo_id()})
 
     def _estimate(self, data: dict):
         """What tailoring one job would cost on a paid API, before running it.
@@ -832,12 +1001,12 @@ class Handler(BaseHTTPRequestHandler):
         else:
             return self._err(HTTPStatus.NOT_FOUND, "Not found")
         try:
-            STORE.update({"companies": c})
+            uid = save_settings({"companies": c}, "the company change")
         except config.SettingsError as e:
             return self._json(HTTPStatus.BAD_REQUEST, {"error": "Couldn't save that", "errors": e.errors})
         if action in ("block", "unblock"):
             schedule_render()
-        return self._json(200, company_list())
+        return self._json(200, {**company_list(), "undo": uid})
 
     def _prepared(self, page_url: str):
         """The resume and drafted answers prepared for the job behind an

@@ -11,7 +11,7 @@
     --warn: #9a3b1e; --warn-soft: #f7e6df; --ok: #2f6b4f; --ok-soft: #e3efe8;
     --new: #b5590f; --new-soft: #fbeedd; --chip: #efede7;
     --h1b: #1f5fa8; --h1b-soft: #e2ecf8;
-    --hi: #2f6b4f; --mid: #8a6a12; --lo: #8b8a83;
+    --hi: #2f6b4f; --mid: #8a6a12; --lo: #6f6e68;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -89,7 +89,8 @@
     border-left: 4px solid transparent;
   }
   li.job.sponsor { border-left-color: var(--h1b); }
-  li.job.done { opacity: .5; }
+  li.job.done { background: var(--surface-2); border-style: dashed; }
+  li.job.done .title { color: var(--muted); }
   .title { font-weight: 600; color: var(--text); text-decoration: none; }
   .title:hover { text-decoration: underline; }
   .meta { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
@@ -163,7 +164,8 @@
   .opt input { accent-color: var(--accent); margin-top: 2px; }
   .opt b { display: block; color: var(--text); }
   .opt span { color: var(--muted); }
-  .opt.off { opacity: .55; }
+  .opt.off { border-style: dashed; background: transparent; }
+  .opt.off b { color: var(--muted); }
   textarea.jd { width: 100%; min-height: 140px; resize: vertical; font-size: 13px; }
   .progress { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
   .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
@@ -184,7 +186,8 @@
   .chg.rejected .after { text-decoration: line-through; color: var(--muted); }
   .section-h { font-size: 13px; font-weight: 600; color: var(--text); margin: 0; }
   .viewtabs { display: inline-flex; }
-  .viewtabs button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .viewtabs { gap: 8px; flex-wrap: wrap; }
+  .viewtabs button[aria-current="page"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
   .qcount { font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
   .qhead { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px; margin-bottom: 10px;
     background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; color: var(--muted); }
@@ -280,10 +283,41 @@
   [hidden] { display: none !important; }
 
   .toast {
-    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg);
-    padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none;
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 10;
+    width: max-content; max-width: min(560px, calc(100vw - 32px));
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+    background: var(--text); color: var(--bg); padding: 8px 8px 8px 14px; border-radius: 8px; font-size: 13px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / .25); animation: toast-in .2s ease-out;
   }
-  .toast.show { opacity: 1; }
+  .toast.error { background: var(--warn); color: var(--surface); }
+  .toast span { flex: 1 1 200px; }
+  .toast button { background: transparent; color: inherit; border-color: currentColor; font-size: 13px; padding: 4px 10px; }
+  .toast button.x { border-color: transparent; padding: 4px 8px; }
+  .toast button:hover { background: rgb(127 127 127 / .25); }
+  .toast :focus-visible { outline-color: currentColor; }
+  @keyframes toast-in { from { opacity: 0; } }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .skip { position: absolute; left: 16px; top: -100px; z-index: 20; background: var(--surface); color: var(--text); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); }
+  .skip:focus { top: 8px; }
+  /* Only a target for the skip link and for focus after a dialog or message closes. */
+  main:focus { outline: none; }
+
+  /* Simple view: one line of reasons per job; the rest sits behind Details. */
+  .reason { grid-column: 1 / -1; font-size: 13px; color: var(--muted); }
+  .reason b { color: var(--text); font-weight: 600; }
+  .why-box { display: grid; gap: 4px; }
+  .why-box p { margin: 0; }
+  body.simple .adv-only { display: none !important; }
+  .hidden-note { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; color: var(--muted); margin: -4px 2px 10px; }
+  .hidden-note button { font-size: 12px; padding: 3px 9px; }
+  .empty .row { justify-content: center; margin-top: 10px; }
+  .chg ins { text-decoration: underline; text-underline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+  /* Short windows (or text zoomed to 200%) would lose most of the page to a sticky bar. */
+  @media (max-height: 620px) { .controls { position: static; } }
 
   @media (max-width: 600px) {
     .fields { grid-template-columns: 1fr; }
@@ -301,21 +335,24 @@
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <div class="wrap">
   <header>
     <h1>It gets easier</h1>
     <div class="status" id="status"></div>
     <div class="hbtns">
       <select id="roleSel" aria-label="Role" hidden></select>
-      <span class="viewtabs" id="viewTabs" hidden>
-        <button type="button" data-view="jobs" aria-pressed="true">All jobs</button>
-        <button type="button" data-view="queue" aria-pressed="false">Apply queue <span class="qcount" id="qcount" hidden></span></button>
-        <button type="button" data-view="settings" aria-pressed="false">Settings</button>
-      </span>
+      <nav class="viewtabs" id="viewTabs" aria-label="Pages" hidden>
+        <button type="button" data-view="jobs" aria-current="page">All jobs</button>
+        <button type="button" data-view="queue">Apply queue <span class="qcount" id="qcount" hidden></span></button>
+        <button type="button" data-view="settings">Settings</button>
+      </nav>
       <button type="button" id="openKit">Apply kit</button>
+      <label class="toggle" id="advLbl"><input type="checkbox" id="advMode"> Advanced</label>
     </div>
   </header>
 
+  <main id="main" tabindex="-1">
   <div id="notices" role="status"></div>
   <div class="resume-bar" id="resumeBar"></div>
   <section id="queueView" hidden>
@@ -341,21 +378,23 @@
       <option value="new">Newest first</option>
       <option value="match">Best match first</option>
     </select>
-    <select id="minMatch" aria-label="Minimum match">
+    <select id="minMatch" class="adv-only" aria-label="Minimum match">
       <option value="0">Any match</option>
       <option value="50">50%+ match</option>
       <option value="65">65%+ match</option>
       <option value="80">80%+ match</option>
     </select>
-    <label class="toggle" id="h1bOnlyLbl"><input type="checkbox" id="h1bOnly"> H-1B sponsors only</label>
-    <label class="toggle" id="nospLbl"><input type="checkbox" id="nosp"> <span id="nospText">Hide no sponsorship / no OPT</span></label>
-    <label class="toggle"><input type="checkbox" id="remote"> Remote only</label>
-    <label class="toggle"><input type="checkbox" id="hidedone"> Hide applied/dismissed</label>
+    <label class="toggle adv-only" id="h1bOnlyLbl"><input type="checkbox" id="h1bOnly"> H-1B sponsors only</label>
+    <label class="toggle adv-only" id="nospLbl"><input type="checkbox" id="nosp"> <span id="nospText">Hide no sponsorship / no OPT</span></label>
+    <label class="toggle adv-only"><input type="checkbox" id="remote"> Remote only</label>
+    <label class="toggle adv-only"><input type="checkbox" id="hidedone"> Hide applied/dismissed</label>
   </div>
 
-  <div class="count" id="count"></div>
-  <ul class="list" id="list"></ul>
+  <div class="count" id="count" role="status"></div>
+  <div class="hidden-note" id="hiddenNote" hidden></div>
+  <ul class="list" id="list" aria-label="Jobs" tabindex="-1"></ul>
   </div>
+  </main>
 </div>
 
 <dialog id="kit" aria-labelledby="kitTitle">
@@ -443,7 +482,7 @@
 </dialog>
 
 <input type="file" id="resumeFile" accept=".pdf,.tex,.txt,.md" hidden>
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="toast" id="toast" role="region" aria-label="Message" hidden><span id="toastMsg"></span><button type="button" id="toastUndo" aria-keyshortcuts="Control+Z" hidden>Undo</button><button type="button" class="x" id="toastClose" aria-label="Dismiss message">✕</button></div>
 
 <script type="text/plain" id="fillerSrc">
 function (P, root) {
@@ -600,9 +639,31 @@ const state = {
   opened: {},                           // url -> true once Apply was clicked this session
   resume: store.get("resume", null),    // {name, text, skills[], off[], added[], at}
   profile: store.get("profile", {}),
+  // Simple view unless the user turned on Advanced (settings.json ui.advanced;
+  // kept here too so the page opens in the right view before the helper answers).
+  advanced: store.get("advanced", null),
 };
 
 const $ = (id) => document.getElementById(id);
+
+// Advanced view: every job shows its keyword checklist, freshness proof
+// and visa details, and all filters are out. The same switch shows the
+// advanced settings.
+function setAdvanced(on, { save = true, undo = false } = {}) {
+  state.advanced = on;
+  store.set("advanced", on);
+  document.body.classList.toggle("simple", !on);
+  $("advMode").checked = on;
+  if (cfg.data) cfg.data.settings.ui.advanced = on;
+  if (save && HELPER) postSettings({ ui: { advanced: on } }, "the view change").catch(fail);
+  if (state.view === "settings" && cfg.data) { keepDraft(); renderSettings(); }
+  else if (state.view !== "setup") render();
+  if (undo) {
+    undoable(on ? "Advanced view: every job shows its keyword checklist, freshness proof and visa details, and all filters are shown."
+                : "Simple view: each job shows its match and why. Open Details on a job for the rest.",
+      "the view change", () => setAdvanced(!on, { save }));
+  }
+}
 
 // ---------------------------------------------------------------- skills
 
@@ -761,7 +822,56 @@ function rescore() {
     hasTerm: (t) => { if (!cache.has(t)) cache.set(t, termRegex(t).test(r.text)); return cache.get(t); },
   };
   for (const j of DATA.jobs) scores.set(j, scoreJob(j, have, ctx));
+  scoredYears = years;
   syncScoring();
+}
+let scoredYears = 0;
+const yearsText = () => scoredYears < 1 ? "less than a year" : `about ${scoredYears} year${scoredYears === 1 ? "" : "s"}`;
+
+const listOf = (xs, max = 3) => xs.length <= max ? xs.join(", ").replace(/, ([^,]*)$/, " and $1")
+  : `${xs.slice(0, max).join(", ")} and ${xs.length - max} more`;
+
+// Why a job scored what it did, in one line for the card.
+function scoreReason(sc, j) {
+  if (!sc) return null;
+  if (sc.pct == null) {
+    return el("div", { class: "reason", text: sc.noJd
+      ? "No score: this site doesn't share the job description. Open the posting to judge it yourself."
+      : "No score: the posting doesn't name specific skills or tools to check your resume against." });
+  }
+  const bits = [];
+  if (sc.req.of) bits.push(sc.req.have === sc.req.of ? `you have all ${sc.req.of} required skill${sc.req.of === 1 ? "" : "s"}`
+    : `you have ${sc.req.have} of the ${sc.req.of} required skills`);
+  else if (sc.pref.of) bits.push(`you have ${sc.pref.have} of the ${sc.pref.of} skills it lists`);
+  if (sc.exp.ok === false) bits.push(`it asks for ${j.min_yoe}+ years and you have ${yearsText()}`);
+  const missReq = sc.items.filter((i) => !i.ok && i.kind !== "pref").map((i) => i.k);
+  const missPref = sc.items.filter((i) => !i.ok && i.kind === "pref").map((i) => i.k);
+  // Whatever pulled the score down, most telling first.
+  const parts = [bits.join(", but "),
+    missReq.length ? `missing ${listOf(missReq)}` : missPref.length && sc.pct < 70 ? `missing nice-to-have ${listOf(missPref)}` : "",
+    sc.thin ? "it names only a few skills, so this is a rough guess"
+      : !missReq.length && !missPref.length && sc.exp.v < 1 && sc.exp.ok !== false ? "it doesn't say how many years it wants, which lowers the score a little" : "",
+  ].filter(Boolean);
+  const line = parts.join(". ").replace(/\. ([a-z])/g, (m, c) => ". " + c.toUpperCase());
+  return el("div", { class: "reason" }, el("b", { text: sc.pct >= 70 ? "Strong match" : sc.pct >= 50 ? "Partial match" : "Weak match" }),
+    line ? ": " + line + "." : ".");
+}
+
+// The score in full, for a job's Details.
+function scoreWhy(sc, j) {
+  const box = el("div", { class: "why-box" });
+  box.append(el("p", { class: "section-h", text: `Why ${sc.pct}%` }),
+    el("p", { text: `The score checks which skills and tools from the posting appear word for word on your resume. ` +
+      `Required ones and rarer ones count more; nice-to-have ones count half. Your resume covers ${sc.cov}% of that.` }));
+  if (sc.exp.v < 1) {
+    box.append(el("p", { text: sc.exp.ok === false
+      ? `It's lowered because the posting asks for ${j.min_yoe}+ years of experience and your resume shows ${yearsText()}. ` +
+        "You can correct your years under Review skills."
+      : "It's lowered a little because the posting doesn't say how many years it wants." }));
+  }
+  if (sc.thin) box.append(el("p", { text: "The posting names fewer than four skills, so the score is pulled toward the middle: there's too little to go on." }));
+  if (sc.degree) box.append(el("p", { text: `Degree (not part of the score): ${sc.degree.label}.` }));
+  return box;
 }
 
 // ---------------------------------------------------------------- resume parsing
@@ -836,17 +946,38 @@ function useResume({ name, text }) {
   render();
 }
 
+// Puts back the resume jobs were scored against (none: null) and the sort.
+function restoreResume(prev, sort) {
+  state.resume = prev;
+  if (prev) store.set("resume", prev); else store.del("resume");
+  state.sort = sort; store.set("sort", sort);
+  rescore();
+  render();
+}
+
 async function readResume(file) {
   const { name, text, rawTex } = await resumeFromFile(file);
+  const prev = state.resume && JSON.parse(JSON.stringify(state.resume)), prevSort = state.sort;
   useResume({ name, text });
-  toast(`Read ${state.resume.skills.length} skills from ${name}. Sorted by best match.`);
+  const read = `Read ${state.resume.skills.length} skills from ${name}` + (prev ? `, replacing ${prev.name}` : "") +
+    (prevSort !== state.sort ? ". Jobs are sorted by best match now." : ".");
+  let master = null;
   if (rawTex !== null && HELPER) {
+    toast(read + " Saving it as your master resume for tailoring…");
     try {
-      const s = await api("/api/master", { name, tex: rawTex });
+      master = await api("/api/master", { name, tex: rawTex });
       await refreshStatus();
-      toast(`Saved as your master resume for tailoring: ${s.entries.length} entries, ${s.pages} page${s.pages === 1 ? "" : "s"}.`);
-    } catch (e) { toast(e.message); }
+    } catch (e) {
+      undoable(`${read} It couldn't become your master resume for tailoring: ${e.message}`, "the new resume",
+        () => restoreResume(prev, prevSort));
+      return;
+    }
   }
+  undoable(master ? `${read} It's also your master resume for tailoring now: ${master.entries.length} entries, ` +
+      `${master.pages} page${master.pages === 1 ? "" : "s"}.` : read, "the new resume", async () => {
+    if (master && master.undo) { await serverUndo(master.undo)(); await refreshStatus(); }
+    restoreResume(prev, prevSort);
+  });
 }
 
 function contactsFrom(text) {
@@ -905,11 +1036,154 @@ function el(tag, attrs = {}, ...kids) {
   return node;
 }
 
-let toastTimer;
-function toast(msg) {
+// ---------------------------------------------------------------- messages and undo
+//
+// One message at a time at the bottom of the page. A change that can be
+// taken back gets an Undo button there for UNDO_MS (paused while the
+// pointer or focus is on it), and Ctrl+Z undoes the latest change until the
+// page reloads. Screen readers hear each message through a live region; a
+// modal dialog makes the rest of the page inert, so the message and its
+// live region move into the open dialog.
+
+const UNDO_MS = 12000, MSG_MS = 7000;
+const undoStack = [];           // newest last: { label, run }
+const msg = { timer: 0, left: 0, since: 0, entry: null };
+
+function liveRegion(host) {
+  let r = host.querySelector(":scope > .live");
+  if (!r) { r = el("div", { class: "sr-only live", role: "status", "aria-live": "polite" }); host.append(r); }
+  return r;
+}
+
+function announce(text, host = document.querySelector("dialog[open]") || document.body) {
+  const r = liveRegion(host);
+  // Cleared first, so the same words said twice are read twice.
+  r.textContent = "";
+  setTimeout(() => { r.textContent = text; }, 60);
+}
+
+function hideToast() {
+  clearTimeout(msg.timer);
   const t = $("toast");
-  t.textContent = msg; t.classList.add("show");
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 3500);
+  if (t.contains(document.activeElement)) {
+    const back = document.querySelector("dialog[open]") || $("main");
+    back.focus();
+  }
+  t.hidden = true;
+  msg.entry = null;
+  const next = msg.pending;
+  msg.pending = null;
+  if (next) {
+    $("toastMsg").textContent = next[0];
+    t.classList.remove("error");
+    $("toastUndo").hidden = true;
+    t.hidden = false;
+    armToast(MSG_MS);
+  }
+}
+
+function armToast(ms) {
+  clearTimeout(msg.timer);
+  msg.left = ms; msg.since = Date.now();
+  msg.timer = setTimeout(hideToast, ms);
+}
+
+// toast(text) for news; toast(text, { undo }) offers taking a change back;
+// toast(text, { error: true }) for problems, which stay until dismissed.
+function toast(text, opts = {}) {
+  const t = $("toast");
+  // News doesn't push an Undo off the screen: it's read out now and shown after.
+  if (msg.entry && !t.hidden && !opts.undo && !opts.error) {
+    msg.pending = [text, opts];
+    announce(text);
+    return;
+  }
+  msg.pending = null;
+  const host = document.querySelector("dialog[open]") || document.body;
+  if (t.parentNode !== host) host.append(t);
+  $("toastMsg").textContent = text;
+  t.classList.toggle("error", !!opts.error);
+  msg.entry = opts.undo || null;
+  $("toastUndo").hidden = !msg.entry;
+  t.hidden = false;
+  announce(text + (msg.entry ? " To undo, press Control Z." : ""), host);
+  clearTimeout(msg.timer);
+  if (!opts.error) armToast(msg.entry ? UNDO_MS : MSG_MS);
+}
+const fail = (e) => toast(e && e.message ? e.message : String(e), { error: true });
+
+// Records a change that can be taken back and says what happened.
+// `run` puts the old state back (it may call the helper).
+function undoable(text, label, run) {
+  const entry = { label, run };
+  undoStack.push(entry);
+  if (undoStack.length > 30) undoStack.shift();
+  toast(text, { undo: entry });
+  return entry;
+}
+
+async function runUndo(entry) {
+  const i = undoStack.indexOf(entry);
+  if (i < 0) return;
+  undoStack.splice(i, 1);
+  hideToast();
+  try { await entry.run(); toast(`Undone: ${entry.label}.`); }
+  catch (e) { fail(e); }
+}
+
+// The helper's own undo record for a change it made (undo.py).
+const serverUndo = (id) => () => api("/api/undo", { id });
+
+$("toastUndo").addEventListener("click", () => { if (msg.entry) runUndo(msg.entry); });
+$("toastClose").addEventListener("click", hideToast);
+for (const [ev, pause] of [["mouseenter", true], ["focusin", true], ["mouseleave", false], ["focusout", false]]) {
+  $("toast").addEventListener(ev, (e) => {
+    if ($("toast").classList.contains("error")) return;
+    if (ev === "focusout" && $("toast").contains(e.relatedTarget)) return;
+    if (pause) { clearTimeout(msg.timer); msg.left = Math.max(2000, msg.left - (Date.now() - msg.since)); }
+    else armToast(Math.max(msg.left, 4000));
+  });
+}
+$("toast").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); hideToast(); } });
+document.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "z") return;
+  // Text fields keep their own undo.
+  const a = document.activeElement;
+  if (a && (a.isContentEditable || a.matches("textarea, input:not([type=checkbox]):not([type=radio]):not([type=button]), select"))) return;
+  if (!undoStack.length) return;
+  e.preventDefault();
+  runUndo(undoStack[undoStack.length - 1]);
+});
+
+// Dialogs: the native modal keeps focus inside; focus goes back to the
+// control that opened it when it closes.
+function openDialog(dlg) {
+  const opener = document.activeElement;
+  if (!dlg.open) dlg.showModal();
+  dlg.addEventListener("close", () => {
+    const t = $("toast");
+    if (dlg.contains(t)) document.body.append(t);
+    // Focus left on the closed dialog's own controls counts as lost.
+    const a = document.activeElement;
+    if (a && a !== document.body && !dlg.contains(a)) return;
+    // The list may have been redrawn meanwhile: the same control by its key.
+    const back = opener && opener.isConnected ? opener : opener && opener.dataset && opener.dataset.fk && byFocusKey(opener.dataset.fk);
+    if (back) back.focus();
+  }, { once: true });
+}
+
+// Lists are redrawn from scratch; controls carry data-fk so keyboard focus
+// lands on the same control afterwards.
+const byFocusKey = (fk) => document.querySelector(`[data-fk="${CSS.escape(fk)}"]`);
+function keepFocus(draw) {
+  const a = document.activeElement;
+  const fk = a && a.dataset && a.dataset.fk;
+  draw();
+  if (fk && !a.isConnected) {
+    // The control's job is gone from the list (hidden once marked): the list itself.
+    const b = byFocusKey(fk) || (fk.includes(":") && $("list"));
+    if (b) b.focus({ preventScroll: true });
+  }
 }
 
 // H-1B tiers from USCIS approvals in the employer's strongest loaded year.
@@ -1026,84 +1300,149 @@ function evidence(j) {
 
 // ---------------------------------------------------------------- render
 
-function render() {
-  const now = Date.now() / 1000;
-  const q = state.q.trim().toLowerCase();
-  const hasResume = !!state.resume;
-  const V = visa();
-
-  let jobs = DATA.jobs.filter((j) => {
-    if (j.roles && (state.search === ALL_ROLES ? !j.roles.length : !j.roles.includes(state.search))) return false;
-    // 0 = "All open": no age limit beyond what the radar keeps on the dashboard.
-    if (state.hours && now - when(j) > state.hours * 3600) return false;
-    if (state.remote && !j.remote) return false;
-    if (V.sponsor && state.nosp && (j.sponsorship === "no" || (V.opt && j.no_opt))) return false;
-    if (V.sponsor && state.h1bOnly && !isSponsor(j)) return false;
-    if (state.hidedone && state.marks[j.url]) return false;
-    if (hasResume && state.minMatch > 0) {
-      const sc = scores.get(j);
-      if (!sc || sc.pct == null || sc.pct < state.minMatch) return false;
-    }
-    if (q) {
-      const s = j.skills || {};
-      const hay = [j.company, j.title, j.location, ...(s.t || []), ...(s.r || []), ...(s.p || [])].join(" ").toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
-  if (hasResume && state.sort === "match") {
-    jobs = jobs.slice().sort((a, b) => ((scores.get(b) || {}).pct ?? -1) - ((scores.get(a) || {}).pct ?? -1) || when(b) - when(a));
+// The visa badges a job gets, each with why it's there in plain words.
+// The posting's own words outrank the company's filing history.
+function visaSignals(j, V) {
+  const out = [];
+  const tier = V.sponsor ? h1bTier(j.h1b) : null, h = j.h1b;
+  const quote = j.sponsor_note ? ` The posting says: “${j.sponsor_note}”` : "";
+  const year = h ? `FY${h.year}` : "";
+  if ((tier === "strong" || tier === "some") && j.sponsorship === "no") {
+    out.push({ cls: "badge", text: "Files H-1B, but not for this role",
+      why: `${h.employer} got ${n(h.initial)} new H-1B approvals in ${year} (USCIS data), but this posting says it won't sponsor.${quote}` });
+  } else if (tier === "strong" || tier === "some") {
+    out.push({ cls: "badge h1b" + (tier === "some" ? " small" : ""),
+      text: `H-1B sponsor · ${n(h.initial)} new FY${String(h.year).slice(2)}${h.match === "ambiguous" ? "?" : ""}`,
+      why: `USCIS records show ${h.employer} got ${n(h.initial)} new and ${n(h.continuing)} continuing H-1B approvals in ${year}, ` +
+        "so it has sponsored people recently." + (h.match === "ambiguous" ? " Several employers share this name; check it's the same company." : "") });
+  } else if (tier === "rare") {
+    out.push({ cls: "badge", text: "Rare H-1B filer",
+      why: `${h.employer} has only a few H-1B approvals in USCIS data (${year}), so sponsorship is possible but uncommon.` });
   }
+  if (V.sponsor && j.sponsorship === "no") {
+    out.push({ cls: "badge no", text: "No sponsorship / clearance", warn: true,
+      why: "The posting says it won't sponsor a visa or needs a security clearance." + quote });
+  }
+  if (V.opt && j.no_opt) {
+    out.push({ cls: "badge no", text: "No STEM OPT / I-983", warn: true,
+      why: "The posting rules out OPT or the STEM OPT training plan (I-983)." + quote });
+  }
+  if (V.sponsor && j.sponsorship === "yes") {
+    out.push({ cls: "badge yes", text: "Posting says it sponsors", why: "The posting itself offers visa sponsorship." + quote });
+  }
+  return out;
+}
 
-  const list = $("list");
-  list.replaceChildren();
-  if (!jobs.length) list.append(el("li", { class: "empty", text: "Nothing matches these filters in this window. Try a wider time range." }));
+function otherBadges(j, mark) {
+  return [
+    j.fresh ? el("span", { class: "badge new", text: "New this run" }) : null,
+    j.pay_min ? el("span", { class: "badge", text: "Pay " + payLabel(j) }) : null,
+    j.remote ? el("span", { class: "badge", text: "Remote" }) : null,
+    j.entry_hint ? el("span", { class: "badge", text: "Entry level" }) : null,
+    j.min_yoe != null ? el("span", { class: "badge", text: j.min_yoe + "+ yrs" }) : null,
+    mark ? el("span", { class: "badge", text: mark === "applied" ? "Applied" : "Dismissed" }) : null,
+  ].filter(Boolean);
+}
 
-  for (const j of jobs) {
-    const mark = state.marks[j.url];
-    const sc = scores.get(j);
-    const tier = V.sponsor ? h1bTier(j.h1b) : null;
+function keywordChecklist(sc) {
+  const box = el("div", { class: "ev" });
+  for (const [label, kinds] of [["Required", ["title", "req"]], ["Nice to have", ["pref"]]]) {
+    const xs = sc.items.filter((i) => kinds.includes(i.kind));
+    if (!xs.length) continue;
+    box.append(el("p", { class: "section-h", text: label }),
+      el("ul", { class: "kwlist", style: "list-style:none;margin:0;padding:0" }, ...xs.map((i) => el("li", {
+        class: "kwi " + (i.ok ? "ok" : "miss"),
+        text: (i.ok ? "✓ " : "✗ ") + i.k, "aria-label": `${i.k}: ${i.ok ? "on your resume" : "not on your resume"}` }))));
+  }
+  box.append(el("p", { class: "note", text: "✓ on your resume, ✗ not on it. An exact keyword check: sentences without a concrete skill or tool " +
+    "(e.g. “strong problem-solving”) aren't scored, since a resume can't settle them." }));
+  return box;
+}
 
-    const right = el("div", { class: "right" });
-    if (sc && sc.pct != null) {
-      const cls = sc.pct >= 70 ? "hi" : sc.pct >= 50 ? "mid" : "lo";
-      right.append(el("span", { class: "score " + cls,
-        title: `Keyword coverage ${sc.cov}%, scaled for experience (${sc.exp.label})` + (sc.thin ? ". The posting names few keywords, so the score is rough" : ""),
-        text: sc.pct + "%" + (sc.thin ? "?" : "") + " match" }));
-    }
-    right.append(el("div", {
-      class: "age" + ((dateOnly(j) ? dayLabel(when(j)) === "today" : now - when(j) < 6 * 3600) ? " hot" : ""),
-      title: dateOnly(j) ? "The source gives the posting date only, not the time" : j.posted_exact ? "Posted " + fmt(when(j)) : "Source gave only an update time",
-      text: dateOnly(j) ? "Posted " + dayLabel(when(j)) : (j.posted_exact ? "" : "~") + ago(when(j)),
-    }));
+// A details element whose contents are built the first time it opens.
+function lazyDetails(summary, build, fk) {
+  const d = el("details", { class: "evidence" });
+  const fill = () => { if (d.childNodes.length === 1) d.append(...[].concat(build()).filter(Boolean)); };
+  // Built on the click that opens it, so the next Tab already finds the contents;
+  // "toggle" (which comes a moment later) covers opening it from code.
+  d.append(el("summary", { text: summary, "data-fk": fk, onclick: () => { if (!d.open) fill(); } }));
+  d.addEventListener("toggle", () => { if (d.open) fill(); });
+  d.fill = fill;
+  return d;
+}
 
-    const badges = el("div", { class: "row" });
-    if (j.fresh) badges.append(el("span", { class: "badge new", text: "New this run" }));
-    // The posting's own words outrank the company's filing history.
-    if ((tier === "strong" || tier === "some") && j.sponsorship === "no") {
-      const h = j.h1b;
-      badges.append(el("span", { class: "badge",
-        title: `${h.employer} filed ${n(h.initial)} new H-1B petitions in FY${h.year}, but this posting says it won't sponsor`,
-        text: "Files H-1B, but not for this role" }));
-    } else if (tier === "strong" || tier === "some") {
-      const h = j.h1b;
-      badges.append(el("span", {
-        class: "badge h1b" + (tier === "some" ? " small" : ""),
-        title: `USCIS FY${h.year}: ${h.employer}, ${n(h.initial)} new and ${n(h.continuing)} continuing H-1B approvals${h.match === "ambiguous" ? " (name matched several employers)" : ""}`,
-        text: `H-1B sponsor · ${n(h.initial)} new FY${String(h.year).slice(2)}${h.match === "ambiguous" ? "?" : ""}`,
-      }));
-    } else if (tier === "rare") {
-      badges.append(el("span", { class: "badge", title: `USCIS FY${j.h1b.year}: ${j.h1b.employer}`, text: "Rare H-1B filer" }));
-    }
-    if (V.sponsor && j.sponsorship === "no") badges.append(el("span", { class: "badge no", title: j.sponsor_note, text: "No sponsorship / clearance" }));
-    if (V.opt && j.no_opt) badges.append(el("span", { class: "badge no", title: j.sponsor_note, text: "No STEM OPT / I-983" }));
-    if (V.sponsor && j.sponsorship === "yes") badges.append(el("span", { class: "badge yes", title: j.sponsor_note, text: "Posting says it sponsors" }));
-    if (j.pay_min) badges.append(el("span", { class: "badge", title: "Yearly pay the posting states", text: "Pay " + payLabel(j) }));
-    if (j.remote) badges.append(el("span", { class: "badge", text: "Remote" }));
-    if (j.entry_hint) badges.append(el("span", { class: "badge", text: "Entry level" }));
-    if (j.min_yoe != null) badges.append(el("span", { class: "badge", text: j.min_yoe + "+ yrs" }));
-    if (mark) badges.append(el("span", { class: "badge", text: mark }));
+// Applied / Dismiss, each with Undo. Unmarking is a change too.
+function markJob(j, val) {
+  const prev = state.marks[j.url] || null;
+  const next = prev === val ? null : val;
+  const setLocal = (v) => {
+    if (v) state.marks[j.url] = v; else delete state.marks[j.url];
+    store.set("marks", state.marks);
+    keepFocus(render);
+  };
+  setLocal(next);
+  const sent = postMarks({ [j.key]: next });
+  const what = { applied: `Marked “${j.title}” at ${j.company} as applied.`,
+    dismissed: `Dismissed “${j.title}” at ${j.company}.` + (state.hidedone ? " It's hidden now." : "") };
+  undoable(next ? what[next] : `“${j.title}” is no longer marked ${prev}.`, next ? `the ${next} mark` : "the unmark", async () => {
+    const r = await sent;
+    if (r && r.undo) await serverUndo(r.undo)();
+    else await postMarks({ [j.key]: prev });
+    setLocal(prev);
+  });
+}
 
+function markButtons(j, mark) {
+  return [["Applied", "applied", "Mark not applied"], ["Dismiss", "dismissed", "Restore"]].map(([label, val, off]) => el("button", {
+    type: "button", "data-fk": `${j.key}:${val}`,
+    class: val === "applied" && state.opened[j.url] && !mark ? "nudge" : null,
+    text: mark === val ? off : label,
+    "aria-label": `${mark === val ? off : label}: ${j.title} at ${j.company}`,
+    onclick: () => markJob(j, val),
+  }));
+}
+
+function jobCard(j, now, V, hasResume) {
+  const mark = state.marks[j.url];
+  const sc = scores.get(j);
+  const adv = state.advanced;
+  const fk = (x) => `${j.key}:${x}`;
+  const signals = visaSignals(j, V);
+
+  const right = el("div", { class: "right" });
+  if (sc && sc.pct != null) {
+    const cls = sc.pct >= 70 ? "hi" : sc.pct >= 50 ? "mid" : "lo";
+    right.append(el("span", { class: "score " + cls, text: sc.pct + "%" + (sc.thin ? "?" : "") + " match" }));
+  }
+  right.append(el("div", {
+    class: "age" + ((dateOnly(j) ? dayLabel(when(j)) === "today" : now - when(j) < 6 * 3600) ? " hot" : ""),
+    title: dateOnly(j) ? "The source gives the posting date only, not the time" : j.posted_exact ? "Posted " + fmt(when(j)) : "Source gave only an update time",
+    text: dateOnly(j) ? "Posted " + dayLabel(when(j)) : (j.posted_exact ? "" : "~") + ago(when(j)),
+  }));
+
+  const actions = el("div", { class: "actions" });
+  actions.append(el("a", {
+    class: "btn primary", href: j.apply_url || j.url, target: "_blank", rel: "noopener", text: "Apply ↗",
+    "data-fk": fk("apply"), "aria-label": `Apply: ${j.title} at ${j.company} (opens the application form in a new tab)`,
+    onclick: () => { state.opened[j.url] = true; setTimeout(() => keepFocus(render), 0); },
+  }));
+  if (HELPER) actions.append(el("button", { type: "button", text: "Tailor resume", "data-fk": fk("tailor"),
+    "aria-label": `Tailor resume for ${j.title} at ${j.company}`, onclick: () => openTailor(j) }));
+
+  const head = el("div", {},
+    el("a", { class: "title", href: j.url, target: "_blank", rel: "noopener", text: j.title, "data-fk": fk("title") }),
+    el("div", { class: "meta" }, el("span", { class: "company", text: j.company }), el("span", { text: j.location })));
+  const reason = hasResume ? scoreReason(sc, j) : null;
+  const li = el("li", { class: "job" + (mark ? " done" : "") + (isSponsor(j) ? " sponsor" : "") }, head, right, reason);
+
+  const visaWhy = () => signals.length
+    ? el("div", { class: "why-box" }, el("p", { class: "section-h", text: "Why these visa badges" }),
+        ...signals.map((s) => el("p", {}, el("b", { text: s.text + ": " }), s.why)))
+    : null;
+
+  if (adv) {
+    // Advanced: everything on the card, as before, plus the reasons.
+    const badges = el("div", { class: "row" }, ...signals.map((s) => el("span", { class: s.cls, text: s.text })), ...otherBadges(j, mark));
     let skillsRow = null;
     if (sc && sc.pct != null) {
       skillsRow = el("div", { class: "row skills-line" });
@@ -1114,76 +1453,146 @@ function render() {
         sc.degree ? el("span", { class: sc.degree.ok ? "" : "miss", text: "Degree: " + sc.degree.label }) : null,
       ].filter(Boolean);
       const line = el("span", { class: "breakdown" });
-      parts.forEach((x, i) => { if (i) line.append(" \u00b7 "); line.append(x); });
+      parts.forEach((x, i) => { if (i) line.append(" · "); line.append(x); });
       skillsRow.append(line);
       const missReq = sc.items.filter((i) => !i.ok && i.kind !== "pref").map((i) => i.k);
       const missPref = sc.items.filter((i) => !i.ok && i.kind === "pref").map((i) => i.k);
       if (missReq.length) skillsRow.append(el("span", {}, "Missing: ", el("span", { class: "miss", text: missReq.slice(0, 8).join(", ") + (missReq.length > 8 ? ` +${missReq.length - 8}` : "") })));
       if (missPref.length) skillsRow.append(el("span", {}, "Nice-to-have missing: ", el("span", { text: missPref.slice(0, 5).join(", ") })));
-    } else if (hasResume && sc && sc.pct == null) {
-      skillsRow = el("div", { class: "row skills-line", text: sc.noJd
-        ? "No job description from this source, so no score. Open the posting to judge it."
-        : "The posting names no concrete skills or tools, so no score." });
     }
-
-    const actions = el("div", { class: "actions" });
-    actions.append(el("a", {
-      class: "btn primary", href: j.apply_url || j.url, target: "_blank", rel: "noopener", text: "Apply ↗",
-      title: "Opens the application form",
-      onclick: () => { state.opened[j.url] = true; setTimeout(render, 0); },
-    }));
-    if (HELPER) actions.append(el("button", { type: "button", text: "Tailor resume", onclick: () => openTailor(j) }));
-    for (const [label, val] of [["Applied", "applied"], ["Dismiss", "dismissed"]]) {
-      actions.append(el("button", {
-        type: "button",
-        class: val === "applied" && state.opened[j.url] && !mark ? "nudge" : null,
-        text: mark === val ? "Undo" : label,
-        onclick: () => {
-          if (state.marks[j.url] === val) delete state.marks[j.url]; else state.marks[j.url] = val;
-          store.set("marks", state.marks); render();
-          postMarks({ [j.key]: state.marks[j.url] || null });
-        },
-      }));
-    }
-
-    let reqDet = null;
-    if (sc && sc.items && sc.items.length) {
-      reqDet = el("details", { class: "evidence" }, el("summary", { text: "Keyword checklist" }));
-      reqDet.addEventListener("toggle", () => {
-        if (!reqDet.open || reqDet.childNodes.length > 1) return;
-        const box = el("div", { class: "ev" });
-        for (const [label, kinds] of [["Required", ["title", "req"]], ["Nice to have", ["pref"]]]) {
-          const xs = sc.items.filter((i) => kinds.includes(i.kind));
-          if (!xs.length) continue;
-          box.append(el("p", { class: "section-h", text: label }),
-            el("div", { class: "kwlist" }, ...xs.map((i) => el("span", {
-              class: "kwi " + (i.ok ? "ok" : "miss"),
-              title: i.ok ? "On your resume" : "Not on your resume",
-              text: (i.ok ? "\u2713 " : "\u2717 ") + i.k }))));
-        }
-        box.append(el("p", { class: "note", text: "Exact keyword check against your resume. Sentences without a concrete skill or tool (e.g. \u201cstrong problem-solving\u201d) aren't scored, since a resume can't settle them." }));
-        reqDet.append(box);
-      });
-    }
-
-    const det = el("details", { class: "evidence" }, el("summary", { text: V.sponsor ? "Why is this new? Proof and H-1B details" : "Why is this new? Proof" }));
-    det.addEventListener("toggle", () => { if (det.open && det.childNodes.length === 1) det.append(evidence(j)); }, { once: false });
-
+    actions.append(...markButtons(j, mark));
     badges.append(actions);
+    li.append(...[skillsRow, badges,
+      sc && sc.items && sc.items.length ? lazyDetails("Keyword checklist and score", () => [keywordChecklist(sc), el("div", { class: "ev" }, scoreWhy(sc, j))], fk("kw")) : null,
+      lazyDetails(V.sponsor ? "Why is this new? Proof and H-1B details" : "Why is this new? Proof", () => {
+        const ev = evidence(j);
+        const w = visaWhy();
+        if (w) ev.append(w);
+        return ev;
+      }, fk("proof"))].filter(Boolean));
+    return li;
+  }
 
-    list.append(el("li", { class: "job" + (mark ? " done" : "") + (isSponsor(j) ? " sponsor" : "") },
-      el("div", {},
-        el("a", { class: "title", href: j.url, target: "_blank", rel: "noopener", text: j.title }),
-        el("div", { class: "meta" }, el("span", { class: "company", text: j.company }), el("span", { text: j.location }))),
-      right, skillsRow, badges, reqDet, det));
+  // Simple: the one most telling visa badge, Apply and Tailor; the rest in Details.
+  const lead = signals.find((s) => s.warn) || signals[0];
+  const row = el("div", { class: "row" }, lead ? el("span", { class: lead.cls, text: lead.text }) : null,
+    mark ? el("span", { class: "badge", text: mark === "applied" ? "Applied" : "Dismissed" }) : null);
+  // Back from the application form: the one question worth asking.
+  if (state.opened[j.url] && !mark) {
+    actions.append(el("button", { type: "button", class: "nudge", text: "I applied", "data-fk": fk("applied"),
+      "aria-label": `I applied: ${j.title} at ${j.company}`, onclick: () => markJob(j, "applied") }));
+  }
+  row.append(actions);
+  li.append(row, lazyDetails("Details", () => [
+    el("div", { class: "row" }, ...otherBadges(j, mark), el("span", { class: "actions" }, ...markButtons(j, mark))),
+    sc && sc.pct != null ? el("div", { class: "ev" }, scoreWhy(sc, j)) : null,
+    sc && sc.items && sc.items.length ? keywordChecklist(sc) : null,
+    (() => { const ev = evidence(j); const w = visaWhy(); if (w) ev.append(w); return ev; })(),
+  ], fk("details")));
+  return li;
+}
+
+// Why a job isn't in the list: the first filter that leaves it out.
+// The role and the search box aren't counted; those are what the user asked to see.
+function hiddenBy(j, now, V, hasResume) {
+  if (state.hours && now - when(j) > state.hours * 3600) return "window";
+  if (state.remote && !j.remote) return "remote";
+  if (V.sponsor && state.nosp && (j.sponsorship === "no" || (V.opt && j.no_opt))) return "nosp";
+  if (V.sponsor && state.h1bOnly && !isSponsor(j)) return "h1bOnly";
+  if (state.hidedone && state.marks[j.url]) return "hidedone";
+  if (hasResume && state.minMatch > 0) {
+    const sc = scores.get(j);
+    if (!sc || sc.pct == null || sc.pct < state.minMatch) return "minMatch";
+  }
+  return null;
+}
+
+const FILTER_WHY = {
+  remote: (k) => `${k} aren't remote`,
+  nosp: (k, V) => `${k} say they won't sponsor a visa${V.opt ? " or OPT" : ""}`,
+  h1bOnly: (k) => `${k} aren't from known H-1B sponsors`,
+  hidedone: (k) => `${k} you marked applied or dismissed`,
+  minMatch: (k) => `${k} are below ${state.minMatch}% match`,
+};
+const FILTER_OFF = { remote: false, nosp: false, h1bOnly: false, hidedone: false, minMatch: 0 };
+
+// Turns off the filters that hide jobs, with Undo.
+function showHidden(keys) {
+  const before = Object.fromEntries(keys.map((k) => [k, state[k]]));
+  const apply = (vals) => {
+    for (const [k, v] of Object.entries(vals)) {
+      state[k] = v;
+      store.set(k === "nosp" || k === "h1bOnly" ? searchKey(k, state.search) : k, v);
+      if (k === "minMatch") $("minMatch").value = String(v); else $(k).checked = v;
+    }
+    render();
+  };
+  apply(Object.fromEntries(keys.map((k) => [k, FILTER_OFF[k]])));
+  undoable("Showing the hidden jobs too. The filters that hid them are off.", "showing hidden jobs", () => apply(before));
+}
+
+function render() {
+  const now = Date.now() / 1000;
+  const q = state.q.trim().toLowerCase();
+  const hasResume = !!state.resume;
+  const V = visa();
+  document.body.classList.toggle("simple", !state.advanced);
+
+  const hidden = {}, older = [];
+  let jobs = DATA.jobs.filter((j) => {
+    if (j.roles && (state.search === ALL_ROLES ? !j.roles.length : !j.roles.includes(state.search))) return false;
+    if (q) {
+      const s = j.skills || {};
+      const hay = [j.company, j.title, j.location, ...(s.t || []), ...(s.r || []), ...(s.p || [])].join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    // 0 = "All open": no age limit beyond what the radar keeps on the dashboard.
+    const why = hiddenBy(j, now, V, hasResume);
+    if (why === "window") older.push(j);
+    else if (why) hidden[why] = (hidden[why] || 0) + 1;
+    return !why;
+  });
+  if (hasResume && state.sort === "match") {
+    jobs = jobs.slice().sort((a, b) => ((scores.get(b) || {}).pct ?? -1) - ((scores.get(a) || {}).pct ?? -1) || when(b) - when(a));
   }
 
   const label = { 1: "hour", 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days", 720: "30 days" }[state.hours];
+  const hiddenKeys = Object.keys(hidden);
+  const nHidden = hiddenKeys.reduce((a, k) => a + hidden[k], 0);
+  const showBtn = () => el("button", { type: "button", text: `Show ${nHidden === 1 ? "it" : "them"}`, onclick: () => showHidden(hiddenKeys) });
+  const hiddenText = nHidden ? `${nHidden} more ${nHidden === 1 ? "is" : "are"} hidden by filters: ` +
+    hiddenKeys.map((k) => FILTER_WHY[k](String(hidden[k]), V)).join(", ") + "." : "";
+
+  keepFocus(() => {
+    const list = $("list");
+    // Open Details stay open across the redraw (it runs every minute).
+    const open = new Set([...list.querySelectorAll("details[open] > summary")].map((x) => x.dataset.fk));
+    list.replaceChildren();
+    if (!jobs.length) {
+      const opts = [
+        nHidden ? showBtn() : null,
+        older.length && state.hours ? el("button", { type: "button", text: `Show all ${older.length} open job${older.length === 1 ? "" : "s"}`,
+          onclick: () => { const h = state.hours; setHours(0); undoable("Showing every open job, however long ago it went up.", "the time range change", () => setHours(h)); } }) : null,
+        q ? el("button", { type: "button", text: "Clear the search", onclick: () => { $("q").value = ""; state.q = ""; render(); $("q").focus(); } }) : null,
+      ].filter(Boolean);
+      list.append(el("li", { class: "empty" },
+        el("div", { text: (state.hours ? `Nothing ${q ? "matches your search " : ""}from the last ${label}.` : `No open jobs ${q ? "match your search" : "for this role yet"}.`) +
+          (hiddenText ? " " + hiddenText : "") + (older.length && state.hours ? ` ${older.length} older job${older.length === 1 ? " is" : "s are"} still open.` : "") }),
+        opts.length ? el("div", { class: "row" }, ...opts) : null));
+    }
+    for (const j of jobs) list.append(jobCard(j, now, V, hasResume));
+    // Filled now, not on "toggle", so focus can go back to a control inside.
+    if (open.size) for (const x of list.querySelectorAll("details > summary")) if (open.has(x.dataset.fk)) { x.parentNode.open = true; if (x.parentNode.fill) x.parentNode.fill(); }
+  });
+
   const many = SETTINGS.roles.length > 1;
   const plural = jobs.length === 1 ? "" : "s";
-  $("count").textContent = (state.hours ? `${jobs.length} job${plural} posted in the last ${label}`
-                                        : `${jobs.length} still-open job${plural}`) +
-    (!many ? "" : state.search === ALL_ROLES ? " across all your roles" : ` for \u201c${roleName(state.search)}\u201d`);
+  const countText = (state.hours ? `${jobs.length} job${plural} posted in the last ${label}` : `${jobs.length} still-open job${plural}`) +
+    (!many ? "" : state.search === ALL_ROLES ? " across all your roles" : ` for “${roleName(state.search)}”`);
+  if ($("count").textContent !== countText) $("count").textContent = countText;
+  const note = $("hiddenNote");
+  note.hidden = !nHidden || !jobs.length;
+  if (nHidden && jobs.length) keepFocus(() => note.replaceChildren(el("span", { text: hiddenText }), showBtn()));
 
   const m = DATA.meta;
   if (!m.generated) $("status").replaceChildren("No jobs fetched yet. The first search starts once setup is done.");
@@ -1200,6 +1609,8 @@ function render() {
   $("sort").disabled = !hasResume;
   $("minMatch").disabled = !hasResume;
 }
+
+function setHours(h) { state.hours = h; store.set("hours", h); render(); }
 
 function renderSearchControls() {
   const V = visa(), sel = $("roleSel");
@@ -1260,9 +1671,10 @@ function renderResumeBar() {
     el("span", { class: "spacer" }),
     el("button", { type: "button", text: "Replace", onclick: () => $("resumeFile").click() }),
     el("button", { type: "button", class: "ghost", text: "Remove", onclick: () => {
-      state.resume = null; store.del("resume"); rescore();
-      if (state.sort === "match") state.sort = "new";
-      render();
+      const prev = state.resume, prevSort = state.sort;
+      restoreResume(null, state.sort === "match" ? "new" : state.sort);
+      $("resumeBar").querySelector("button").focus();
+      undoable(`Removed ${prev.name}. Jobs aren't scored until you upload a resume.`, "removing the resume", () => restoreResume(prev, prevSort));
     } }),
     masterLine(),
   ].filter(Boolean));
@@ -1270,21 +1682,33 @@ function renderResumeBar() {
 
 // ---------------------------------------------------------------- skills dialog
 
-function openSkills() { renderSkills(); $("skillsDlg").showModal(); }
+function openSkills() { renderSkills(); openDialog($("skillsDlg")); }
+
+// A correction in the skills dialog, with Undo: `change` edits the stored resume.
+function editResume(text, label, change) {
+  const r = state.resume;
+  const before = JSON.parse(JSON.stringify({ off: r.off || [], added: r.added || [], years: r.years ?? null }));
+  change(r);
+  const redraw = () => { store.set("resume", r); rescore(); keepFocus(renderSkills); render(); };
+  redraw();
+  undoable(text, label, () => { Object.assign(r, before); redraw(); });
+}
+
 function renderExperience() {
   const r = state.resume; if (!r) return;
   const est = resumeExperience(r.text);
-  const input = el("input", { type: "number", min: "0", max: "40", step: "0.5", style: "width:90px",
+  const input = el("input", { type: "number", min: "0", max: "40", step: "0.5", style: "width:90px", "data-fk": "years",
     value: String(r.years != null ? r.years : est.years), "aria-label": "Years of experience" });
   input.addEventListener("change", () => {
     const v = parseFloat(input.value);
-    r.years = Number.isFinite(v) && v >= 0 ? v : null;
-    store.set("resume", r); rescore(); render(); renderExperience();
+    const years = Number.isFinite(v) && v >= 0 ? v : null;
+    editResume(years == null ? "Using the estimate from your resume's dates." : `Scoring with ${years} years of experience.`,
+      "the years change", (x) => { x.years = years; });
   });
   $("expBox").replaceChildren(...[
     el("div", { class: "row" }, input, el("span", { text: "years, used to compare against each job's required years" }),
-      r.years != null ? el("button", { type: "button", class: "ghost", text: "Use estimate", onclick: () => {
-        r.years = null; store.set("resume", r); rescore(); render(); renderExperience();
+      r.years != null ? el("button", { type: "button", class: "ghost", text: "Use estimate", "data-fk": "estimate", onclick: () => {
+        editResume("Using the estimate from your resume's dates.", "the years change", (x) => { x.years = null; });
       } }) : null),
     el("p", { class: "note", text: `Estimated ${est.years} years from the dates on your resume (internships count half, education is skipped):` }),
     ...est.spans.map((s) => el("p", { class: "note", text: `• ${s.label}${s.factor < 1 ? " (internship, half)" : ""}` })),
@@ -1297,22 +1721,21 @@ function renderSkills() {
   const off = new Set(r.off || []);
   const all = [...new Set([...r.skills, ...(r.added || [])])].sort();
   $("skillChips").replaceChildren(...all.map((k) => el("button", {
-    type: "button", class: "chip" + (off.has(k) ? " off" : ""), text: k, "aria-pressed": String(!off.has(k)),
-    onclick: () => {
-      r.off = off.has(k) ? r.off.filter((x) => x !== k) : [...(r.off || []), k];
-      store.set("resume", r); rescore(); renderSkills(); render();
-    },
+    type: "button", class: "chip" + (off.has(k) ? " off" : ""), text: k, "aria-pressed": String(!off.has(k)), "data-fk": "skill:" + k,
+    onclick: () => editResume(off.has(k) ? `${k} counts again.` : `${k} no longer counts toward match scores.`,
+      `the ${k} change`, (x) => { x.off = off.has(k) ? x.off.filter((y) => y !== k) : [...(x.off || []), k]; }),
   })));
   $("skillList").replaceChildren(...SKILLS.filter((s) => !all.includes(s.n)).map((s) => el("option", { value: s.n })));
 }
 function addSkill() {
   const r = state.resume; const v = $("addSkill").value.trim(); if (!r || !v) return;
   const hit = SKILLS.find((s) => s.n.toLowerCase() === v.toLowerCase());
-  if (!hit) { toast("Pick a skill from the list so it can be matched against jobs."); return; }
-  r.added = [...new Set([...(r.added || []), hit.n])];
-  r.off = (r.off || []).filter((x) => x !== hit.n);
+  if (!hit) { toast(`“${v}” isn't a skill It gets easier knows. Pick one from the suggestions as you type, so it can be matched against jobs.`); return; }
   $("addSkill").value = "";
-  store.set("resume", r); rescore(); renderSkills(); render();
+  editResume(`Added ${hit.n}. Match scores count it now.`, `adding ${hit.n}`, (x) => {
+    x.added = [...new Set([...(x.added || []), hit.n])];
+    x.off = (x.off || []).filter((y) => y !== hit.n);
+  });
 }
 
 // ---------------------------------------------------------------- apply kit
@@ -1356,12 +1779,18 @@ async function loadAbout() {
     const { text } = await api("/api/about");
     if (document.activeElement !== $("aboutText")) $("aboutText").value = text || "";
     $("aboutNote").textContent = text ? "" : "Not written yet.";
-  } catch { $("aboutNote").textContent = "Helper not running, so this can't be loaded."; }
+  } catch (e) { $("aboutNote").textContent = e.message; }
 }
 $("saveAbout").addEventListener("click", async () => {
   try {
-    await api("/api/about", { text: $("aboutText").value });
+    const r = await api("/api/about", { text: $("aboutText").value });
     $("aboutNote").textContent = "Saved. New drafts will use it.";
+    if (r.undo) undoable("Saved your About me notes. New drafts will use them.", "the About me change", async () => {
+      await serverUndo(r.undo)();
+      $("aboutText").value = "";
+      await loadAbout();
+      $("aboutNote").textContent = "Back to what you had saved before.";
+    });
   } catch (e) { $("aboutNote").textContent = e.message; }
 });
 
@@ -1388,18 +1817,22 @@ $("trySample").addEventListener("click", () => {
   run(state.profile, $("sampleForm"));
 });
 $("clearSample").addEventListener("click", () => { for (const i of $("sampleForm").querySelectorAll("input")) i.value = ""; });
-$("openKit").addEventListener("click", () => { renderKit(); $("kit").showModal(); });
+$("openKit").addEventListener("click", () => { renderKit(); openDialog($("kit")); });
 $("closeKit").addEventListener("click", () => $("kit").close());
 $("closeSkills").addEventListener("click", () => $("skillsDlg").close());
 $("addSkillBtn").addEventListener("click", addSkill);
 $("addSkill").addEventListener("keydown", (e) => { if (e.key === "Enter") addSkill(); });
 $("fromResume").addEventListener("click", () => {
-  if (!state.resume) { toast("Upload your resume first."); return; }
+  if (!state.resume) { toast("There's no resume to read yet. Close this, press Upload resume at the top of the page, then try again."); return; }
   const found = contactsFrom(state.resume.text);
+  const before = { ...state.profile };
   let added = 0;
   for (const [k, v] of Object.entries(found)) if (!state.profile[k]) { state.profile[k] = v; added++; }
-  store.set("profile", state.profile); renderKit();
-  toast(added ? `Filled ${added} field${added === 1 ? "" : "s"} from your resume. Check them.` : "Nothing new found in your resume.");
+  store.set("profile", state.profile); renderKit(); syncScoring();
+  if (!added) { toast("Nothing new found in your resume: every field it has is already filled in."); return; }
+  undoable(`Filled ${added} field${added === 1 ? "" : "s"} from your resume. Check them.`, "filling from your resume", () => {
+    state.profile = before; store.set("profile", before); renderKit(); syncScoring();
+  });
 });
 
 // ---------------------------------------------------------------- tailoring (local helper)
@@ -1409,12 +1842,22 @@ const HELPER = location.protocol === "http:" && /^(127\.0\.0\.1|localhost)$/.tes
 const helper = { status: null };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Errors say what to do next: the helper's own message when it sent one.
+const UNREACHABLE = "Can't reach It gets easier on this computer. Check that the app is running (its icon is in the system tray, " +
+  "or start It gets easier again), then try once more.";
 async function api(path, body) {
   const init = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
-  const res = await fetch(path, init);
+  let res;
+  try { res = await fetch(path, init); } catch { throw new Error(UNREACHABLE); }
   let data = null;
   try { data = await res.json(); } catch {}
-  if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);
+  if (!res.ok) {
+    const e = new Error((data && data.error) || `Something went wrong in It gets easier (error ${res.status}). ` +
+      "Try again; if it keeps happening, quit and restart the app from its tray icon.");
+    e.errors = data && data.errors;
+    e.status = res.status;
+    throw e;
+  }
   return data;
 }
 
@@ -1454,12 +1897,14 @@ async function openTailor(j) {
   const body = $("tailorBody");
   $("tailorTitle").textContent = `Tailor resume: ${j.title} at ${j.company}`;
   body.replaceChildren(progressLine("Loading…"));
-  $("tailorDlg").showModal();
+  openDialog($("tailorDlg"));
   await refreshStatus();
-  const m = helper.status && helper.status.master;
+  if (!helper.status) { body.replaceChildren(el("div", { class: "errbox", role: "alert", text: UNREACHABLE })); return; }
+  const m = helper.status.master;
   if (!m) {
     body.replaceChildren(
-      el("p", { text: "Upload your master resume as a .tex file first, using Upload resume at the top of the page. Put every bullet, project and skill you have in it, more than fits on one page. Tailoring picks the best ones for each job." }),
+      el("p", { text: "Tailoring needs a master resume first: the full version, with every bullet, project and skill you have, more than fits on one page. Tailoring picks the best ones for each job." }),
+      el("p", { text: "Upload it as a .tex file with Upload resume at the top of the page. Have only a PDF? In Settings, press Run setup again: its Resume step turns a PDF into one." }),
       tagHelp());
     return;
   }
@@ -1503,7 +1948,7 @@ function renderTailorForm(j, jd, history) {
   const instr = el("input", { type: "text", id: "tailorInstr", maxlength: "500", style: "width:100%",
     placeholder: "Optional, e.g. emphasize backend more, don't touch the Kanbas project" });
 
-  const answer = el("textarea", { class: "jd", placeholder: "Paste the chat's JSON answer here." });
+  const answer = el("textarea", { class: "jd", placeholder: "Paste the chat's JSON answer here.", "aria-label": "The chat's answer" });
   const manual = el("div", { style: "display:grid;gap:8px" },
     el("p", { text: "1. Copy the prompt and paste it into ChatGPT, Claude or any chat. 2. Paste its whole reply below. 3. Apply." }),
     el("div", {}, el("button", { type: "button", text: "Copy prompt", onclick: async () => {
@@ -1511,7 +1956,7 @@ function renderTailorForm(j, jd, history) {
         const { prompt } = await api("/api/prompt", { key: j.key, jd: jdBox.value, instruction: instr.value, role: tailorRole(j) });
         await navigator.clipboard.writeText(prompt);
         toast("Prompt copied. Paste it into your chat.");
-      } catch (e) { toast(e.message); }
+      } catch (e) { fail(e); }
     } })),
     answer);
   function syncManual() { manual.hidden = chosen !== "manual"; go.textContent = chosen === "manual" ? "Apply answer" : "Tailor resume"; }
@@ -1540,8 +1985,8 @@ function renderTailorForm(j, jd, history) {
 
   const result = el("div", { id: "tailorResult", style: "display:grid;gap:12px" });
   const start = () => {
-    if (jdBox.value.trim().length < 200) { toast("Paste the full job description first."); return; }
-    if (chosen === "manual" && !answer.value.trim()) { toast("Paste the chat's answer first."); return; }
+    if (jdBox.value.trim().length < 200) { toast("The job description is too short to tailor from. Copy the whole posting from the job's page and paste it into the Job description box."); jdBox.focus(); return; }
+    if (chosen === "manual" && !answer.value.trim()) { toast("Paste the chat's whole answer into the box first, then press Apply answer."); answer.focus(); return; }
     runTailor(j, { backend: chosen, jd: jdBox.value, rewrite: rewrite.checked, answer: answer.value, instruction: instr.value },
       go, result, retailor, refreshHistory);
   };
@@ -1551,7 +1996,7 @@ function renderTailorForm(j, jd, history) {
     instr.value = text;
     if (chosen === "manual") {
       answer.value = "";
-      manual.scrollIntoView({ behavior: "smooth", block: "center" });
+      manual.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
       toast("Copy the prompt again (it now has your request), then paste the new answer.");
       return;
     }
@@ -1572,7 +2017,7 @@ function renderTailorForm(j, jd, history) {
   $("tailorBody").replaceChildren(...[
     el("p", { class: "section-h", text: "Model" }), opts, costLine,
     el("label", { class: "toggle" }, rewrite, " Reword bullets to use the job's keywords (otherwise only reorders, trims, and updates tech lines and skills)"),
-    el("p", { class: "section-h", text: "Job description" + (jd ? " (saved from the posting, edit if needed)" : "") }), jdBox,
+    el("label", { class: "section-h", for: "jdBox", text: "Job description" + (jd ? " (saved from the posting, edit if needed)" : "") }), jdBox,
     el("label", { class: "section-h", for: "tailorInstr", text: "Your request for this version" }), instr,
     manual,
     el("div", {}, go),
@@ -1593,18 +2038,33 @@ async function runTailor(j, opts, btn, out, onAdjust, onDone) {
   btn.disabled = true;
   out.replaceChildren(progressLine("Starting…"));
   const t0 = Date.now();
+  let lastState = "";
   try {
     const { id } = await api("/api/tailor", { key: j.key, role: tailorRole(j), ...opts });
     for (;;) {
       await sleep(1500);
       const s = await api("/api/tailor/" + id);
-      if (s.state === "done") { renderResult(s.result, out, onAdjust); if (onDone) onDone(); break; }
+      if (s.state === "done") {
+        renderResult(s.result, out, onAdjust);
+        if (onDone) onDone();
+        announce("Tailoring finished. The result is below.");
+        if (s.undo) undoable(opts.instruction ? "Made a new version with your request. The earlier ones are still in the list below."
+            : "Made a tailored resume for this job.", "the new resume version", async () => {
+          await serverUndo(s.undo)();
+          out.replaceChildren(el("p", { class: "note", text: "That version was taken out. The earlier versions are below." }));
+          if (onDone) onDone();
+        });
+        break;
+      }
       if (s.state === "error") throw new Error(s.error);
       const secs = Math.round((Date.now() - t0) / 1000);
-      out.replaceChildren(progressLine(`${s.state === "queued" ? "Waiting for another run to finish" : "Tailoring"}… ${secs}s`));
+      // Said aloud only when the stage changes, not every tick.
+      out.replaceChildren(el("div", { class: "progress" }, el("span", { class: "spin", "aria-hidden": "true" }),
+        el("span", { text: `${s.state === "queued" ? "Waiting for another run to finish" : "Tailoring"}… ` }), el("span", { "aria-hidden": "true", text: secs + "s" })));
+      if (s.state !== lastState) { lastState = s.state; announce(s.state === "queued" ? "Waiting for another run to finish." : "Tailoring started. This usually takes a minute or two."); }
     }
   } catch (e) {
-    out.replaceChildren(el("div", { class: "errbox", text: e.message }));
+    out.replaceChildren(el("div", { class: "errbox", role: "alert", text: e.message }));
   } finally {
     btn.disabled = false;
   }
@@ -1670,7 +2130,7 @@ function renderResult(r, out, onAdjust) {
       : (c.kind === "drop_bullet" || c.kind === "drop_entry") ? el("div", { text: c.before || c.label })
       : (c.kind === "tech" || c.kind === "skills") ? listDiff(c.before, c.after)
       : el("div", {}, ...wordDiff(c.before, c.after)),
-    c.reason ? el("div", { class: "why", text: c.reason }) : null);
+    c.reason ? el("div", { class: "why", text: (c.status === "rejected" ? "Blocked because it " : "") + c.reason }) : null);
 
   const kw = el("div", { class: "kw" }, ...(r.keywords || []).map((k) => el("span", {
     class: "badge " + k.status, title: k.note || "",
@@ -1691,10 +2151,14 @@ function renderResult(r, out, onAdjust) {
       el("p", { class: "section-h", text: "Job keywords, checked against the final PDF" }), kw,
       el("p", { class: "note", text: "+ added for this job · plain: already in your resume · ✗ not in your resume (not added, since there's no evidence for it)" })) : null,
     el("p", { class: "section-h", text: `Changes (${applied.length})` }),
-    applied.length ? el("div", { class: "changes" }, ...applied.map(card)) : el("p", { text: "No wording changes." }),
+    applied.length ? el("p", { class: "note", text: "Reworded to use the job's own words for things your resume already says. Added words are underlined, removed ones struck through." }) : null,
+    applied.length ? el("div", { class: "changes" }, ...applied.map(card))
+      : el("p", { text: "No wording changes: your resume already uses the job's words, or nothing more could be added without claiming something it doesn't say." }),
     rejected.length ? el("p", { class: "section-h", text: `Blocked by the honesty check (${rejected.length})` }) : null,
+    rejected.length ? el("p", { class: "note", text: "The model suggested these, but each would have claimed a skill, number or term your master resume doesn't back, so your original wording stays." }) : null,
     rejected.length ? el("div", { class: "changes" }, ...rejected.map(card)) : null,
-    removed.length ? el("p", { class: "section-h", text: `Removed to fit one page (${removed.length})` }) : null,
+    removed.length ? el("p", { class: "section-h", text: `Removed to fit the page limit (${removed.length})` }) : null,
+    removed.length ? el("p", { class: "note", text: "The least relevant to this job went first. They're still in your master resume." }) : null,
     removed.length ? el("div", { class: "changes" }, ...removed.map(card)) : null,
     reordered.length ? el("p", { class: "note", text: "Bullets reordered, most relevant first, in: " + reordered.map((c) => c.label.split(" | ")[0]).join("; ") }) : null,
     ...moved.map((c) => el("p", { class: "note", text: `${c.label} reordered, most relevant first: ${c.after}` })),
@@ -1725,8 +2189,10 @@ function syncScoring() {
   }, 800);
 }
 
+// The helper's answer carries the undo record for a single mark.
 function postMarks(marks) {
-  if (HELPER && Object.keys(marks).length) api("/api/marks", { marks }).catch(() => {});
+  if (!HELPER || !Object.keys(marks).length) return Promise.resolve(null);
+  return api("/api/marks", { marks }).catch(() => null);
 }
 
 async function loadQueue() {
@@ -1767,7 +2233,9 @@ function showView(v) {
   document.body.classList.toggle("in-setup", state.view === "setup");
   if (state.view === "settings") openSettings();
   if (state.view === "setup") openSetup();
-  for (const b of $("viewTabs").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.view === state.view));
+  for (const b of $("viewTabs").querySelectorAll("button")) {
+    if (b.dataset.view === state.view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  }
   clearInterval(queue.timer);
   if (state.view === "queue") { loadQueue(); queue.timer = setInterval(loadQueue, 20000); }
   else render();
@@ -1789,29 +2257,43 @@ async function showChanges(it) {
   $("tailorTitle").textContent = `Resume changes: ${it.title} at ${it.company}`;
   const body = $("tailorBody");
   body.replaceChildren(progressLine("Loading…"));
-  $("tailorDlg").showModal();
+  openDialog($("tailorDlg"));
   try {
     const hist = await api("/api/history?key=" + encodeURIComponent(it.key));
     const h = hist.find((x) => x.id === it.tailored_id);
-    if (!h) throw new Error("That tailored version is gone.");
+    if (!h) throw new Error("That tailored version isn't stored any more. Close this and press Tailor anyway to make a new one.");
     const out = el("div", { style: "display:grid;gap:12px" });
     renderResult(h.result, out, (text) => {
       $("tailorDlg").close();
-      queueAction("/api/queue/tailor", { key: it.key, instruction: text }, "Re-tailoring with your request. It uses one of today's ChatGPT runs.");
+      queueAction("/api/queue/tailor", { key: it.key, instruction: text }, retailorMsg(), "the re-tailoring request");
     });
     body.replaceChildren(out);
-  } catch (e) { body.replaceChildren(el("div", { class: "errbox", text: e.message })); }
+  } catch (e) { body.replaceChildren(el("div", { class: "errbox", role: "alert", text: e.message })); }
 }
 
-async function queueAction(path, body, msg) {
-  try { await api(path, body); if (msg) toast(msg); } catch (e) { toast(e.message); }
-  loadQueue();
+const retailorMsg = () => "Re-tailoring with your request." +
+  (queue.data && queue.data.settings.backend === "chatgpt" ? " It uses one of today's ChatGPT runs." : "");
+
+// A queue change, then its message with Undo (the helper keeps the old row).
+async function queueAction(path, body, text, label, onUndo) {
+  try {
+    const r = await api(path, body);
+    if (r && r.undo) undoable(text, label || "the queue change", async () => { await serverUndo(r.undo)(); if (onUndo) onUndo(); await loadQueue(); });
+    else if (text) toast(text);
+  } catch (e) { fail(e); }
+  await loadQueue();
 }
 
 function queueItem(it) {
   const cls = it.score >= 70 ? "hi" : it.score >= 50 ? "mid" : "lo";
   const right = el("div", { class: "right" }, el("span", { class: "score " + cls, text: it.score + "% match" }));
   const lines = [];
+  const fk = (x) => `q:${it.key}:${x}`;
+  const name = `${it.title} at ${it.company}`;
+  const s = (queue.data && queue.data.settings) || {};
+  // Why it's here at all, then what was decided for it.
+  lines.push(el("div", { class: "qline reason", text: `In your queue because it's a ${it.score}% match` +
+    (s.threshold != null ? `, at or above the ${s.threshold}% you set in the queue settings.` : ".") }));
 
   if (it.state === "ready") {
     if (it.choice === "tailored" && it.changes) {
@@ -1820,7 +2302,7 @@ function queueItem(it) {
     } else if (it.tailored_id) {
       lines.push(el("div", { class: "qline" }, el("b", { text: "Master resume" }), " (you chose it over the tailored one)"));
     } else {
-      lines.push(el("div", { class: "qline" }, el("b", { text: "Master resume:" }), el("span", { text: it.reason })));
+      lines.push(el("div", { class: "qline" }, el("b", { text: "Master resume, because:" }), el("span", { text: it.reason })));
     }
     lines.push(el("div", { class: "qline", text: it.answers
       ? `${it.answers} answer${it.answers === 1 ? "" : "s"} drafted for the form's own questions, marked "AI answer, check it" when filled.`
@@ -1831,41 +2313,49 @@ function queueItem(it) {
     lines.push(el("div", { class: "qline" }, el("b", { text: "Waiting." }),
       el("span", { text: it.decision === "tailor" ? it.reason : "Master resume fits; drafts come next." })));
   } else if (it.state === "error") {
-    lines.push(el("div", { class: "qline" }, el("span", { class: "warnline", text: "Couldn't prepare this one: " + it.note })));
+    lines.push(el("div", { class: "qline" }, el("span", { class: "warnline", text: `Couldn't prepare this one: ${it.note}. ` +
+      "Press Retry to try again, or open the application and fill it in yourself." })));
   }
   if (it.note && it.state !== "error") lines.push(el("div", { class: "qline" }, el("span", { class: "warnline", text: it.note })));
 
   const actions = el("div", { class: "actions" });
   if (it.state === "ready" || it.state === "queued" || it.state === "error") {
-    actions.append(el("a", { class: "btn primary", href: it.apply_url, target: "_blank", rel: "noopener",
-      text: "Open application ↗", title: "The extension attaches the prepared resume and fills the form. You review and submit." }));
+    actions.append(el("a", { class: "btn primary", href: it.apply_url, target: "_blank", rel: "noopener", "data-fk": fk("open"),
+      text: "Open application ↗", "aria-label": `Open application: ${name} (new tab)`,
+      title: "The extension attaches the prepared resume and fills the form. You review and submit." }));
   }
   if (it.state === "ready" && it.tailored_id) {
-    actions.append(el("button", { type: "button", text: "View changes", onclick: () => showChanges(it) }));
-    actions.append(el("a", { class: "btn", href: "/files/" + it.pdf, target: "_blank", rel: "noopener", text: "PDF" }));
+    actions.append(el("button", { type: "button", text: "View changes", "data-fk": fk("changes"), "aria-label": `View resume changes: ${name}`, onclick: () => showChanges(it) }));
+    actions.append(el("a", { class: "btn", href: "/files/" + it.pdf, target: "_blank", rel: "noopener", text: "PDF", "aria-label": `Tailored resume PDF: ${name}` }));
     if (it.choice !== "tailored" || !it.reviewed) {
-      actions.append(el("button", { type: "button", text: "Approve", title: "Use the tailored resume for this job",
-        onclick: () => queueAction("/api/queue/choice", { key: it.key, choice: "tailored" }, "Tailored resume approved.") }));
+      actions.append(el("button", { type: "button", text: "Approve", "data-fk": fk("approve"), "aria-label": `Approve the tailored resume: ${name}`,
+        onclick: () => queueAction("/api/queue/choice", { key: it.key, choice: "tailored" },
+          `Approved the tailored resume for ${name}. The extension attaches it.`, "the approval") }));
     }
     if (it.choice === "tailored") {
-      actions.append(el("button", { type: "button", text: "Use master instead",
-        onclick: () => queueAction("/api/queue/choice", { key: it.key, choice: "master" }, "The extension will attach your master resume.") }));
+      actions.append(el("button", { type: "button", text: "Use master instead", "data-fk": fk("master"), "aria-label": `Use the master resume instead: ${name}`,
+        onclick: () => queueAction("/api/queue/choice", { key: it.key, choice: "master" },
+          `The extension will attach your master resume for ${name}.`, "using the master resume") }));
     }
   }
   if (it.state === "ready" && !it.tailored_id) {
-    actions.append(el("button", { type: "button", text: "Tailor anyway", title: "Uses one ChatGPT run from today's limit",
-      onclick: () => queueAction("/api/queue/tailor", { key: it.key }, "Queued for tailoring.") }));
+    actions.append(el("button", { type: "button", text: "Tailor anyway", "data-fk": fk("tailor"), "aria-label": `Tailor anyway: ${name}`,
+      title: s.backend === "chatgpt" ? "Uses one ChatGPT run from today's limit" : null,
+      onclick: () => queueAction("/api/queue/tailor", { key: it.key }, `Queued ${name} for tailoring.`, "the tailoring request") }));
   }
   if (it.state === "ready") {
-    const det = el("details", { class: "evidence" }, el("summary", { text: it.tailored_id ? "Adjust and re-tailor" : "Tailor with a request" }));
-    det.append(adjustBox((text) => queueAction("/api/queue/tailor", { key: it.key, instruction: text },
-      "Re-tailoring with your request. It uses one of today's ChatGPT runs."), it.tailored_id ? "Re-tailor" : "Tailor", false));
+    const det = el("details", { class: "evidence" }, el("summary", { text: it.tailored_id ? "Adjust and re-tailor" : "Tailor with a request", "data-fk": fk("adjust") }));
+    det.append(adjustBox((text) => queueAction("/api/queue/tailor", { key: it.key, instruction: text }, retailorMsg(), "the re-tailoring request"),
+      it.tailored_id ? "Re-tailor" : "Tailor", false));
     lines.push(det);
   }
-  if (it.state === "error") actions.append(el("button", { type: "button", text: "Retry", onclick: () => queueAction("/api/queue/retry", { key: it.key }) }));
-  actions.append(el("button", { type: "button", class: "ghost", text: "Dismiss", onclick: () => {
+  if (it.state === "error") actions.append(el("button", { type: "button", text: "Retry", "data-fk": fk("retry"), "aria-label": `Retry: ${name}`,
+    onclick: () => queueAction("/api/queue/retry", { key: it.key }, `Trying ${name} again.`, "the retry") }));
+  actions.append(el("button", { type: "button", class: "ghost", text: "Dismiss", "data-fk": fk("dismiss"), "aria-label": `Dismiss: ${name}`, onclick: () => {
+    const prev = state.marks[it.url] || null;
     state.marks[it.url] = "dismissed"; store.set("marks", state.marks);
-    queueAction("/api/marks", { marks: { [it.key]: "dismissed" } });
+    queueAction("/api/marks", { marks: { [it.key]: "dismissed" } }, `Dismissed ${name}. It won't come back to the queue.`, "the dismissal",
+      () => { if (prev) state.marks[it.url] = prev; else delete state.marks[it.url]; store.set("marks", state.marks); });
   } }));
 
   return el("li", { class: "job q-" + it.state },
@@ -1901,9 +2391,12 @@ function renderQueue() {
     el("button", { type: "button", text: "Settings", onclick: openPrefs }),
   ].filter(Boolean));
   const items = d.items;
-  list.replaceChildren(...(items.length ? items.map(queueItem) : [el("li", { class: "empty", text: d.radar_updated
-    ? `Nothing to apply to yet. New postings at ${s.threshold}%+ match are prepared here after each radar run.`
-    : "The queue starts after the next radar run." })]));
+  keepFocus(() => list.replaceChildren(...(items.length ? items.map(queueItem) : [el("li", { class: "empty", text: !s.enabled
+    ? "Preparing jobs is turned off. Press Settings above and turn on Prepare jobs to have good matches tailored here."
+    : d.radar_updated
+      ? `Nothing to apply to yet. New postings at ${s.threshold}%+ match are prepared here after each search.`
+        + (state.resume ? "" : " Upload your resume on All jobs first: the queue only takes jobs it can score.")
+      : "The queue starts after the next search." })])));
 }
 
 function openPrefs() {
@@ -1938,11 +2431,16 @@ function openPrefs() {
   const save = el("button", { type: "button", class: "primary", text: "Save", onclick: async () => {
     const out = {};
     for (const [k, input] of Object.entries(f)) out[k] = input.type === "checkbox" ? input.checked : input.type === "number" ? +input.value : input.value;
-    try { await api("/api/prep/settings", out); toast("Saved."); $("prefsDlg").close(); loadQueue(); }
-    catch (e) { toast(e.message); }
+    try {
+      const r = await api("/api/prep/settings", out);
+      $("prefsDlg").close();
+      if (r.undo) undoable("Saved the apply queue settings.", "the apply queue settings", async () => { await serverUndo(r.undo)(); await loadQueue(); });
+      else toast("Nothing changed.");
+      loadQueue();
+    } catch (e) { fail(e); }
   } });
   $("prefsBody").replaceChildren(el("p", { text: "The helper prepares jobs in the background, one at a time. It never applies: you open each job, check what was filled, and press Submit yourself." }), grid, el("div", {}, save));
-  $("prefsDlg").showModal();
+  openDialog($("prefsDlg"));
 }
 
 $("closePrefs").addEventListener("click", () => $("prefsDlg").close());
@@ -2045,22 +2543,49 @@ function problems(e) {
     list.length ? el("ul", { style: "margin:6px 0 0;padding-left:18px" }, ...list.slice(0, 12).map((x) => el("li", { text: humanError(x) }))) : null);
 }
 
-async function postSettings(patch) {
-  const res = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: patch }) });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) { const e = new Error((data && data.error) || `Request failed (${res.status})`); e.errors = data && data.errors; throw e; }
+async function postSettings(patch, label) {
+  const data = await api("/api/settings", { settings: patch, label });
   cfg.data = data;
   return data;
 }
 
-function saveBar(label, save, status) {
+// Says a settings save worked, with Undo. `after` redraws once the old
+// settings are back (by default the Settings page).
+function settingsSaved(data, text, label, after) {
+  if (!data || !data.undo) { if (text) toast(text); return; }
+  undoable(text, label, async () => {
+    const r = await serverUndo(data.undo)();
+    if (r.settings) { cfg.data = r.settings; syncLocalSettings(); }
+    if (after) await after(r);
+    else {
+      if (state.view === "settings") { cfg.draft = null; renderSettings(); }
+      if (r.rerender) afterRoleSave();
+    }
+  });
+}
+
+// The page's own copy of what it reads from settings, after a save or undo.
+function syncLocalSettings() {
+  const s = cfg.data && cfg.data.settings;
+  if (!s) return;
+  SETTINGS.tailoring.backend = s.tailoring.backend;
+  SETTINGS.notices = s.notices;
+  if (!!s.ui.advanced !== state.advanced) setAdvanced(!!s.ui.advanced, { save: false });
+}
+
+// A save button with its outcome next to it. When `save` returns the
+// helper's answer, the message offers Undo (`undoLabel` names the change).
+function saveBar(label, save, status, undoLabel) {
   const btn = el("button", { type: "button", class: "primary", text: label });
   const out = el("div", { "aria-live": "polite" });
   btn.addEventListener("click", async () => {
     btn.disabled = true;
     out.replaceChildren(progressLine("Saving…"));
-    try { await save(); out.replaceChildren(el("span", { class: "okline", text: status || "Saved." })); }
-    catch (e) { out.replaceChildren(problems(e)); }
+    try {
+      const data = await save();
+      out.replaceChildren(el("span", { class: "okline", text: data && data.undo === null ? "Nothing changed." : status || "Saved." }));
+      if (data && data.undo) settingsSaved(data, status || "Saved.", undoLabel || "the change");
+    } catch (e) { out.replaceChildren(problems(e)); }
     finally { btn.disabled = false; }
   });
   return el("div", { class: "savebar" }, btn, out);
@@ -2084,10 +2609,8 @@ function renderSettings() {
   const d = cfg.data, s = d.settings;
   const adv = el("input", { type: "checkbox", id: "advToggle" });
   adv.checked = s.ui.advanced;
-  adv.addEventListener("change", async () => {
-    try { await postSettings({ ui: { advanced: adv.checked } }); } catch (e) { toast(e.message); }
-    keepDraft();
-    renderSettings();
+  adv.addEventListener("change", () => {
+    setAdvanced(adv.checked, { undo: true });
     $("advToggle").focus();
   });
   $("settingsView").replaceChildren(el("div", { class: "settings" },
@@ -2125,11 +2648,15 @@ function rolesCard() {
   pick.addEventListener("change", () => { cfg.rid = pick.value; cfg.draft = null; cfg.adding = false; renderSettings(); $("rolePick").focus(); });
   const addBtn = el("button", { type: "button", id: "addRole", text: "Add role", "aria-expanded": String(!!cfg.adding),
     onclick: () => { keepDraft(); cfg.adding = !cfg.adding; renderSettings(); $(cfg.adding ? "newRoleName" : "addRole").focus(); } });
-  const del = el("button", { type: "button", text: "Delete role", disabled: s.roles.length < 2 ? "disabled" : null, onclick: () => {
-    if (!confirm(`Delete the role “${saved.name}”?`)) return;
-    postSettings({ roles: s.roles.filter((x) => x.id !== saved.id) })
-      .then(() => { cfg.rid = null; cfg.draft = null; renderSettings(); afterRoleSave(); }).catch((e) => toast(e.message));
-  } });
+  const del = el("button", { type: "button", text: "Delete role", disabled: s.roles.length < 2 ? "disabled" : null,
+    title: s.roles.length < 2 ? "Your only role can't be deleted. Add another one first." : null, onclick: () => {
+      postSettings({ roles: s.roles.filter((x) => x.id !== saved.id) }, `deleting “${saved.name}”`)
+        .then((data) => {
+          cfg.rid = null; cfg.draft = null; renderSettings(); $("rolePick").focus(); afterRoleSave();
+          settingsSaved(data, `Deleted the role “${saved.name}”. Its jobs leave the list once it's rebuilt.`, `deleting “${saved.name}”`,
+            () => { cfg.rid = saved.id; cfg.draft = null; renderSettings(); afterRoleSave(); });
+        }).catch(fail);
+    } });
 
   return el("section", { class: "card", "aria-labelledby": "roleH" },
     el("h3", { id: "roleH", text: "Roles" }),
@@ -2156,11 +2683,13 @@ function addRoleForm() {
     const keywords = from.value === "copy" ? current.title_keywords : tpl.title_keywords.length ? tpl.title_keywords : [n.toLowerCase()];
     const role = { ...base, id: slug(n, new Set(s.roles.map((r) => r.id))), name: n, title_keywords: keywords };
     try {
-      await postSettings({ roles: [...s.roles, role] });
+      const prevRid = cfg.rid;
+      const data = await postSettings({ roles: [...s.roles, role] }, `adding “${n}”`);
       cfg.rid = role.id; cfg.draft = null; cfg.adding = false;
       renderSettings();
       $("roleKeywords").focus();
-      toast(`Added “${n}”. Adjust its title keywords and the rest below, then save.`);
+      settingsSaved(data, `Added “${n}”. Adjust its title keywords and the rest below, then save.`, `adding “${n}”`,
+        () => { cfg.rid = prevRid; cfg.draft = null; renderSettings(); afterRoleSave(); });
       afterRoleSave();
     } catch (e) { out.replaceChildren(problems(e)); }
   };
@@ -2229,11 +2758,12 @@ function roleForm(saved) {
     const roles = s.roles.map((x) => (x.id === draft.id ? draft : x));
     const first = isDefault.checked ? draft.id
       : s.active_role === draft.id ? (s.roles.find((x) => x.id !== draft.id) || draft).id : s.active_role;
-    await postSettings({ roles, active_role: first });
+    const data = await postSettings({ roles, active_role: first }, `the changes to “${draft.name}”`);
     cfg.draft = null;
     renderSettings();
     $("rolePick").focus();
-    toast("Saved. Rebuilding the job list with this role…");
+    settingsSaved(data, `Saved “${draft.name}”. Rebuilding the job list with it…`, `the changes to “${draft.name}”`,
+      () => { cfg.draft = null; renderSettings(); afterRoleSave(); });
     afterRoleSave();
   });
 
@@ -2274,14 +2804,20 @@ function resumeField(p) {
       const r = await api("/api/master", { name: f.name, tex: await f.text(), role: p.id });
       status.textContent = `Saved: ${r.entries.length} entries, ${r.pages} page${r.pages === 1 ? "" : "s"}.`;
       cfg.data = await api("/api/settings");
+      if (r.undo) undoable(`Saved ${f.name} as the master resume for “${p.name}”.`, "the new master resume", async () => {
+        await serverUndo(r.undo)();
+        cfg.data = await api("/api/settings");
+        keepDraft(); renderSettings();
+      });
     } catch (e) { status.textContent = e.message; }
     file.value = "";
   });
   const reset = el("button", { type: "button", text: "Use the main master resume", hidden: !(meta && meta.own), onclick: async () => {
     try {
-      await postSettings({ roles: cfg.data.settings.roles.map((x) => (x.id === p.id ? { ...x, resume: "" } : x)) });
-      renderSettings();
-    } catch (e) { toast(e.message); }
+      const data = await postSettings({ roles: cfg.data.settings.roles.map((x) => (x.id === p.id ? { ...x, resume: "" } : x)) }, "using the main master resume");
+      keepDraft(); renderSettings();
+      settingsSaved(data, `“${p.name}” tailors from your main master resume now.`, "using the main master resume");
+    } catch (e) { fail(e); }
   } });
   return el("fieldset", { class: "field wide" }, el("legend", { text: "Master resume for this role" }),
     el("p", { class: "note", text: "Tailoring for this role's jobs starts from this .tex. Handy when an ML search needs a different resume than a full-stack one." }),
@@ -2392,14 +2928,21 @@ function builtinBoards() {
 async function companyAction(action, body, msg, focus) {
   const back = focus || (document.activeElement && document.activeElement.id);
   try {
-    cfg.companies = await api("/api/companies/" + action, body);
+    const r = await api("/api/companies/" + action, body);
+    cfg.companies = r;
     if (action === "add") cfg.found = null;
-    if (msg) toast(msg);
     keepDraft();
     renderSettings();
     const target = back && $(back);
     if (target) target.focus();
-  } catch (e) { toast(e.message); }
+    if (r.undo) {
+      undoable(msg, "the company change", async () => {
+        await serverUndo(r.undo)();
+        cfg.companies = await api("/api/companies");
+        if (state.view === "settings") { keepDraft(); renderSettings(); }
+      });
+    } else if (msg) toast(msg);
+  } catch (e) { fail(e); }
 }
 
 // ---------------------------------------------------------------- tailoring, scoring, radar, storage
@@ -2424,7 +2967,8 @@ function tailoringCard() {
       el("span", { class: "note", text: "Minimum match, daily model runs, notifications." })),
     saveBar("Save tailoring", () => postSettings({ tailoring: {
       backend: backend.value, draft_backend: draft.value, strictness: strict.get(), ...(adv ? { target_pages: +pages.value } : {}),
-    } }).then(() => { SETTINGS.tailoring.backend = backend.value; store.del("backend"); })));
+    } }, "the tailoring settings").then((data) => { SETTINGS.tailoring.backend = backend.value; store.del("backend"); return data; }),
+      "Saved the tailoring settings.", "the tailoring settings"));
 }
 
 // API keys go to the helper once and are kept in the system keychain; the
@@ -2434,12 +2978,13 @@ function aiCard() {
   const month = new Date().toLocaleString(undefined, { month: "long" });
   const usage = el("div", { style: "display:grid;gap:8px" });
   const blocks = Object.entries(info.providers).map(([id, p]) => {
-    const keyIn = el("input", { type: "password", autocomplete: "off", spellcheck: "false",
+    const keyIn = el("input", { type: "password", autocomplete: "off", spellcheck: "false", "aria-label": `${p.name} API key`,
       placeholder: p.key.saved ? "A key is saved. Paste a new one to replace it." : "Paste your API key" });
-    const status = el("p", { class: "note", "aria-live": "polite", text: p.key.saved
+    const keyText = (k) => k.saved
       ? { keychain: "Key saved in your system keychain.", file: "Key saved in a private file in your data folder.",
-          environment: "Using the key from your environment." }[p.key.where] || "Key saved."
-      : "No key yet." });
+          environment: "Using the key from your environment." }[k.where] || "Key saved."
+      : "No key yet.";
+    const status = el("p", { class: "note", "aria-live": "polite", text: keyText(p.key) });
     const saveKey = async (key) => {
       status.textContent = key ? "Checking the key…" : "Removing…";
       try {
@@ -2447,6 +2992,12 @@ function aiCard() {
         keyIn.value = "";
         p.key = r.key;
         status.textContent = r.warning || (key ? "Key saved and working." : r.key.saved ? "Removed. The key from your environment is still used." : "Removed.");
+        if (r.undo) undoable(key ? `Saved your ${p.name} key.` : `Removed your ${p.name} key.`, `the ${p.name} key change`, async () => {
+          const u = await serverUndo(r.undo)();
+          p.key = u.key;
+          status.textContent = keyText(u.key);
+          refreshStatus();
+        });
         refreshStatus();
       } catch (e) { status.textContent = e.message; }
     };
@@ -2487,7 +3038,8 @@ function aiCard() {
     ...blocks.map((b) => b.node),
     el("p", { class: "note", text: `Prices as published by the providers in ${info.prices_as_of}.` }),
     saveBar("Save models and budgets", () => postSettings({ providers: Object.fromEntries(blocks.map((b) =>
-      [b.id, { model: b.model.value, monthly_budget: +b.budget.value }])) })),
+      [b.id, { model: b.model.value, monthly_budget: +b.budget.value }])) }, "the AI model settings"),
+      "Saved the models and budgets.", "the AI model settings"),
     el("div", { class: "rowline" }, el("button", { type: "button", text: "Show usage", onclick: loadUsage })),
     usage);
 }
@@ -2496,7 +3048,7 @@ function voiceCard() {
   const v = cfg.data.settings.voice, ch = cfg.data.choices;
   const tone = radios("Tone", "tone", ch.tones.map((k) => [k, ...LABELS.tones[k]]), v.tone);
   const samples = Array.from({ length: ch.max_samples }, (_, i) => {
-    const t = el("textarea", { class: "jd", rows: "4", maxlength: String(ch.sample_max),
+    const t = el("textarea", { class: "jd", rows: "4", maxlength: String(ch.sample_max), "aria-label": `Writing sample ${i + 1}`,
       placeholder: i ? "Another sample (optional)" : "Paste something you wrote yourself: an old cover letter, an email, a post." });
     t.value = v.samples[i] || "";
     return t;
@@ -2508,12 +3060,13 @@ function voiceCard() {
     el("p", { text: "How answers to questions like “Why do you want to work here?” should sound. Used by the extension, the apply queue and every model." }),
     el("div", { class: "fields" },
       tone.node,
-      el("div", { class: "field wide" }, el("label", { text: "Your writing samples" }), ...samples,
+      el("div", { class: "field wide", role: "group", "aria-labelledby": "samplesH" }, el("p", { class: "section-h", id: "samplesH", text: "Your writing samples" }), ...samples,
         el("p", { class: "note", text: "Drafts copy how you write (sentence length, word choice, how you open and close), never the content." })),
       field("Phrases drafts must never use", banned, "One per line. * matches any ending (resonat*), ... any words in between (not only ... but also). Drafts that use one get rewritten.", { wide: true })),
     el("div", { class: "rowline" },
       saveBar("Save writing voice", () => postSettings({ voice: { tone: tone.get(),
-        samples: samples.map((t) => t.value.trim()).filter(Boolean), banned_phrases: lines(banned.value) } })),
+        samples: samples.map((t) => t.value.trim()).filter(Boolean), banned_phrases: lines(banned.value) } }, "the writing voice"),
+        "Saved the writing voice. New drafts use it.", "the writing voice"),
       el("button", { type: "button", text: "Restore the default phrases", onclick: () => { banned.value = cfg.data.ai.default_voice.join("\n"); } })));
 }
 
@@ -2535,8 +3088,8 @@ function scoringCard() {
     el("div", { class: "fields" }, ...rows.map(([k, label, note, min, max, step]) =>
       field(label, inputs[k] = number(w[k], min, max, step), (note ? note + " " : "") + `Default ${dflt[k]}.`))),
     el("div", { class: "rowline" },
-      saveBar("Save scoring", () => postSettings({ scoring: Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, +i.value])) }),
-        "Saved. Rebuilding the job list…"),
+      saveBar("Save scoring", () => postSettings({ scoring: Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, +i.value])) }, "the scoring weights")
+        .then((data) => { afterRoleSave(); return data; }), "Saved the scoring weights. Rebuilding the job list…", "the scoring weights"),
       el("button", { type: "button", text: "Reset to defaults", onclick: () => { for (const [k, i] of Object.entries(inputs)) i.value = dflt[k]; } })));
 }
 
@@ -2554,8 +3107,8 @@ function radarCard() {
       el("div", { class: "field" }, el("label", { class: "toggle" }, simplify, "Read the SimplifyJobs New-Grad list"),
         el("p", { class: "note", text: "Catches companies no board here covers." }))),
     saveBar("Save radar settings", () => postSettings({ radar: { dashboard_days: +days.value, stale_after_days: +stale.value,
-      purge_after_days: +purge.value, workers: +workers.value, timeout: +timeout.value, simplify_feed: simplify.checked } }),
-      "Saved. Used from the next radar run."));
+      purge_after_days: +purge.value, workers: +workers.value, timeout: +timeout.value, simplify_feed: simplify.checked } }, "the radar settings"),
+      "Saved the radar settings. They're used from the next search.", "the radar settings"));
 }
 
 function storageCard() {
@@ -2567,8 +3120,8 @@ function storageCard() {
     el("div", { class: "fields" },
       field("Job database", inputs.db), field("Resumes and tailored PDFs", inputs.resume_dir), field("Downloaded datasets", inputs.data_dir),
       field("Dashboard page", inputs.dashboard), field("Logs folder", inputs.logs_dir, "Empty means the data folder.")),
-    saveBar("Save paths", () => postSettings({ paths: Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value.trim()])) }),
-      "Saved. Restart the helper to use them."));
+    saveBar("Save paths", () => postSettings({ paths: Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value.trim()])) }, "the file locations"),
+      "Saved the file locations. Quit and restart It gets easier from its tray icon to use them.", "the file locations"));
 }
 
 
@@ -2634,7 +3187,7 @@ function renderSetup() {
     el("span", { class: "spacer" }),
     el("button", { type: "button", class: "ghost", text: next ? "Skip setup" : "Finish without searching", onclick: async () => {
       if (next && !confirm("Skip the rest of setup? You can run it again from Settings.")) return;
-      try { await endSetup(); } catch (e) { toast(e.message); }
+      try { await endSetup(); } catch (e) { fail(e); }
     } }));
   // Each step fills the body and returns its main button. Empty parts (null) are left out.
   const append = body.append.bind(body);
@@ -2886,7 +3439,7 @@ const SETUP_RENDER = {
       try { await api("/api/app/run", {}); } catch (e) { if (!/already running/.test(e.message)) { out.replaceChildren(el("div", { class: "errbox", text: e.message })); start.disabled = false; return; } }
       poll();
     });
-    const done = nextButton("See your jobs", async () => { try { await endSetup(); } catch (e) { toast(e.message); } });
+    const done = nextButton("See your jobs", async () => { try { await endSetup(); } catch (e) { fail(e); } });
     done.hidden = true;
     const bar = el("progress", { max: "100", value: "0", "aria-label": "Search progress" });
     const draw = (sc) => {
@@ -3019,7 +3572,7 @@ function texOffer(app, after) {
           "also downloads the LaTeX packages it needs, about 50 MB, from Tectonic's servers. Only those files are downloaded; your resume stays here." }),
         d.state === "error" ? el("div", { class: "errbox", text: d.error }) : null,
         el("div", { class: "rowline" }, el("button", { type: "button", class: "primary", text: "Download Tectonic", onclick: async () => {
-          try { await api("/api/app/tectonic", {}); } catch (e) { toast(e.message); return; }
+          try { await api("/api/app/tectonic", {}); } catch (e) { fail(e); return; }
           watch();
         } }), el("span", { class: "note", text: "Already have TeX Live or MiKTeX? Restart It gets easier after installing and it's found." })));
     }
@@ -3070,10 +3623,11 @@ function appCard() {
       el("div", { class: "field" }, el("label", { class: "toggle" }, upd, "Check for updates once a day"),
         el("p", { class: "note", text: "Asks GitHub for the latest release. Nothing about you is sent." }))),
     el("div", { class: "rowline" },
-      saveBar("Save", () => postSettings({ radar: { interval_minutes: +every.value }, app: { check_updates: upd.checked } })),
+      saveBar("Save", () => postSettings({ radar: { interval_minutes: +every.value }, app: { check_updates: upd.checked } }, "the app settings"),
+        "Saved the app settings.", "the app settings"),
       el("button", { type: "button", text: "Run setup again", onclick: async () => {
         try { await postSettings({ setup: { done: false, step: "welcome" } }); SETTINGS.setup = { done: false, step: "welcome" }; showView("setup"); }
-        catch (e) { toast(e.message); }
+        catch (e) { fail(e); }
       } })));
 }
 
@@ -3083,7 +3637,7 @@ function appCard() {
 async function handleFile(file) {
   if (!file) return;
   try { toast("Reading " + file.name + "…"); await readResume(file); }
-  catch (err) { toast(err.message || String(err)); }
+  catch (err) { fail(err); }
 }
 $("resumeFile").addEventListener("change", (e) => { handleFile(e.target.files[0]); e.target.value = ""; });
 const bar = $("resumeBar");
@@ -3094,7 +3648,7 @@ bar.addEventListener("drop", (e) => { e.preventDefault(); handleFile(e.dataTrans
 $("window").addEventListener("click", (e) => {
   const h = e.target.dataset && e.target.dataset.h;
   if (!h) return;
-  state.hours = +h; store.set("hours", state.hours); render();
+  setHours(+h);
 });
 $("q").addEventListener("input", (e) => { state.q = e.target.value; render(); });
 $("sort").addEventListener("change", (e) => { state.sort = e.target.value; store.set("sort", state.sort); render(); });
@@ -3111,18 +3665,31 @@ function renderNotices() {
   box.replaceChildren(...(SETTINGS.notices || []).map((msg) => el("div", { class: "notice" }, el("span", { text: msg }),
     HELPER ? el("button", { type: "button", text: "Dismiss", onclick: async () => {
       try {
-        await api("/api/settings", { settings: { notices: [] } });
+        const prev = SETTINGS.notices;
+        const data = await postSettings({ notices: [] }, "dismissing the notice");
         SETTINGS.notices = [];
         renderNotices();
-      } catch (e) { toast(e.message); }
+        $("main").focus();
+        settingsSaved(data, "Dismissed the notice.", "dismissing the notice", () => { SETTINGS.notices = prev; renderNotices(); });
+      } catch (e) { fail(e); }
     } }) : null)));
 }
+
+$("advMode").addEventListener("change", (e) => setAdvanced(e.target.checked, { undo: true }));
+// Live regions exist before anything is said, so screen readers pick them up.
+for (const host of [document.body, ...document.querySelectorAll("dialog")]) liveRegion(host);
 
 renderNotices();
 rescore();
 updateBookmarklet();
+if (state.advanced === null) state.advanced = !!(SETTINGS.ui && SETTINGS.ui.advanced);
+$("advMode").checked = state.advanced;
 render();
 refreshStatus();
+if (HELPER && store.get("advanced", null) === null) {
+  // A browser that hasn't opened the dashboard before: the saved choice.
+  api("/api/settings").then((d) => { if (store.get("advanced", null) === null && d.settings.ui.advanced) setAdvanced(true, { save: false }); }).catch(() => {});
+}
 if (HELPER) {
   $("viewTabs").hidden = false;
   showView(location.hash.slice(1));
