@@ -709,12 +709,21 @@ class Handler(BaseHTTPRequestHandler):
         return self._err(HTTPStatus.NOT_FOUND, "Not found")
 
     # -- POST
+    def _refuse(self, msg: str) -> None:
+        """403 for a POST, after reading its body: answering an unread request
+        makes Windows abort the connection, so the client never sees why."""
+        length = int(self.headers.get("Content-Length") or 0)
+        if 0 < length <= MAX_BODY:
+            self.rfile.read(length)
+        self.close_connection = True
+        self._err(HTTPStatus.FORBIDDEN, msg)
+
     def do_POST(self):
         if not self._host_ok():
-            return self._err(HTTPStatus.FORBIDDEN, "Bad host")
+            return self._refuse("Bad host")
         path = urlparse(self.path).path
         if not self._origin_ok(allow_extension=path in ("/api/draft", "/api/answers", "/api/applied")):
-            return self._err(HTTPStatus.FORBIDDEN, "Requests must come from the dashboard")
+            return self._refuse("Requests must come from the dashboard")
         data = self._body()
         if data is None:
             return
