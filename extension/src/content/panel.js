@@ -38,6 +38,10 @@
     textarea { width: 100%; min-height: 90px; font: 12px/1.4 ui-monospace, monospace; margin-top: 4px; }
     details > summary { cursor: pointer; color: #4a473f; margin-top: 10px; }
     a { color: #2f5a8a; }
+    .prep { margin: 0 0 8px; padding: 6px 8px; border-radius: 6px; background: #eef3ec; color: #2f5a2a; }
+    .next { margin-top: 8px; padding: 8px 10px; border: 1px solid #d9d6cc; border-radius: 8px; display: grid; gap: 6px; }
+    a.btn { display: inline-block; text-decoration: none; border-radius: 6px; padding: 5px 10px; background: #2f6b3a; color: #fff; font-weight: 600; width: fit-content; }
+    a.btn:hover { background: #255830; }
     @media (prefers-color-scheme: dark) {
       .wrap { color: #ecebe6; }
       .panel { background: #22221f; border-color: #44423b; }
@@ -50,11 +54,13 @@
       .tag { background: #2f4429; color: #cfe6c6; } .tag.amber { background: #4a3a17; color: #f5d797; }
       textarea { background: #1b1b19; color: #ecebe6; border-color: #4d4b43; }
       a { color: #8fb6e8; }
+      .prep { background: #2a3626; color: #cfe6c6; } .next { border-color: #44423b; }
+      a.btn { color: #fff; }
     }
   `;
 
   let host = null, shadow = null, handlers = null;
-  const view = { open: false, busy: false, status: "", items: [], step: "" };
+  const view = { open: false, busy: false, status: "", items: [], step: "", prepared: null, done: null };
 
   function el(tag, attrs, ...kids) {
     const n = document.createElement(tag);
@@ -107,6 +113,7 @@
     const kids = [el("span", { class: "q", title: "Show this field", onclick: () => handlers.focus(it) }, short(it.label, 110))];
     if (it.status === "filled") {
       kids.push(el("div", { class: "v" }, short(it.value, 120),
+        it.source === "tailored" ? el("span", { class: "tag" }, "tailored for this job") : null,
         it.source === "remembered" ? el("span", { class: "tag amber" }, "saved answer") : null,
         it.source === "draft" ? el("span", { class: "tag amber" }, "draft, edit it") : null,
         it.source === "ai" ? el("span", { class: "tag amber" }, "AI answer, check it") : null));
@@ -139,11 +146,13 @@
       wrap.append(el("button", { class: "launch", title: "Fill this application with your saved details (Alt+Shift+F)", onclick: () => handlers.fill() }, "Autofill"));
       return;
     }
+    if (view.done) return renderDone(wrap);
     const needs = view.items.filter((i) => i.status === "needs");
     const filled = view.items.filter((i) => i.status === "filled");
     const had = view.items.filter((i) => i.status === "had");
     const body = el("div", { class: "body" },
       el("div", { class: "status" }, view.status),
+      view.prepared ? el("div", { class: "prep" }, view.prepared) : null,
       needs.length ? [el("h3", null, `Needs you (${needs.length})`), el("ul", null, needs.map(item))] : null,
       filled.length ? [el("h3", null, `Filled (${filled.length})`), el("ul", null, filled.map(item))] : null,
       had.length ? el("details", null, el("summary", null, `Already answered (${had.length})`), el("ul", null, had.map(item))) : null,
@@ -153,6 +162,23 @@
       el("header", null, el("b", null, "Job Radar autofill"),
         el("button", { class: "primary", disabled: view.busy, onclick: () => handlers.fill() }, view.busy ? "Filling…" : view.step ? "Fill this step" : "Fill again"),
         el("button", { class: "x", title: "Close", "aria-label": "Close", onclick: () => { view.open = false; render(); } }, "×")),
+      body));
+  }
+
+  /** After the ATS confirmed the application: what was recorded, and the next job in the queue. */
+  function renderDone(wrap) {
+    const d = view.done;
+    const n = d.next;
+    const body = el("div", { class: "body" },
+      el("div", { class: "status" }, d.error ? d.error : `Marked as applied${d.title ? `: ${d.title} at ${d.company}` : ""}.`),
+      n ? el("div", { class: "next" },
+        el("div", null, el("b", null, "Next in your apply queue"), el("br"), `${n.title} at ${n.company} · ${n.score}% match`),
+        el("a", { class: "btn", href: n.apply_url, rel: "noopener" }, "Open next application"))
+        : el("div", { class: "note" }, "Nothing else is ready in your apply queue. ",
+          el("a", { href: "http://127.0.0.1:8765/#queue", target: "_blank", rel: "noopener" }, "Open the queue")));
+    wrap.append(el("div", { class: "panel", role: "dialog", "aria-label": "Job Radar" },
+      el("header", null, el("b", null, "Job Radar"),
+        el("button", { class: "x", title: "Close", "aria-label": "Close", onclick: () => { view.open = false; view.done = null; unmount(); } }, "×")),
       body));
   }
 

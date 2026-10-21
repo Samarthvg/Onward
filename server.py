@@ -1,6 +1,8 @@
 """Local helper for the dashboard: serves it at http://127.0.0.1:8765 and runs
 resume tailoring jobs in the background. It also drafts answers to
-application questions for the Job Radar Autofill browser extension.
+application questions for the Job Radar Autofill browser extension, and
+keeps the apply queue (prep.py): new jobs that match well get a tailored
+resume and drafted answers before the user opens them.
 
 Only this machine can reach it (bound to 127.0.0.1), and every write request
 must come from the dashboard's own origin (or, for drafts, from the
@@ -12,6 +14,7 @@ Run:  pythonw server.py      (windowless; the scheduled task does this at logon)
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import sqlite3
@@ -26,6 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import prep
 import resume_tex as rt
 import tailor
 
@@ -74,8 +78,12 @@ def log(msg: str) -> None:
 
 def db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.executescript(HISTORY_SCHEMA)
+    conn.executescript(HISTORY_SCHEMA + prep.SCHEMA)
+    prep.migrate(conn)
     return conn
+
+
+PREP = prep.Preparer(db, RESUME_DIR, OUT_DIR, log)
 
 
 def job_row(key: str) -> dict | None:
@@ -111,7 +119,7 @@ def apply_url_candidates(page_url: str) -> list[str]:
     if host.endswith(("myworkdayjobs.com", "myworkdaysite.com")):
         path = re.sub(r"^/[a-z]{2}-[A-Z]{2}(?=/)", "", path)        # locale prefix
         path = re.sub(r"/apply(/.*)?$", "", path)
-    path = re.sub(r"/(apply|application)$", "", path)
+    path = re.sub(r"/(apply|application|thanks)$", "", path)
     base = f"https://{host}{path}"
     return out + [base, base + "/apply", base + "/application"]
 
@@ -126,11 +134,11 @@ def job_by_url(page_url: str) -> dict | None:
         if "apply_url" not in cols:
             return None
         desc = "description" if "description" in cols else "''"
-        row = conn.execute(f"SELECT company, title, {desc}, url FROM jobs WHERE apply_url IN "
+        row = conn.execute(f"SELECT company, title, {desc}, url, key FROM jobs WHERE apply_url IN "
                            f"({','.join('?' * len(cands))}) LIMIT 1", cands).fetchone()
     finally:
         conn.close()
-    return {"company": row[0], "title": row[1], "description": row[2] or "", "url": row[3]} if row else None
+    return {"company": row[0], "title": row[1], "description": row[2] or "", "url": row[3], "key": row[4]} if row else None
 
 
 def master_meta() -> dict | None:
@@ -157,7 +165,8 @@ def run_job(jid: str, params: dict) -> None:
     try:
         master = MASTER.read_text(encoding="utf-8")
         backend = params["backend"]
-        meta = {"company": params.get("company", ""), "title": params.get("title", "")}
+        meta = {"company": params.get("company", ""), "title": params.get("title", ""),
+                "instruction": params.get("instruction", "")}
         if backend == "ollama":
             with GPU_LOCK:
                 result = tailor.tailor(master, meta, params["jd"], backend, OUT_DIR,
@@ -327,6 +336,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, [{"id": r[0], "created": r[1], "backend": r[2], "model": r[3],
                                      "pdf": r[4], "tex": r[5], "result": json.loads(r[6])} for r in rows])
 
+        if path == "/api/queue":
+            return self._json(200, {**PREP.summary(), "items": PREP.items(),
+                                    # Recent applied/dismissed, so the dashboard's own marks catch up.
+                                    "done": PREP.items(("applied", "dismissed"), since=time.time() - 14 * 86400)})
+
+        if path in ("/api/prepared", "/api/queue/next"):
+            if not self._origin_ok(allow_extension=True):
+                return self._err(HTTPStatus.FORBIDDEN, "Only the Job Radar extension can ask for this")
+            if path == "/api/queue/next":
+                return self._json(200, {"next": PREP.next_ready((q.get("exclude") or [""])[0])})
+            return self._prepared((q.get("url") or [""])[0][:2000])
+
         if path.startswith("/files/"):
             name = path[len("/files/"):]
             if not FILE_NAME.match(name):
@@ -347,7 +368,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok():
             return self._err(HTTPStatus.FORBIDDEN, "Bad host")
         path = urlparse(self.path).path
-        if not self._origin_ok(allow_extension=path in ("/api/draft", "/api/answers")):
+        if not self._origin_ok(allow_extension=path in ("/api/draft", "/api/answers", "/api/applied")):
             return self._err(HTTPStatus.FORBIDDEN, "Requests must come from the dashboard")
         data = self._body()
         if data is None:
@@ -357,6 +378,36 @@ class Handler(BaseHTTPRequestHandler):
             return self._draft(data)
         if path == "/api/answers":
             return self._answers(data)
+        if path == "/api/applied":
+            return self._applied(data)
+
+        if path == "/api/scoring":
+            if len(str(data.get("text", ""))) < 200:
+                return self._err(HTTPStatus.BAD_REQUEST, "No resume text")
+            PREP.save_scoring(data)
+            return self._json(200, {"ok": True})
+        if path == "/api/prep/settings":
+            return self._json(200, PREP.save_settings(data))
+        if path == "/api/queue/choice":
+            choice = data.get("choice")
+            if choice not in ("tailored", "master"):
+                return self._err(HTTPStatus.BAD_REQUEST, "choice must be tailored or master")
+            if not PREP.set_choice(str(data.get("key", "")), choice):
+                return self._err(HTTPStatus.NOT_FOUND, "No tailored resume for this job")
+            return self._json(200, {"ok": True})
+        if path == "/api/queue/tailor":
+            if not PREP.force_tailor(str(data.get("key", "")), str(data.get("instruction", ""))):
+                return self._err(HTTPStatus.CONFLICT, "This job is already tailored or no longer in the queue")
+            return self._json(200, {"ok": True})
+        if path == "/api/queue/retry":
+            PREP.retry(str(data.get("key", "")))
+            return self._json(200, {"ok": True})
+        if path == "/api/marks":
+            # The dashboard's Applied / Dismiss marks, so the queue skips those jobs.
+            marks = data.get("marks") if isinstance(data.get("marks"), dict) else {}
+            n = PREP.mark_many({str(k)[:500]: v for k, v in list(marks.items())[:5000]
+                                if v in ("applied", "dismissed", None)})
+            return self._json(200, {"ok": True, "matched": n})
 
         if path == "/api/master":
             tex = str(data.get("tex", ""))
@@ -369,6 +420,7 @@ class Handler(BaseHTTPRequestHandler):
             MASTER.write_text(tex, encoding="utf-8")
             MASTER_META.write_text(json.dumps({"name": str(data.get("name", "master.tex"))[:200],
                                                "uploaded": time.time(), "pages": pages}), encoding="utf-8")
+            PREP.poke()
             return self._json(200, {**rt.summary(res), "pages": pages, "name": data.get("name")})
 
         if path in ("/api/tailor", "/api/prompt"):
@@ -380,7 +432,7 @@ class Handler(BaseHTTPRequestHandler):
             params = {"key": key, "jd": jd, "company": row.get("company", data.get("company", "")),
                       "title": row.get("title", data.get("title", "")),
                       "backend": str(data.get("backend", "ollama")), "rewrite": bool(data.get("rewrite", True)),
-                      "answer": data.get("answer")}
+                      "answer": data.get("answer"), "instruction": tailor.clean_instruction(data.get("instruction"))}
             if path == "/api/prompt":
                 try:
                     prompt = tailor.build_manual_prompt(MASTER.read_text(encoding="utf-8"), params, jd)
@@ -392,9 +444,36 @@ class Handler(BaseHTTPRequestHandler):
             if len(jd.strip()) < 200:
                 return self._err(HTTPStatus.UNPROCESSABLE_ENTITY,
                                  "No job description saved for this posting. Paste it into the box first.")
+            if params["instruction"] and params["backend"] == "chatgpt" and not PREP.reserve_run():
+                return self._err(HTTPStatus.TOO_MANY_REQUESTS,
+                                 "Today's ChatGPT runs for Job Radar are used up. Raise the limit in the apply queue settings, "
+                                 "or pick another model.")
             return self._json(202, {"id": submit(params)})
 
         return self._err(HTTPStatus.NOT_FOUND, "Not found")
+
+    def _prepared(self, page_url: str):
+        """The resume and drafted answers prepared for the job behind an
+        application form. The resume is sent inline so the extension can
+        attach it; without a prepared one it attaches its stored master."""
+        job = job_by_url(page_url)
+        if not job:
+            return self._err(HTTPStatus.NOT_FOUND, "Not a job Job Radar knows")
+        p = PREP.prepared(job["key"]) or {"state": None, "choice": "master", "pdf": None, "answers": []}
+        pdf = p.pop("pdf")
+        return self._json(200, {"job": {"key": job["key"], "company": job["company"], "title": job["title"]},
+                                **p, "resume": {"name": pdf.name, "data": base64.b64encode(pdf.read_bytes()).decode()}
+                                if pdf else None})
+
+    def _applied(self, data: dict):
+        """The extension saw the ATS's "application received" page."""
+        key = str(data.get("key", ""))[:500]
+        if not key:
+            job = job_by_url(str(data.get("url", ""))[:2000])
+            key = job["key"] if job else ""
+        if not key or not PREP.mark(key, "applied"):
+            return self._err(HTTPStatus.NOT_FOUND, "Not a job Job Radar knows")
+        return self._json(200, {"ok": True, "key": key, "next": PREP.next_ready(key)})
 
     def _draft(self, data: dict):
         if not MASTER.exists():
@@ -462,6 +541,7 @@ def main() -> int:
         log(f"could not bind {HOST}:{PORT}: {e}")
         return 1
     log(f"serving http://{HOST}:{PORT}")
+    PREP.start()
     httpd.serve_forever()
     return 0
 

@@ -496,40 +496,90 @@ def plan_edits(res: Resume, out: dict, jd: str) -> tuple[list[tuple[Span, str]],
     return build_spans(res, state), changes, state
 
 
+def project_groups(res: Resume) -> list[list[Entry]]:
+    """Runs of consecutive project entries in the same section: the units
+    whose order may change. Work experience is never reordered."""
+    groups: list[list[Entry]] = []
+    prev = None
+    for e in res.entries:
+        if e.kind == "project" and prev is not None and prev.kind == "project" and prev.section == e.section:
+            groups[-1].append(e)
+        elif e.kind == "project":
+            groups.append([e])
+        prev = e
+    return [g for g in groups if len(g) > 1]
+
+
+def entry_rank(e: Entry, rank: dict[str, int]) -> int:
+    return min((rank.get(b.id, 999) for b in e.bullets), default=999)
+
+
 def build_spans(res: Resume, state: dict, changes: list[Change] | None = None) -> list[tuple[Span, str]]:
     """Replacements for the current state. Bullets inside each kept entry are
-    reordered most-relevant first; each entry keeps at least two bullets."""
+    reordered most-relevant first; each entry keeps at least two bullets.
+    Projects within a section are reordered by their most relevant bullet:
+    each entry's text, with its own edits, moves into another entry's slot."""
     spans: list[tuple[Span, str]] = []
     rank = state["rank"]
+    inner: dict[str, list[tuple[Span, str]]] = {}
     for e in res.entries:
         if e.id in state["drop_entries"]:
             spans.append((e.span, ""))
             continue
-        if e.id in state["tech"]:
-            spans.append((e.tech, state["tech"][e.id]))
-        kept = [b for b in e.bullets if b.id not in state["drop_bullets"]]
-        if len(kept) < min(2, len(e.bullets)):
-            kept = sorted(e.bullets, key=lambda b: rank.get(b.id, 999))[:min(2, len(e.bullets))]
-        ordered = sorted(kept, key=lambda b: (rank.get(b.id, 999), e.bullets.index(b)))
+        inner[e.id] = _entry_spans(res, e, state, changes)
+
+    moved: set[str] = set()
+    for group in project_groups(res):
+        kept = [e for e in group if e.id not in state["drop_entries"]]
+        ordered = sorted(kept, key=lambda e: (entry_rank(e, rank), group.index(e)))
+        if [e.id for e in ordered] == [e.id for e in kept]:
+            continue
+        # Dropped entries' slots are already emptied above; kept slots get the new order.
+        for slot, e in zip(kept, ordered):
+            text = apply(res.tex[e.span.start:e.span.end],
+                         [(Span(s.start - e.span.start, s.end - e.span.start), t) for s, t in inner[e.id]])
+            spans.append((slot.span, text))
+        moved |= {e.id for e in kept}
         if changes is not None:
-            for b in e.bullets:
-                if b not in kept:
-                    changes.append(Change("drop_bullet", b.id, e.title, before=plain(b.tex)))
-            if [b.id for b in ordered] != [b.id for b in kept]:
-                changes.append(Change("reorder", e.id, e.title, after="most relevant bullets first"))
-        texts = [state["rewrites"].get(b.id, b.tex) for b in ordered]
-        # Write the reordered bullets back into the original bullet slots.
-        slots = e.bullets
-        for i, slot in enumerate(slots):
-            if i < len(texts):
-                spans.append((slot.span, texts[i]))
-            else:
-                # Remove the whole "\item ..." for surplus slots.
-                item_start = res.tex.rfind("\\item", 0, slot.span.start)
-                spans.append((Span(item_start, slot.span.end), ""))
+            changes.append(Change("reorder_entries", group[0].id, group[0].section,
+                                  before="; ".join(e.title.split(" | ")[0] for e in kept),
+                                  after="; ".join(e.title.split(" | ")[0] for e in ordered)))
+    for eid, sp in inner.items():
+        if eid not in moved:
+            spans += sp
+
     for rid, new in state["rows"].items():
         row = next(r for r in res.skill_rows if r.id == rid)
         spans.append((row.span, new))
+    return spans
+
+
+def _entry_spans(res: Resume, e: Entry, state: dict, changes: list[Change] | None) -> list[tuple[Span, str]]:
+    """Edits inside one kept entry: tech line, bullet rewrites, order and trims."""
+    spans: list[tuple[Span, str]] = []
+    rank = state["rank"]
+    if e.id in state["tech"]:
+        spans.append((e.tech, state["tech"][e.id]))
+    kept = [b for b in e.bullets if b.id not in state["drop_bullets"]]
+    if len(kept) < min(2, len(e.bullets)):
+        kept = sorted(e.bullets, key=lambda b: rank.get(b.id, 999))[:min(2, len(e.bullets))]
+    ordered = sorted(kept, key=lambda b: (rank.get(b.id, 999), e.bullets.index(b)))
+    if changes is not None:
+        for b in e.bullets:
+            if b not in kept:
+                changes.append(Change("drop_bullet", b.id, e.title, before=plain(b.tex)))
+        if [b.id for b in ordered] != [b.id for b in kept]:
+            changes.append(Change("reorder", e.id, e.title, after="most relevant bullets first"))
+    texts = [state["rewrites"].get(b.id, b.tex) for b in ordered]
+    # Write the reordered bullets back into the original bullet slots.
+    slots = e.bullets
+    for i, slot in enumerate(slots):
+        if i < len(texts):
+            spans.append((slot.span, texts[i]))
+        else:
+            # Remove the whole "\item ..." for surplus slots.
+            item_start = res.tex.rfind("\\item", 0, slot.span.start)
+            spans.append((Span(item_start, slot.span.end), ""))
     return spans
 
 

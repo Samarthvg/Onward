@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build-mocks": "node build-mocks.mjs",
-    "test": "node unit.mjs && node build-mocks.mjs && node run-mocks.mjs",
+    "test": "node unit.mjs && node build-mocks.mjs && node run-mocks.mjs && node prepared.mjs",
     "test:firefox": "node build-mocks.mjs && python firefox_mocks.py",
     "test:live": "node live-check.mjs && python firefox_mocks.py --live",
     "lint": "web-ext lint --source-dir .. --ignore-files test test/** web-ext-artifacts",

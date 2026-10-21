@@ -47,7 +47,7 @@ Rules
 4. Keep LaTeX exactly as it appears in the original bullet: \\textbf{...}, \\textit{...} and \\href{url}{text} stay as they are. Use no other LaTeX commands. Write & % $ # _ as \\& \\% \\$ \\# \\_.
 5. A rewritten bullet must stay about the same length as the original (one printed line is about 110 characters). Only rewrite bullets where it clearly helps; leave the rest out of bullet_rewrites.
 6. tech_lines and skills_rows are comma-separated lists of the person's own tool names. Keep every existing item, spelled exactly as written (e.g. keep "React.js", "NumPy", "PouchDB"). You may only reorder items so the job's tools come first, and append a few items the job asks for that are in that entry's VERIFIED SKILLS (tech lines) or the VERIFIED INVENTORY (skills rows). Never replace a tool with a category name such as "Machine Learning", "Frontend" or "Full Stack". Only include a row or tech line in your output if you changed it.
-7. bullet_priority lists every bullet ID, most relevant to this job first.
+7. bullet_priority lists every bullet ID, most relevant to this job first. Projects are printed in this order too (by their most relevant bullet); work experience stays in date order.
 8. The result must fit on one page. Put the least relevant bullets in drop_bullets and, if needed, the least relevant projects in drop_entries. Never drop work experience entries. Keep at least two bullets per entry.
 9. jd_keywords lists the 8-15 most important skills or terms in the job description, each with status "added" (you worked it in), "already_present", or "missing" (the resume has no verified evidence), and a short note.
 10. summary: two sentences on what you emphasized and why."""
@@ -93,8 +93,22 @@ def _resume_block(res: rt.Resume) -> str:
     return "RESUME (edit by ID)\n\n" + rt.describe(res)
 
 
+MAX_INSTRUCTION = 500
+
+
+def clean_instruction(text) -> str:
+    return " ".join(str(text or "").split())[:MAX_INSTRUCTION]
+
+
 def _job_block(job: dict, jd: str) -> str:
-    return f"JOB: {job.get('title', '')} at {job.get('company', '')}\n\nJOB DESCRIPTION\n{jd.strip()}"
+    block = f"JOB: {job.get('title', '')} at {job.get('company', '')}\n\nJOB DESCRIPTION\n{jd.strip()}"
+    note = clean_instruction(job.get("instruction"))
+    if note:
+        # Every backend's prompt (manual paste included) ends with this block.
+        block += ("\n\nTHE APPLICANT'S REQUEST FOR THIS VERSION\n" + note +
+                  "\nFollow it as far as the rules above allow. The rules win when they conflict; "
+                  "if that happens, say so in summary.")
+    return block
 
 
 # --------------------------------------------------------------------------
@@ -591,4 +605,5 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
         "keywords": verify_keywords(raw.get("jd_keywords", []), master_tex, tex),
         "changes": [asdict(c) for c in final_changes],
         "master_digest": res.digest,
+        "instruction": clean_instruction(job.get("instruction")),
     }

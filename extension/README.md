@@ -64,6 +64,14 @@ On an application form, press the **Autofill** button in the bottom-right corner
 
   The paid Anthropic API is never used for drafts.
 
+## Apply queue
+
+The Job Radar helper prepares good matches before you open them (see **Apply queue** in the dashboard): after each radar run, new postings at or above your match threshold get a resume tailored to them, or a note that your master resume already fits, plus drafts for the custom questions their form publishes (Greenhouse, Lever and Ashby). When you open one of these forms:
+
+- The resume field gets the tailored PDF, under your stored resume's file name. If you chose **Use master instead**, the job wasn't prepared, or the helper isn't running, it gets your stored resume as before. The panel says which one it attached.
+- Questions with a drafted answer are filled and marked like any AI answer (amber outline, "AI answer, check it"). The extension's own rules still decide which questions those may be: sponsorship, work authorization, demographic, salary, legal and consent questions only ever take your saved answers.
+- After you press Submit, the ATS's "application received" page marks the job applied in Job Radar, and the panel offers the next job in the queue. Greenhouse and Lever have their own confirmation URLs; for Ashby and Workday the thank-you message only counts in a tab that showed a Job Radar job's form.
+
 ## Safety rules
 
 The extension never:
@@ -86,10 +94,10 @@ The extension never:
 | `src/content/widgets.js` | Reads and sets each control: text, native selects, react-select, comboboxes, radios, checkboxes, Ashby yes/no buttons, Workday listboxes and search prompts, file inputs (through `DataTransfer`). |
 | `src/content/main.js` | Runs the fill, remembers answers, drafts, follows Workday steps. Waits for the page to finish loading and go quiet first, because adding anything to a React page before it hydrates breaks it (Greenhouse's Remix boards). |
 | `src/content/panel.js` | The in-page panel, in a shadow root. |
-| `src/background.js` | Toolbar button, shortcut, and the only code that calls the helper. |
+| `src/background.js` | Toolbar button, shortcut, and the only code that calls the helper. Remembers which job each tab's form belongs to (session storage), for the confirmation page. |
 | `src/options/` | Options page. |
 
-The helper side is `/api/draft` in `server.py` and `draft_answer()` in `tailor.py`. The endpoint accepts requests from the dashboard's origin, or from an extension origin that sends the `X-JobRadar-Client: autofill` header. Websites can't send that header without a CORS preflight, which the helper never answers.
+The helper side is `/api/draft` in `server.py` and `draft_answer()` in `tailor.py`; the apply queue's `/api/prepared` and `/api/applied` are in `server.py`, backed by `prep.py`. The endpoint accepts requests from the dashboard's origin, or from an extension origin that sends the `X-JobRadar-Client: autofill` header. Websites can't send that header without a CORS preflight, which the helper never answers.
 
 ## Tests
 
@@ -102,6 +110,7 @@ From `extension/test` (run `npm install` once):
 | `npm run test:live` | Read-only runs on live Greenhouse, Lever and Ashby forms in both browsers. It uses obviously fake details, attaches no resume, and the Chromium run aborts any request that looks like a submission. |
 | `node dashboard-import.mjs` | Profile import from the running dashboard, both ways. Needs the helper running. |
 | `node run-mocks.mjs --real-draft` | One real draft through your ChatGPT login. |
+| `node prepared.mjs` | The apply queue, with a fake helper: prepared resume and drafted answers on the Greenhouse and Ashby mocks, the master fallback, and confirmation pages. Part of `npm test`. |
 | `python test_draft_endpoint.py` | Who may call `/api/draft`, on a spare port. Run from the `jobradar` folder. |
 
 Workday mocks follow commonly seen `data-automation-id` names. Real Workday tenants vary, and a live Workday form needs an account, so Workday hasn't been checked on a live site. If a live Workday step misses fields, look at the input's `data-automation-id` and its `formField-*` wrapper in devtools.

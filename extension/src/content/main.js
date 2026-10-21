@@ -70,7 +70,7 @@
 
     if (cls.cat === "file") {
       const r = await W.set(q, [], cls, ctx);
-      return r.ok ? Object.assign(base, { status: "filled", value: r.chosen, source: "resume" })
+      return r.ok ? Object.assign(base, { status: "filled", value: r.chosen, source: ctx.resume && ctx.resume.tailored ? "tailored" : "resume" })
         : Object.assign(base, { status: "needs", why: r.why });
     }
 
@@ -126,7 +126,8 @@
       const keys = qs.map((q) => memKey(q.label)).filter(Boolean);
       const mem = keys.length ? await api.storage.local.get(keys) : {};
       const ctx = {};
-      if (qs.some((q) => q.kind === "file")) ctx.resume = (await api.storage.local.get("resume")).resume || null;
+      const prep = store.settings.helper ? await getPrepared() : null;
+      if (qs.some((q) => q.kind === "file")) ctx.resume = resumeFor(prep, (await api.storage.local.get("resume")).resume || null);
 
       const items = [];
       for (const q of qs) {
@@ -139,18 +140,119 @@
         }
         items.push(it);
       }
+      if (prep && prep.answers && prep.answers.length) await usePrepared(items, prep.answers);
       if (store.settings.aiFill && store.settings.helper && store.settings.draftBackend !== "manual") {
         await aiFill(items);
       }
       const n = items.filter((i) => i.status === "filled").length;
       const left = items.filter((i) => i.status === "needs").length;
       stepsFilled.add(stepSig);
-      JR.panel.update({ busy: false, step: "", items,
+      JR.panel.update({ busy: false, step: "", items, prepared: preparedLine(prep, items),
         status: `Filled ${n} field${n === 1 ? "" : "s"}.` + (left ? ` ${left} need${left === 1 ? "s" : ""} you.` : " Review, then submit yourself.") });
       return summary();
     } finally {
       running = false;
     }
+  }
+
+  /* ----------------------------------------------- prepared by the helper */
+
+  // The Job Radar helper prepares good matches ahead of time: a resume
+  // tailored to the job (or a note to use the master) and drafts for the
+  // form's own questions. Asked once per page; null when the helper doesn't
+  // know this job or isn't running.
+  let prepared = null;
+  function getPrepared() {
+    if (!prepared) {
+      prepared = api.runtime.sendMessage({ type: "jr:prepared", url: location.href })
+        .then((r) => (r && r.found ? r : null), () => null);
+    }
+    return prepared;
+  }
+
+  /** The tailored PDF when one was prepared and chosen, under the stored resume's file name; else the stored resume. */
+  function resumeFor(prep, master) {
+    if (!prep || !prep.resume || !prep.resume.data) return master;
+    const base = master && master.name ? master.name.replace(/\.[a-z0-9]+$/i, "") : "Resume";
+    return { name: base + ".pdf", type: "application/pdf", data: prep.resume.data, updated: Date.now(), tailored: true };
+  }
+
+  function preparedLine(prep, items) {
+    if (!prep || !prep.state) return null;
+    const res = items.find((i) => i.kind === "file" && i.status === "filled" && (i.source === "tailored" || i.source === "resume"));
+    const parts = [];
+    if (res) parts.push(res.source === "tailored" ? "attached the resume tailored for this job" : "attached your master resume");
+    const n = items.filter((i) => i.source === "ai" && i.prepared).length;
+    if (n) parts.push(`filled ${n} answer${n === 1 ? "" : "s"} drafted ahead`);
+    return parts.length ? "Job Radar " + parts.join(" and ") + "." : null;
+  }
+
+  /** Fills custom questions with the answers the helper drafted ahead, marked for review like any AI answer. */
+  async function usePrepared(items, answers) {
+    const byQ = new Map(answers.filter((a) => a && a.question).map((a) => [normQ(a.question), a]));
+    const find = (label) => {
+      const k = normQ(label);
+      if (byQ.has(k)) return byQ.get(k);
+      // Labels on the page can carry a description after the question itself.
+      for (const [q, a] of byQ) if (q.length >= 12 && k.length >= 12 && (k.startsWith(q) || q.startsWith(k))) return a;
+      return null;
+    };
+    for (const it of items) {
+      const q = it.q;
+      if (it.status !== "needs" || !q.cls || q.cls.cat !== "custom" || it.offer || q.single || q.kind === "file") continue;
+      const a = find(it.label);
+      if (!a || W.get(q)) continue;
+      const picks = a.choices && a.choices.length ? a.choices : a.answer ? [a.answer] : [];
+      const typed = q.kind === "textarea" || (AI_TEXT.has(q.kind) && q.kind !== "rselect");
+      const done = [];
+      for (const p of q.kind === "checkbox" ? picks : picks.slice(0, 1)) {
+        const r = typed ? (typeInto(q.el, p) ? { ok: true, chosen: p } : { ok: false }) : await W.set(q, [p], q.cls, {});
+        if (r.ok) done.push(r.chosen);
+      }
+      if (!done.length) continue;
+      const value = done.join(", ");
+      filledByUs.set(q.el, { value: W.get(q) || value, source: "ai" });
+      mark(q, "review");
+      Object.assign(it, { status: "filled", value, source: "ai", prepared: true, why: "", canDraft: false });
+    }
+  }
+
+  /* ------------------------------------------- application received page */
+
+  // Greenhouse and Lever move to their own confirmation URL; Ashby and
+  // Workday replace the form with a message, which only counts in a tab
+  // that showed a Job Radar job's form (the background checks that).
+  const CONFIRM_URL = /\/jobs\/\d+\/confirmation\b|\/job_app\/confirmation\b|^\/[^/]+\/[0-9a-f-]{36}\/thanks\b/;
+  const CONFIRM_TEXT = /thanks? (you )?for (applying|your application|submitting)|application (was |has been )?(successfully )?(submitted|received)|(we've|we have) received your application|your application (was|has been) (successfully )?(submitted|received|sent)/i;
+  const CONFIRM_SPOTS = "h1, h2, h3, h4, [role=alert], [role=status], [role=dialog], [class*='success'], [class*='confirmation'], [class*='thank'], [data-automation-id*='onfirm']";
+  let confirmed = false;
+
+  function confirmationShown() {
+    if (CONFIRM_URL.test(location.pathname)) return "url";
+    for (const n of document.querySelectorAll(CONFIRM_SPOTS)) {
+      if (n.closest("#jobradar-autofill")) continue;
+      const t = textOf(n);
+      if (t.length <= 400 && CONFIRM_TEXT.test(t)) return "text";
+    }
+    return null;
+  }
+
+  async function checkConfirmation() {
+    if (confirmed) return;
+    const how = confirmationShown();
+    if (!how) return;
+    confirmed = true;
+    let res;
+    try {
+      res = await api.runtime.sendMessage({ type: "jr:applied", url: location.href, byUrl: how === "url" });
+    } catch (e) {
+      res = { error: e.message };
+    }
+    if (!res || (!res.recorded && !res.error)) return;   // not a job from the radar
+    if (!JR.panel.mount(handlers)) return;
+    if (inFrame) JR.panel.update({ frame: true });
+    JR.panel.update({ open: true, done: { company: res.company || "", title: res.title || "", next: res.next || null,
+      error: res.error ? "Couldn't mark this application in Job Radar: " + res.error : "" } });
   }
 
   /* ------------------------------------------------------- AI answers */
@@ -346,9 +448,12 @@
 
   let checkTimer = 0;
   function check() {
+    checkConfirmation();
     if (!site) site = JR.sites.detect(document);
     const form = site && JR.sites.formRoot(document, site);
     if (!form) return;
+    // Ties this tab to the job, so its confirmation page is recognized later.
+    if (!prepared) load().then(() => { if (store.settings.helper) getPrepared(); });
     JR.panel.mount(handlers);
     if (inFrame) JR.panel.update({ frame: true });
     const sig = stepSignature();

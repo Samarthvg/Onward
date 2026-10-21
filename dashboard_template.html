@@ -72,7 +72,7 @@
   .seg { display: inline-flex; background: var(--chip); border-radius: 8px; padding: 2px; }
   .seg button { border: 0; background: transparent; color: var(--muted); padding: 6px 11px; border-radius: 6px; }
   .seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08); }
-  input[type=search], input[type=text], input[type=email], input[type=tel], input[type=url], select, textarea {
+  input[type=search], input[type=text], input[type=email], input[type=tel], input[type=url], input[type=number], input[type=time], select, textarea {
     padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
     background: var(--bg); color: var(--text); font: inherit; font-size: 14px; min-width: 0;
   }
@@ -182,6 +182,26 @@
   .chg del { color: var(--warn); }
   .chg.rejected .after { text-decoration: line-through; color: var(--muted); }
   .section-h { font-size: 13px; font-weight: 600; color: var(--text); margin: 0; }
+  .viewtabs { display: inline-flex; }
+  .viewtabs button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .qcount { font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+  .qhead { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px; margin-bottom: 10px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; color: var(--muted); }
+  .qhead b { color: var(--text); }
+  .qhead .spacer { flex: 1; }
+  li.job.q-queued, li.job.q-working { border-left-color: var(--line); }
+  li.job.q-ready { border-left-color: var(--accent); }
+  li.job.q-error { border-left-color: var(--warn); }
+  .qline { grid-column: 1 / -1; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+  .qline b { color: var(--text); font-weight: 600; }
+  .qline .added { color: var(--ok); }
+  .qline .warnline { color: var(--warn); }
+  .prefs { display: grid; grid-template-columns: max-content 1fr; gap: 8px 12px; align-items: center; font-size: 13px; }
+  .prefs label { color: var(--muted); }
+  .prefs input[type=number] { width: 90px; }
+  .prefs input[type=checkbox] { justify-self: start; accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+  .prefs input[type=time] { width: 130px; color-scheme: light dark; }
+  .prefs .note { grid-column: 2; margin-top: -4px; }
   .toast {
     position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg);
     padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none;
@@ -189,6 +209,8 @@
   .toast.show { opacity: 1; }
 
   @media (max-width: 600px) {
+    .prefs { grid-template-columns: 1fr; }
+    .prefs .note { grid-column: 1; }
     .controls { position: static; }
     li.job { grid-template-columns: 1fr; }
     .right { flex-direction: row; align-items: center; }
@@ -206,11 +228,20 @@
     <h1>Job Radar</h1>
     <div class="status" id="status"></div>
     <div class="hbtns">
+      <span class="viewtabs" id="viewTabs" hidden>
+        <button type="button" data-view="jobs" aria-pressed="true">All jobs</button>
+        <button type="button" data-view="queue" aria-pressed="false">Apply queue <span class="qcount" id="qcount" hidden></span></button>
+      </span>
       <button type="button" id="openKit">Apply kit</button>
     </div>
   </header>
 
   <div class="resume-bar" id="resumeBar"></div>
+  <section id="queueView" hidden>
+    <div class="qhead" id="qhead"></div>
+    <ul class="list" id="qlist"></ul>
+  </section>
+  <div id="jobsView">
 
   <div class="controls">
     <div class="seg" id="window" role="group" aria-label="Posted within">
@@ -239,6 +270,7 @@
 
   <div class="count" id="count"></div>
   <ul class="list" id="list"></ul>
+  </div>
 </div>
 
 <dialog id="kit" aria-labelledby="kitTitle">
@@ -304,6 +336,13 @@
   </div>
 </dialog>
 
+<dialog id="prefsDlg" aria-labelledby="prefsTitle">
+  <div class="dlg-head">
+    <h2 id="prefsTitle">Apply queue settings</h2>
+    <button type="button" class="ghost" id="closePrefs" aria-label="Close">Close</button>
+  </div>
+  <div class="dlg-body" id="prefsBody"></div>
+</dialog>
 <dialog id="tailorDlg" aria-labelledby="tailorTitle" class="wide">
   <div class="dlg-head">
     <h2 id="tailorTitle">Tailor resume</h2>
@@ -498,7 +537,7 @@ const TAXONOMY = new Set(DATA.meta.skills.map((s) => s.n));
 
 const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
 const MON = "(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\\.?";
-const RANGE = new RegExp(MON + "\\s+(\\d{4})\\s*(?:-|–|—|to)\\s*(?:(present|current|now)|" + MON + "\\s+(\\d{4}))", "gi");
+const RANGE = new RegExp(MON + "\\s+(\\d{4})\\s*(?:--?|–|—|to)\\s*(?:(present|current|now)|" + MON + "\\s+(\\d{4}))", "gi");
 const DEGREE_LINE = /bachelor|master|b\.?\s?tech|m\.?\s?s\.?\b|ph\.?d|gpa|degree|coursework|diploma/i;
 const INTERN_LINE = /intern|co-?op|research assistant|teaching assistant|trainee/i;
 
@@ -611,6 +650,7 @@ function rescore() {
     hasTerm: (t) => { if (!cache.has(t)) cache.set(t, termRegex(t).test(r.text)); return cache.get(t); },
   };
   for (const j of DATA.jobs) scores.set(j, scoreJob(j, have, ctx));
+  syncScoring();
 }
 
 // ---------------------------------------------------------------- resume parsing
@@ -742,11 +782,16 @@ function isSponsor(j) {
 
 function sourceLabel(j) {
   return { greenhouse: "Greenhouse job board API", lever: "Lever postings API", ashby: "Ashby job board API",
-    workday: "Workday career site API", simplify: "SimplifyJobs New-Grad listings feed" }[j.source] || j.source;
+    workday: "Workday career site API", simplify: "SimplifyJobs New-Grad listings feed",
+    smartrecruiters: "SmartRecruiters Posting API", oracle: "Oracle Recruiting Cloud API",
+    eightfold: "Eightfold careers API", amazon: "Amazon Jobs search API", icims: "iCIMS career site",
+    careerpage: "Company careers page (schema.org JobPosting)" }[j.source] || j.source;
 }
 
-// Workday reports the day a job was posted, never the time.
-const dateOnly = (j) => j.posted_field === "startDate";
+// Some sources report the day a job was posted, never the time (Workday,
+// Amazon, and others whose timestamps are bare dates).
+const DATE_ONLY_FIELDS = new Set(["startDate", "posted_date", "datePosted", "ExternalPostedStartDate", "postedTs"]);
+const dateOnly = (j) => !j.posted_exact && DATE_ONLY_FIELDS.has(j.posted_field);
 function dayLabel(sec) {
   const d = new Date(sec * 1000), now = new Date();
   const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
@@ -756,7 +801,7 @@ function dayLabel(sec) {
 function rawExplain(j) {
   if (!j.posted_raw) return null;
   if (j.posted_field === "createdAt") return `${j.posted_raw} (milliseconds since 1970)`;
-  if (j.posted_field === "date_posted") return `${j.posted_raw} (seconds since 1970)`;
+  if (j.posted_field === "date_posted" || j.posted_field === "postedTs") return `${j.posted_raw} (seconds since 1970)`;
   return j.posted_raw;
 }
 
@@ -782,17 +827,21 @@ function evidence(j) {
       extra.push(" · whole board feed, press Ctrl+F for ", el("code", { text: id }));
     } else if (j.source === "simplify") {
       extra.push(" · large file, press Ctrl+F for the job title");
+    } else if (j.source === "icims" || j.source === "careerpage") {
+      extra.push(" · the job page; view its source and search for ", el("code", { text: "datePosted" }));
     }
     add("Check it yourself", el("a", { href: j.verify_url, target: "_blank", rel: "noopener", text: "Open raw source record" }), ...extra);
   }
   ev.append(dl);
 
   if (dateOnly(j)) {
-    ev.append(el("div", { class: "note", text: "Workday reports only the date a job was posted, not the time. When the radar first saw it on that same date, that time is the latest it could have gone up." }));
+    ev.append(el("div", { class: "note", text: "This source reports only the date a job was posted, not the time. When the radar first saw it on that same date, that time is the latest it could have gone up." }));
   } else if (!j.posted_exact) {
     ev.append(el("div", { class: "warnline", text: "This board only reports a last-updated time, not the original post time. The job may be older than it looks." }));
   }
-  if (j.posted_at && j.first_seen < j.posted_at - 3600) {
+  // A bare date is read as local midnight, but sources write it in their own
+  // zone (Amazon's "October 21" starts at 8 PM the day before in New York).
+  if (j.posted_at && j.first_seen < j.posted_at - (dateOnly(j) ? 36 : 1) * 3600) {
     ev.append(el("div", { class: "warnline", text: `The radar saw this job ${fmt(j.first_seen)}, before the date the source now reports. It was probably reposted with a new date.` }));
   }
 
@@ -861,7 +910,7 @@ function render() {
     }
     right.append(el("div", {
       class: "age" + ((dateOnly(j) ? dayLabel(when(j)) === "today" : now - when(j) < 6 * 3600) ? " hot" : ""),
-      title: dateOnly(j) ? "Workday gives the posting date only, not the time" : j.posted_exact ? "Posted " + fmt(when(j)) : "Source gave only an update time",
+      title: dateOnly(j) ? "The source gives the posting date only, not the time" : j.posted_exact ? "Posted " + fmt(when(j)) : "Source gave only an update time",
       text: dateOnly(j) ? "Posted " + dayLabel(when(j)) : (j.posted_exact ? "" : "~") + ago(when(j)),
     }));
 
@@ -928,6 +977,7 @@ function render() {
         onclick: () => {
           if (state.marks[j.url] === val) delete state.marks[j.url]; else state.marks[j.url] = val;
           store.set("marks", state.marks); render();
+          postMarks({ [j.key]: state.marks[j.url] || null });
         },
       }));
     }
@@ -1090,7 +1140,7 @@ function renderKit() {
     const id = "kit-" + key;
     const input = el("input", { id, type, value: P[key] || "", autocomplete: "off",
       placeholder: key === "sponsorship" ? "e.g. Yes, I will require H-1B sponsorship" : key === "workAuth" ? "e.g. F-1 OPT, eligible for STEM extension" : null });
-    input.addEventListener("input", () => { P[key] = input.value.trim(); store.set("profile", P); updateBookmarklet(); });
+    input.addEventListener("input", () => { P[key] = input.value.trim(); store.set("profile", P); updateBookmarklet(); syncScoring(); });
     box.append(el("label", { for: id, text: label }), input,
       el("button", { type: "button", text: "Copy", onclick: async () => {
         try { await navigator.clipboard.writeText(input.value); toast(label + " copied"); }
@@ -1220,12 +1270,15 @@ function renderTailorForm(j, jd, history) {
   const jdBox = el("textarea", { class: "jd", id: "jdBox", placeholder: "Paste the full job description here." });
   jdBox.value = jd;
 
+  const instr = el("input", { type: "text", id: "tailorInstr", maxlength: "500", style: "width:100%",
+    placeholder: "Optional, e.g. emphasize backend more, don't touch the Kanbas project" });
+
   const answer = el("textarea", { class: "jd", placeholder: "Paste the chat's JSON answer here." });
   const manual = el("div", { style: "display:grid;gap:8px" },
     el("p", { text: "1. Copy the prompt and paste it into ChatGPT, Claude or any chat. 2. Paste its whole reply below. 3. Apply." }),
     el("div", {}, el("button", { type: "button", text: "Copy prompt", onclick: async () => {
       try {
-        const { prompt } = await api("/api/prompt", { key: j.key, jd: jdBox.value });
+        const { prompt } = await api("/api/prompt", { key: j.key, jd: jdBox.value, instruction: instr.value });
         await navigator.clipboard.writeText(prompt);
         toast("Prompt copied. Paste it into your chat.");
       } catch (e) { toast(e.message); }
@@ -1234,23 +1287,41 @@ function renderTailorForm(j, jd, history) {
   function syncManual() { manual.hidden = chosen !== "manual"; go.textContent = chosen === "manual" ? "Apply answer" : "Tailor resume"; }
 
   const result = el("div", { id: "tailorResult", style: "display:grid;gap:12px" });
-  const go = el("button", { type: "button", class: "primary", onclick: () => {
+  const start = () => {
     if (jdBox.value.trim().length < 200) { toast("Paste the full job description first."); return; }
     if (chosen === "manual" && !answer.value.trim()) { toast("Paste the chat's answer first."); return; }
-    runTailor(j, { backend: chosen, jd: jdBox.value, rewrite: rewrite.checked, answer: answer.value }, go, result);
-  } });
+    runTailor(j, { backend: chosen, jd: jdBox.value, rewrite: rewrite.checked, answer: answer.value, instruction: instr.value },
+      go, result, retailor, refreshHistory);
+  };
+  // "Adjust" under a result: the request goes into the form and tailoring runs again.
+  // The earlier version stays in the history below.
+  const retailor = (text) => {
+    instr.value = text;
+    if (chosen === "manual") {
+      answer.value = "";
+      manual.scrollIntoView({ behavior: "smooth", block: "center" });
+      toast("Copy the prompt again (it now has your request), then paste the new answer.");
+      return;
+    }
+    start();
+  };
+  const go = el("button", { type: "button", class: "primary", onclick: start });
 
-  const hist = history.length ? el("div", { style: "display:grid;gap:6px" },
+  const hist = el("div", { style: "display:grid;gap:6px" });
+  const showHistory = (list) => hist.replaceChildren(...(list.length ? [
     el("p", { class: "section-h", text: "Earlier versions for this job" }),
-    ...history.map((h) => el("div", { class: "row", style: "font-size:13px" },
-      el("span", { text: `${fmt(h.created)} · ${h.model}` }),
+    ...list.map((h) => el("div", { class: "row", style: "font-size:13px" },
+      el("span", { text: `${fmt(h.created)} · ${h.model}` + (h.result.instruction ? ` · “${h.result.instruction}”` : "") }),
       el("a", { class: "btn", href: "/files/" + h.pdf, target: "_blank", rel: "noopener", text: "PDF" }),
-      el("button", { type: "button", class: "ghost", text: "Show changes", onclick: () => renderResult(h.result, result) })))) : null;
+      el("button", { type: "button", class: "ghost", text: "Show changes", onclick: () => renderResult(h.result, result, retailor) })))] : []));
+  showHistory(history);
+  const refreshHistory = async () => { try { showHistory(await api("/api/history?key=" + encodeURIComponent(j.key))); } catch {} };
 
   $("tailorBody").replaceChildren(...[
     el("p", { class: "section-h", text: "Model" }), opts,
     el("label", { class: "toggle" }, rewrite, " Reword bullets to use the job's keywords (otherwise only reorders, trims, and updates tech lines and skills)"),
     el("p", { class: "section-h", text: "Job description" + (jd ? " (saved from the posting, edit if needed)" : "") }), jdBox,
+    el("label", { class: "section-h", for: "tailorInstr", text: "Your request for this version" }), instr,
     manual,
     el("div", {}, go),
     result, hist, tagHelp(),
@@ -1258,7 +1329,7 @@ function renderTailorForm(j, jd, history) {
   syncManual();
 }
 
-async function runTailor(j, opts, btn, out) {
+async function runTailor(j, opts, btn, out, onAdjust, onDone) {
   btn.disabled = true;
   out.replaceChildren(progressLine("Starting…"));
   const t0 = Date.now();
@@ -1267,7 +1338,7 @@ async function runTailor(j, opts, btn, out) {
     for (;;) {
       await sleep(1500);
       const s = await api("/api/tailor/" + id);
-      if (s.state === "done") { renderResult(s.result, out); break; }
+      if (s.state === "done") { renderResult(s.result, out, onAdjust); if (onDone) onDone(); break; }
       if (s.state === "error") throw new Error(s.error);
       const secs = Math.round((Date.now() - t0) / 1000);
       out.replaceChildren(progressLine(`${s.state === "queued" ? "Waiting for another run to finish" : "Tailoring"}… ${secs}s`));
@@ -1313,11 +1384,24 @@ function listDiff(before, after) {
 
 const KIND = { bullet: "Bullet", tech: "Tech line", skills: "Skills row", drop_bullet: "Bullet removed", drop_entry: "Section removed", reorder: "Reordered" };
 
-function renderResult(r, out) {
+// The "Adjust" box under a result: a short request, then tailoring runs again with it.
+function adjustBox(onAdjust, label = "Re-tailor", heading = true) {
+  const input = el("input", { type: "text", maxlength: "500", style: "flex:1;min-width:220px",
+    placeholder: "e.g. emphasize backend more, keep the ML bullets", "aria-label": "What to change" });
+  const go = () => { const v = input.value.trim(); if (!v) { toast("Say what to change first."); return; } onAdjust(v); };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+  return el("div", { style: "display:grid;gap:6px;margin-top:6px" },
+    heading ? el("p", { class: "section-h", text: "Adjust" }) : null,
+    el("div", { class: "row" }, input, el("button", { type: "button", text: label, onclick: go })),
+    el("p", { class: "note", text: "Runs tailoring again with your request. The honesty checks and the one-page limit still apply, and this version stays in the history." }));
+}
+
+function renderResult(r, out, onAdjust) {
   const applied = r.changes.filter((c) => c.status === "applied" && ["bullet", "tech", "skills"].includes(c.kind));
   const rejected = r.changes.filter((c) => c.status === "rejected");
   const removed = r.changes.filter((c) => c.kind === "drop_bullet" || c.kind === "drop_entry");
   const reordered = r.changes.filter((c) => c.kind === "reorder");
+  const moved = r.changes.filter((c) => c.kind === "reorder_entries");
 
   const card = (c) => el("div", { class: "chg" + (c.status === "rejected" ? " rejected" : "") },
     el("div", { class: "lbl", text: `${KIND[c.kind]} · ${c.label}` }),
@@ -1340,6 +1424,7 @@ function renderResult(r, out) {
       el("span", { class: "spacer", style: "flex:1" }),
       el("a", { class: "btn primary", href: "/files/" + r.pdf, target: "_blank", rel: "noopener", text: "Open PDF ↗" }),
       el("a", { class: "btn", href: "/files/" + r.tex, download: r.tex, text: "Download .tex" })),
+    r.instruction ? el("p", { class: "note", text: `Your request: “${r.instruction}”` }) : null,
     r.summary ? el("p", { text: r.summary }) : null,
     (r.keywords || []).length ? el("div", { style: "display:grid;gap:6px" },
       el("p", { class: "section-h", text: "Job keywords, checked against the final PDF" }), kw,
@@ -1351,10 +1436,246 @@ function renderResult(r, out) {
     removed.length ? el("p", { class: "section-h", text: `Removed to fit one page (${removed.length})` }) : null,
     removed.length ? el("div", { class: "changes" }, ...removed.map(card)) : null,
     reordered.length ? el("p", { class: "note", text: "Bullets reordered, most relevant first, in: " + reordered.map((c) => c.label.split(" | ")[0]).join("; ") }) : null,
+    ...moved.map((c) => el("p", { class: "note", text: `${c.label} reordered, most relevant first: ${c.after}` })),
+    onAdjust ? adjustBox(onAdjust) : null,
   ].filter(Boolean));
 }
 
 $("closeTailor").addEventListener("click", () => $("tailorDlg").close());
+
+// ---------------------------------------------------------------- apply queue (local helper)
+//
+// The helper prepares good matches in the background (prep.py): a tailored
+// resume or the master, plus drafts for the form's own questions. Here the
+// user reviews each, opens the form, and the extension fills it in.
+
+const queue = { data: null, synced: false, timer: 0 };
+let syncTimer = 0;
+
+// The helper scores jobs with this resume exactly as this page does, and
+// drafts answers with the Apply kit details.
+function syncScoring() {
+  if (!HELPER || !state.resume) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    const r = state.resume;
+    api("/api/scoring", { name: r.name, text: r.text, skills: r.skills, off: r.off || [], added: r.added || [],
+      years: r.years != null ? r.years : null, profile: state.profile }).catch(() => {});
+  }, 800);
+}
+
+function postMarks(marks) {
+  if (HELPER && Object.keys(marks).length) api("/api/marks", { marks }).catch(() => {});
+}
+
+async function loadQueue() {
+  if (!HELPER) return;
+  try { queue.data = await api("/api/queue"); } catch { queue.data = null; }
+  const d = queue.data;
+  if (d) {
+    // Applied through the extension: mark it here too.
+    let changed = false;
+    const done = new Set();
+    for (const it of d.done) {
+      done.add(it.key);
+      if (!state.marks[it.url]) { state.marks[it.url] = it.state; changed = true; }
+    }
+    if (changed) { store.set("marks", state.marks); if (state.view !== "queue") render(); }
+    if (!queue.synced) {
+      // Marks made here before the queue existed, so it never prepares those jobs.
+      queue.synced = true;
+      const marks = {};
+      for (const j of DATA.jobs) if (state.marks[j.url] && !done.has(j.key)) marks[j.key] = state.marks[j.url];
+      postMarks(marks);
+    }
+  }
+  renderQueue();
+}
+
+function showView(v) {
+  state.view = v === "queue" && HELPER ? "queue" : "jobs";
+  if ((location.hash === "#queue") !== (state.view === "queue")) history.replaceState(null, "", state.view === "queue" ? "#queue" : location.pathname);
+  $("queueView").hidden = state.view !== "queue";
+  $("jobsView").hidden = state.view === "queue";
+  for (const b of $("viewTabs").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.view === state.view));
+  clearInterval(queue.timer);
+  if (state.view === "queue") { loadQueue(); queue.timer = setInterval(loadQueue, 20000); }
+  else render();
+}
+
+function changeLine(c) {
+  const bits = [];
+  if (c.rewrites) bits.push(`${c.rewrites} bullet${c.rewrites === 1 ? "" : "s"} reworded`);
+  if (c.lists) bits.push(`${c.lists} tool list${c.lists === 1 ? "" : "s"} updated`);
+  if (c.dropped_bullets) bits.push(`${c.dropped_bullets} bullet${c.dropped_bullets === 1 ? "" : "s"} trimmed`);
+  if (c.dropped_entries.length) bits.push("dropped " + c.dropped_entries.map((x) => x.split(" | ")[0]).join(", "));
+  const line = el("span", {}, bits.join(" · ") || "only reordered");
+  if (c.added.length) line.append(" · ", el("span", { class: "added", text: "+ " + c.added.join(", ") }));
+  if (c.pages > 1) line.append(" · ", el("span", { class: "warnline", text: `${c.pages} pages` }));
+  return line;
+}
+
+async function showChanges(it) {
+  $("tailorTitle").textContent = `Resume changes: ${it.title} at ${it.company}`;
+  const body = $("tailorBody");
+  body.replaceChildren(progressLine("Loading…"));
+  $("tailorDlg").showModal();
+  try {
+    const hist = await api("/api/history?key=" + encodeURIComponent(it.key));
+    const h = hist.find((x) => x.id === it.tailored_id);
+    if (!h) throw new Error("That tailored version is gone.");
+    const out = el("div", { style: "display:grid;gap:12px" });
+    renderResult(h.result, out, (text) => {
+      $("tailorDlg").close();
+      queueAction("/api/queue/tailor", { key: it.key, instruction: text }, "Re-tailoring with your request. It uses one of today's ChatGPT runs.");
+    });
+    body.replaceChildren(out);
+  } catch (e) { body.replaceChildren(el("div", { class: "errbox", text: e.message })); }
+}
+
+async function queueAction(path, body, msg) {
+  try { await api(path, body); if (msg) toast(msg); } catch (e) { toast(e.message); }
+  loadQueue();
+}
+
+function queueItem(it) {
+  const cls = it.score >= 70 ? "hi" : it.score >= 50 ? "mid" : "lo";
+  const right = el("div", { class: "right" }, el("span", { class: "score " + cls, text: it.score + "% match" }));
+  const lines = [];
+
+  if (it.state === "ready") {
+    if (it.choice === "tailored" && it.changes) {
+      lines.push(el("div", { class: "qline" }, el("b", { text: "Tailored resume:" }), changeLine(it.changes),
+        el("span", { class: "badge" + (it.reviewed ? " yes" : ""), text: it.reviewed ? "Approved" : "Not reviewed yet" })));
+    } else if (it.tailored_id) {
+      lines.push(el("div", { class: "qline" }, el("b", { text: "Master resume" }), " (you chose it over the tailored one)"));
+    } else {
+      lines.push(el("div", { class: "qline" }, el("b", { text: "Master resume:" }), el("span", { text: it.reason })));
+    }
+    lines.push(el("div", { class: "qline", text: it.answers
+      ? `${it.answers} answer${it.answers === 1 ? "" : "s"} drafted for the form's own questions, marked "AI answer, check it" when filled.`
+      : "No drafted answers: the form's questions are standard, or this site doesn't publish them ahead (the extension can still draft at fill time)." }));
+  } else if (it.state === "working") {
+    lines.push(el("div", { class: "qline" }, progressLine(it.decision === "tailor" ? "Tailoring now…" : "Drafting answers now…")));
+  } else if (it.state === "queued") {
+    lines.push(el("div", { class: "qline" }, el("b", { text: "Waiting." }),
+      el("span", { text: it.decision === "tailor" ? it.reason : "Master resume fits; drafts come next." })));
+  } else if (it.state === "error") {
+    lines.push(el("div", { class: "qline" }, el("span", { class: "warnline", text: "Couldn't prepare this one: " + it.note })));
+  }
+  if (it.note && it.state !== "error") lines.push(el("div", { class: "qline" }, el("span", { class: "warnline", text: it.note })));
+
+  const actions = el("div", { class: "actions" });
+  if (it.state === "ready" || it.state === "queued" || it.state === "error") {
+    actions.append(el("a", { class: "btn primary", href: it.apply_url, target: "_blank", rel: "noopener",
+      text: "Open application ↗", title: "The extension attaches the prepared resume and fills the form. You review and submit." }));
+  }
+  if (it.state === "ready" && it.tailored_id) {
+    actions.append(el("button", { type: "button", text: "View changes", onclick: () => showChanges(it) }));
+    actions.append(el("a", { class: "btn", href: "/files/" + it.pdf, target: "_blank", rel: "noopener", text: "PDF" }));
+    if (it.choice !== "tailored" || !it.reviewed) {
+      actions.append(el("button", { type: "button", text: "Approve", title: "Use the tailored resume for this job",
+        onclick: () => queueAction("/api/queue/choice", { key: it.key, choice: "tailored" }, "Tailored resume approved.") }));
+    }
+    if (it.choice === "tailored") {
+      actions.append(el("button", { type: "button", text: "Use master instead",
+        onclick: () => queueAction("/api/queue/choice", { key: it.key, choice: "master" }, "The extension will attach your master resume.") }));
+    }
+  }
+  if (it.state === "ready" && !it.tailored_id) {
+    actions.append(el("button", { type: "button", text: "Tailor anyway", title: "Uses one ChatGPT run from today's limit",
+      onclick: () => queueAction("/api/queue/tailor", { key: it.key }, "Queued for tailoring.") }));
+  }
+  if (it.state === "ready") {
+    const det = el("details", { class: "evidence" }, el("summary", { text: it.tailored_id ? "Adjust and re-tailor" : "Tailor with a request" }));
+    det.append(adjustBox((text) => queueAction("/api/queue/tailor", { key: it.key, instruction: text },
+      "Re-tailoring with your request. It uses one of today's ChatGPT runs."), it.tailored_id ? "Re-tailor" : "Tailor", false));
+    lines.push(det);
+  }
+  if (it.state === "error") actions.append(el("button", { type: "button", text: "Retry", onclick: () => queueAction("/api/queue/retry", { key: it.key }) }));
+  actions.append(el("button", { type: "button", class: "ghost", text: "Dismiss", onclick: () => {
+    state.marks[it.url] = "dismissed"; store.set("marks", state.marks);
+    queueAction("/api/marks", { marks: { [it.key]: "dismissed" } });
+  } }));
+
+  return el("li", { class: "job q-" + it.state },
+    el("div", {},
+      el("a", { class: "title", href: it.url, target: "_blank", rel: "noopener", text: it.title }),
+      el("div", { class: "meta" }, el("span", { class: "company", text: it.company }), el("span", { text: it.location }))),
+    right, ...lines, el("div", { class: "row" }, actions));
+}
+
+function renderQueue() {
+  const d = queue.data;
+  const ready = d ? d.items.filter((i) => i.state === "ready").length : 0;
+  $("qcount").hidden = !ready;
+  $("qcount").textContent = String(ready);
+  if (state.view !== "queue") return;
+  const head = $("qhead"), list = $("qlist");
+  if (!d) {
+    head.replaceChildren("The local helper isn't responding, so the queue is unavailable.");
+    list.replaceChildren();
+    return;
+  }
+  const s = d.settings, c = d.counts;
+  const today = new Date().toDateString();
+  const appliedToday = d.done.filter((i) => i.state === "applied" && new Date(i.applied * 1000).toDateString() === today).length;
+  head.replaceChildren(...[
+    el("span", {}, el("b", { text: `${ready} ready` }), ` · ${(c.queued || 0) + (c.working || 0)} preparing`),
+    el("span", { text: `ChatGPT runs today ${d.runs_today}/${s.daily_cap}` }),
+    appliedToday ? el("span", { text: `${appliedToday} applied today` }) : null,
+    el("span", { text: `Prepares new jobs at ${s.threshold}%+ match` + (s.enabled ? "" : " (off)") }),
+    d.status ? el("span", { class: "warnline", style: "color:var(--warn)", text: d.status }) : null,
+    !d.scoring && state.resume ? el("span", { class: "note", text: "Syncing your resume to the helper…" }) : null,
+    el("span", { class: "spacer" }),
+    el("button", { type: "button", text: "Settings", onclick: openPrefs }),
+  ].filter(Boolean));
+  const items = d.items;
+  list.replaceChildren(...(items.length ? items.map(queueItem) : [el("li", { class: "empty", text: d.radar_updated
+    ? `Nothing to apply to yet. New postings at ${s.threshold}%+ match are prepared here after each radar run.`
+    : "The queue starts after the next radar run." })]));
+}
+
+function openPrefs() {
+  const s = (queue.data && queue.data.settings) || {};
+  const f = {};
+  const row = (key, label, input, note) => {
+    f[key] = input;
+    input.id = "pref-" + key;
+    return [el("label", { for: input.id, text: label }), input, note ? el("span", { class: "note", text: note }) : null];
+  };
+  const num = (k, min, max) => el("input", { type: "number", min, max, value: String(s[k]) });
+  const chk = (k) => { const i = el("input", { type: "checkbox" }); i.checked = !!s[k]; return i; };
+  const txt = (k, ph) => el("input", { type: "text", value: Array.isArray(s[k]) ? s[k].join(", ") : s[k] || "", placeholder: ph || null });
+  const tm = (k) => el("input", { type: "time", value: s[k] });
+  const grid = el("div", { class: "prefs" }, ...[
+    row("enabled", "Prepare jobs", chk("enabled")),
+    row("threshold", "Minimum match", num("threshold", 0, 100), "New postings at or above this score are prepared."),
+    row("daily_cap", "ChatGPT runs a day", num("daily_cap", 0, 200), "Tailoring and drafting each count one. Keeps the queue inside your plan's limits."),
+    row("skip_coverage", "Skip tailoring at", num("skip_coverage", 0, 100), "% of required keywords already on your master resume. Tailoring is also skipped when it could only reorder."),
+    row("needs_sponsorship", "Skip no-sponsorship jobs", chk("needs_sponsorship"), "Leaves out postings that rule out sponsorship or OPT."),
+    row("locations", "Locations", txt("locations", "e.g. Boston, New York, Seattle"), "Comma separated, matched against the job location. Empty means anywhere."),
+    row("remote_ok", "Include remote jobs", chk("remote_ok")),
+    row("draft_answers", "Draft form answers", chk("draft_answers"), "Greenhouse, Lever and Ashby publish their questions. Sponsorship, demographic, salary and legal questions are never drafted."),
+    row("notify_desktop", "Desktop notification", chk("notify_desktop")),
+    row("ntfy_topic", "ntfy topic (optional)", txt("ntfy_topic", "a long random name"), "Also push “N jobs ready” with company names to your phone through ntfy."),
+    row("ntfy_server", "ntfy server", txt("ntfy_server")),
+    row("quiet_start", "Quiet from", tm("quiet_start")),
+    row("quiet_end", "Quiet until", tm("quiet_end"), "Notifications wait until quiet hours end."),
+  ].flat().filter(Boolean));
+  const save = el("button", { type: "button", class: "primary", text: "Save", onclick: async () => {
+    const out = {};
+    for (const [k, input] of Object.entries(f)) out[k] = input.type === "checkbox" ? input.checked : input.type === "number" ? +input.value : input.value;
+    try { await api("/api/prep/settings", out); toast("Saved."); $("prefsDlg").close(); loadQueue(); }
+    catch (e) { toast(e.message); }
+  } });
+  $("prefsBody").replaceChildren(el("p", { text: "The helper prepares jobs in the background, one at a time. It never applies: you open each job, check what was filled, and press Submit yourself." }), grid, el("div", {}, save));
+  $("prefsDlg").showModal();
+}
+
+$("closePrefs").addEventListener("click", () => $("prefsDlg").close());
+$("viewTabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) showView(b.dataset.view); });
+window.addEventListener("hashchange", () => showView(location.hash === "#queue" ? "queue" : "jobs"));
 
 // ---------------------------------------------------------------- wiring
 
@@ -1386,6 +1707,11 @@ rescore();
 updateBookmarklet();
 render();
 refreshStatus();
+if (HELPER) {
+  $("viewTabs").hidden = false;
+  showView(location.hash === "#queue" ? "queue" : "jobs");
+  if (state.view !== "queue") loadQueue();   // the ready count on the tab, and marks from the extension
+}
 // Keep relative times current; reload for fresh data every 10 minutes unless a dialog is open.
 setInterval(render, 60000);
 setInterval(() => { if (!document.querySelector("dialog[open]")) location.reload(); }, 600000);

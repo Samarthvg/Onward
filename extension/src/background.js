@@ -28,6 +28,23 @@ async function helper(path, body) {
   return data;
 }
 
+// The Job Radar job each tab's form belongs to, so the "application
+// received" page can be tied to it even when its URL is different
+// (Workday, embedded forms). Session storage survives the service worker
+// being stopped; it is cleared when the browser closes.
+const tabJobs = {
+  async get(tabId) {
+    try { return (await api.storage.session.get("tab:" + tabId))["tab:" + tabId] || null; } catch (e) { return null; }
+  },
+  async set(tabId, job) {
+    try { await api.storage.session.set({ ["tab:" + tabId]: Object.assign({ at: Date.now() }, job) }); } catch (e) {}
+  },
+  async del(tabId) {
+    try { await api.storage.session.remove("tab:" + tabId); } catch (e) {}
+  },
+};
+if (api.tabs && api.tabs.onRemoved) api.tabs.onRemoved.addListener((tabId) => { tabJobs.del(tabId); });
+
 function clip(s, n) {
   return String(s == null ? "" : s).slice(0, n);
 }
@@ -71,6 +88,28 @@ if (api.commands && api.commands.onCommand) {
 }
 
 const HANDLERS = {
+  /* The resume and answers the helper prepared for this form's job. */
+  async "jr:prepared"(msg, sender) {
+    const url = clip(msg.url, 2000);
+    let data;
+    try {
+      data = await helper("/api/prepared?url=" + encodeURIComponent(url));
+    } catch (e) {
+      return { found: false, error: e.message };
+    }
+    if (sender.tab && sender.tab.id != null && data.job) await tabJobs.set(sender.tab.id, data.job);
+    return Object.assign({ found: true }, data);
+  },
+  /* The ATS showed its "application received" page. */
+  async "jr:applied"(msg, sender) {
+    const tabId = sender.tab && sender.tab.id;
+    const known = tabId != null ? await tabJobs.get(tabId) : null;
+    // Pages without a URL pattern (Ashby, Workday) only count for a tab that showed a known job's form.
+    if (!known && !msg.byUrl) return { recorded: false };
+    const res = await helper("/api/applied", { key: known ? clip(known.key, 500) : "", url: clip(msg.url, 2000) });
+    if (tabId != null) await tabJobs.del(tabId);
+    return Object.assign({ recorded: true, company: known ? known.company : "", title: known ? known.title : "" }, res);
+  },
   async "jr:draftStart"(msg) {
     const p = msg.payload || {};
     return helper("/api/draft", {
@@ -108,6 +147,6 @@ const HANDLERS = {
 
 api.runtime.onMessage.addListener((msg, sender, respond) => {
   if (sender.id !== api.runtime.id || !msg || !HANDLERS[msg.type]) return false;
-  HANDLERS[msg.type](msg).then(respond, (e) => respond({ error: e.message }));
+  HANDLERS[msg.type](msg, sender).then(respond, (e) => respond({ error: e.message }));
   return true;
 });
