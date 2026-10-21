@@ -15,12 +15,13 @@ as before. Each file carries a version; MIGRATIONS bring older files up to
 date when they are loaded.
 
 Data directory, first match wins:
-  1. $JOBRADAR_HOME
+  1. $ONWARD_HOME (or $JOBRADAR_HOME, its name before the rename)
   2. the code folder, when it already holds settings.json or jobs.db
      (installs from before the data directory existed keep working in place)
-  3. the platform's per-user data folder: %LOCALAPPDATA%\\JobRadar on
-     Windows, ~/Library/Application Support/JobRadar on macOS,
-     $XDG_DATA_HOME/jobradar (~/.local/share/jobradar) elsewhere
+  3. the platform's per-user data folder: %LOCALAPPDATA%\\Onward on
+     Windows, ~/Library/Application Support/Onward on macOS,
+     $XDG_DATA_HOME/onward (~/.local/share/onward) elsewhere. A JobRadar
+     folder from before the rename is moved there on the first start.
 """
 
 from __future__ import annotations
@@ -43,22 +44,47 @@ SETTINGS_FILE = "settings.json"
 VERSION = 6
 
 
-def platform_data_dir() -> Path:
+HOME_ENV = ("ONWARD_HOME", "JOBRADAR_HOME")     # the second is the name before the rename
+
+
+def _platform_dir(name: str) -> Path:
     home = Path.home()
     if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA") or home / "AppData" / "Local") / "JobRadar"
+        return Path(os.environ.get("LOCALAPPDATA") or home / "AppData" / "Local") / name
     if sys.platform == "darwin":
-        return home / "Library" / "Application Support" / "JobRadar"
-    return Path(os.environ.get("XDG_DATA_HOME") or home / ".local" / "share") / "jobradar"
+        return home / "Library" / "Application Support" / name
+    return Path(os.environ.get("XDG_DATA_HOME") or home / ".local" / "share") / name.lower()
+
+
+def platform_data_dir() -> Path:
+    return _platform_dir("Onward")
+
+
+def legacy_data_dir() -> Path:
+    """The folder from when the app was called Job Radar."""
+    return _platform_dir("JobRadar")
+
+
+def user_data_dir() -> Path:
+    """The per-user folder, with a Job Radar folder moved into place first.
+    While something holds the old one open (an older copy still running on
+    Windows), it is used where it is and moved on a later start."""
+    new, old = platform_data_dir(), legacy_data_dir()
+    if not new.exists() and old.is_dir():
+        try:
+            old.rename(new)
+        except OSError:
+            return old
+    return new
 
 
 def default_home() -> Path:
-    env = os.environ.get("JOBRADAR_HOME")
+    env = next((os.environ[k] for k in HOME_ENV if os.environ.get(k)), None)
     if env:
         return Path(env).expanduser()
     if (CODE_DIR / SETTINGS_FILE).exists() or (CODE_DIR / "jobs.db").exists():
         return CODE_DIR
-    return platform_data_dir()
+    return user_data_dir()
 
 
 # --------------------------------------------------------------------------

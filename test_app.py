@@ -119,7 +119,7 @@ class SchedulerTests(TmpHome):
         self.now += scheduler.STARTUP_DELAY
         self.sched.tick()
         self.assertEqual(len(self.started), 1)
-        self.assertEqual(self.env["JOBRADAR_HOME"], str(self.home), "the run uses this data folder")
+        self.assertEqual(self.env["ONWARD_HOME"], str(self.home), "the run uses this data folder")
 
     def test_interval_counts_from_the_last_finished_run(self):
         self.setup_done()
@@ -223,7 +223,7 @@ class RealRunTests(TmpHome):
         self.assertTrue(lock.acquire())
         self.addCleanup(lock.release)
         status = self.home / "status.json"
-        proc = subprocess.run(scheduler.default_command(status), env={**os.environ, "JOBRADAR_HOME": str(self.home)},
+        proc = subprocess.run(scheduler.default_command(status), env={**os.environ, "ONWARD_HOME": str(self.home)},
                               capture_output=True, text=True, timeout=120)
         self.assertEqual(proc.returncode, scheduler.SKIPPED, proc.stderr)
         self.assertEqual(json.loads(status.read_text())["phase"], "skipped")
@@ -602,7 +602,7 @@ DRIVER = r"""
 import json, os, sys, time
 sys.path.insert(0, os.environ["CODE"])
 import server, scheduler
-fake = os.path.join(os.environ["JOBRADAR_HOME"], "fake_radar.py")
+fake = os.path.join(os.environ["ONWARD_HOME"], "fake_radar.py")
 open(fake, "w").write('''
 import json, sys, time
 p = sys.argv[sys.argv.index("--status-file") + 1]
@@ -631,7 +631,7 @@ class HelperTests(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory(prefix="igez-helper-")
         cls.home = Path(cls.tmp.name)
         cls.port = free_port()
-        env = {**os.environ, "JOBRADAR_HOME": str(cls.home), "JOBRADAR_PORT": str(cls.port), "CODE": str(ROOT)}
+        env = {**os.environ, "ONWARD_HOME": str(cls.home), "JOBRADAR_PORT": str(cls.port), "CODE": str(ROOT)}
         cls.proc = subprocess.Popen([sys.executable, "-c", DRIVER], env=env, cwd=cls.home, stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE, text=True)
         line = cls.proc.stdout.readline()

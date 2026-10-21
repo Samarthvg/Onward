@@ -494,6 +494,9 @@ class RobotsTests(unittest.TestCase):
         r = radar.Robots("User-agent: *\nDisallow: /\n\nUser-agent: jobradar\nAllow: /api/\nDisallow: /\n")
         self.assertTrue(r.allowed("/api/jobs"))
         self.assertFalse(r.allowed("/careers"))
+        # The product's new name too.
+        r = radar.Robots("User-agent: *\nDisallow: /\n\nUser-agent: onward\nAllow: /\n")
+        self.assertTrue(r.allowed("/careers"))
 
     def test_empty_and_tie(self):
         self.assertTrue(radar.Robots("").allowed("/anything"))

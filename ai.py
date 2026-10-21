@@ -41,7 +41,8 @@ import pricing
 
 PROVIDERS = tuple(pricing.MODELS)
 ENV_KEYS = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
-KEYRING_SERVICE = "jobradar"
+KEYRING_SERVICE = "Onward"
+LEGACY_KEYRING_SERVICE = "jobradar"     # keys saved before the rename move to KEYRING_SERVICE when read
 KEY_PATTERN = r"[A-Za-z0-9_\-.:]{20,400}"
 
 # Typical answer length per task, in output tokens (reasoning included),
@@ -95,7 +96,7 @@ def key_file() -> Path:
     checkout; then in the platform's per-user folder."""
     home = config.store().home.resolve()
     code = config.CODE_DIR.resolve()
-    base = config.platform_data_dir() if home == code or code in home.parents else home
+    base = config.user_data_dir() if home == code or code in home.parents else home
     return base / "secrets" / "api-keys.json"
 
 
@@ -157,10 +158,11 @@ def delete_key(provider: str) -> None:
     _check_provider(provider)
     with _KEY_LOCK:
         if _KEYRING is not None:
-            try:
-                _KEYRING.delete_password(KEYRING_SERVICE, provider)
-            except Exception:
-                pass
+            for service in (KEYRING_SERVICE, LEGACY_KEYRING_SERVICE):
+                try:
+                    _KEYRING.delete_password(service, provider)
+                except Exception:
+                    pass
         data = _read_file()
         if data.pop(provider, None) is not None:
             _write_file(data)
@@ -171,6 +173,12 @@ def _stored_key(provider: str) -> tuple[str | None, str | None]:
         try:
             key = _KEYRING.get_password(KEYRING_SERVICE, provider)
             if key:
+                return key, "keychain"
+            key = _KEYRING.get_password(LEGACY_KEYRING_SERVICE, provider)
+            if key:
+                with _KEY_LOCK:
+                    _KEYRING.set_password(KEYRING_SERVICE, provider, key)
+                    _KEYRING.delete_password(LEGACY_KEYRING_SERVICE, provider)
                 return key, "keychain"
         except Exception:
             pass

@@ -23,7 +23,7 @@ import urllib.request
 from urllib.parse import parse_qs, urlparse
 
 TIMEOUT = 20
-USER_AGENT = "jobradar/1.0 (personal job search)"
+USER_AGENT = "Onward/1.0 (personal job search)"
 
 # Asked of the user, never of a model.
 SENSITIVE = re.compile(

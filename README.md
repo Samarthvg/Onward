@@ -49,11 +49,11 @@ Everything is on your computer. The data folder is:
 
 | System  | Data folder                                                                  |
 | ------- | ---------------------------------------------------------------------------- |
-| Windows | `%LOCALAPPDATA%\JobRadar`                                                    |
-| macOS   | `~/Library/Application Support/JobRadar`                                     |
-| Linux   | `$XDG_DATA_HOME/jobradar` (usually `~/.local/share/jobradar`)                |
+| Windows | `%LOCALAPPDATA%\Onward`                                                      |
+| macOS   | `~/Library/Application Support/Onward`                                       |
+| Linux   | `$XDG_DATA_HOME/onward` (usually `~/.local/share/onward`)                    |
 
-Set `JOBRADAR_HOME` to use another folder. A copy run from source that already keeps `jobs.db` in its own folder
+A `JobRadar` folder from before the rename is moved there the first time the app starts. Set `ONWARD_HOME` to use another folder (`JOBRADAR_HOME` still works). A copy run from source that already keeps `jobs.db` in its own folder
 keeps using that folder. Inside it:
 
 - `settings.json`: your roles, companies, tailoring and app choices, and setup progress.

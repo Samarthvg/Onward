@@ -70,7 +70,7 @@ STALE_AFTER_DAYS = 2        # unseen for this long means the posting was closed
 PURGE_AFTER_DAYS = 45       # rows older than this are deleted
 WORKERS = 24
 TIMEOUT = 25
-USER_AGENT = "jobradar/1.0 (personal job search)"
+USER_AGENT = "Onward/1.0 (personal job search)"
 
 
 # --------------------------------------------------------------------------
@@ -500,11 +500,13 @@ class HostGate:
 
 
 class Robots:
-    """robots.txt as RFC 9309 reads it: the group naming our product token,
+    """robots.txt as RFC 9309 reads it: the groups naming our product token,
     else the "*" groups; the longest matching rule wins and Allow wins ties;
     "*" and a trailing "$" work in patterns."""
 
-    AGENT = "jobradar"
+    # The product token, and the one sent before the rename: a site's rules
+    # written for that still apply.
+    AGENTS = ("onward", "jobradar")
 
     def __init__(self, body: str) -> None:
         groups: list[tuple[list[str], list[tuple[bool, str]], list[float]]] = []
@@ -531,7 +533,7 @@ class Robots:
                     groups[-1][2].append(float(value))
                 except ValueError:
                     pass
-        chosen = ([g for g in groups if self.AGENT in g[0]]
+        chosen = ([g for g in groups if any(a in g[0] for a in self.AGENTS)]
                   or [g for g in groups if "*" in g[0]])
         self.rules = [(allow, _robots_pattern(p), len(p)) for g in chosen for allow, p in g[1]]
         self.delay = max((d for g in chosen for d in g[2]), default=None)

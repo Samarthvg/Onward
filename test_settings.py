@@ -270,23 +270,48 @@ class PathTests(Tmp):
             st.update({"roles": [{**config.ROLE.default, "resume": "../../etc/passwd"}]})
 
     def test_data_folder_choice(self):
-        with mock.patch.dict(os.environ, {"JOBRADAR_HOME": str(self.dir / "home")}):
-            self.assertEqual(config.default_home(), self.dir / "home")
-        env = {k: v for k, v in os.environ.items() if k != "JOBRADAR_HOME"}
+        for var in config.HOME_ENV:
+            with mock.patch.dict(os.environ, {var: str(self.dir / var)}):
+                self.assertEqual(config.default_home(), self.dir / var)
+        with mock.patch.dict(os.environ, {"ONWARD_HOME": str(self.dir / "new"), "JOBRADAR_HOME": str(self.dir / "old")}):
+            self.assertEqual(config.default_home(), self.dir / "new", "the new name wins")
+        env = {k: v for k, v in os.environ.items() if k not in config.HOME_ENV}
         code = self.dir / "code"
         code.mkdir()
-        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(config, "CODE_DIR", code):
-            self.assertEqual(config.default_home(), config.platform_data_dir(), "a fresh install uses the user folder")
+        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(config, "CODE_DIR", code),                 mock.patch.object(config, "user_data_dir", lambda: self.dir / "user"):
+            self.assertEqual(config.default_home(), self.dir / "user", "a fresh install uses the user folder")
             (code / "jobs.db").write_bytes(b"")
             self.assertEqual(config.default_home(), code, "an existing install keeps its data where it is")
 
     def test_platform_folders(self):
         with mock.patch.object(config.sys, "platform", "win32"), mock.patch.dict(os.environ, {"LOCALAPPDATA": str(self.dir)}):
-            self.assertEqual(config.platform_data_dir(), self.dir / "JobRadar")
+            self.assertEqual((config.platform_data_dir(), config.legacy_data_dir()), (self.dir / "Onward", self.dir / "JobRadar"))
         with mock.patch.object(config.sys, "platform", "darwin"):
-            self.assertEqual(config.platform_data_dir().parts[-3:], ("Library", "Application Support", "JobRadar"))
+            self.assertEqual(config.platform_data_dir().parts[-3:], ("Library", "Application Support", "Onward"))
         with mock.patch.object(config.sys, "platform", "linux"), mock.patch.dict(os.environ, {"XDG_DATA_HOME": str(self.dir)}):
-            self.assertEqual(config.platform_data_dir(), self.dir / "jobradar")
+            self.assertEqual((config.platform_data_dir(), config.legacy_data_dir()), (self.dir / "onward", self.dir / "jobradar"))
+
+    def test_job_radar_folder_moves_to_onward(self):
+        old, new = self.dir / "JobRadar", self.dir / "Onward"
+        with mock.patch.object(config, "legacy_data_dir", lambda: old), mock.patch.object(config, "platform_data_dir", lambda: new):
+            self.assertEqual(config.user_data_dir(), new, "nothing to move")
+            (old / "resume").mkdir(parents=True)
+            (old / "jobs.db").write_bytes(b"db")
+            self.assertEqual(config.user_data_dir(), new)
+            self.assertEqual((new / "jobs.db").read_bytes(), b"db")
+            self.assertTrue((new / "resume").is_dir())
+            self.assertFalse(old.exists())
+            # Both exist (the old one came back from a backup): the new one is used, the old one left alone.
+            old.mkdir()
+            self.assertEqual(config.user_data_dir(), new)
+            self.assertTrue(old.exists())
+
+    def test_folder_in_use_is_used_where_it_is(self):
+        old, new = self.dir / "JobRadar", self.dir / "Onward"
+        old.mkdir()
+        with mock.patch.object(config, "legacy_data_dir", lambda: old), mock.patch.object(config, "platform_data_dir", lambda: new),                 mock.patch.object(Path, "rename", side_effect=PermissionError("in use")):
+            self.assertEqual(config.user_data_dir(), old)
+        self.assertFalse(new.exists())
 
 
 class QueueStoreTests(Tmp):

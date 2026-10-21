@@ -138,10 +138,10 @@ def task_script(xml: str) -> Path | None:
 
 def data_home_of(code_dir: Path) -> Path:
     """The data folder code in code_dir used when started by a task, which
-    sets no JOBRADAR_HOME (config.default_home)."""
+    sets no ONWARD_HOME (config.default_home)."""
     if (code_dir / config.SETTINGS_FILE).exists() or (code_dir / "jobs.db").exists():
         return code_dir
-    return config.platform_data_dir()
+    return config.user_data_dir()
 
 
 def remove_legacy_tasks(home: Path, names: tuple[str, ...] = LEGACY_TASKS, run=subprocess.run) -> list[str]:

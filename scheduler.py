@@ -136,7 +136,7 @@ class Scheduler:
         except OSError:
             pass
         cmd = self.command(self.status_path)
-        env = {**os.environ, "JOBRADAR_HOME": str(self.store.home)}
+        env = {**{k: v for k, v in os.environ.items() if k not in config.HOME_ENV}, config.HOME_ENV[0]: str(self.store.home)}
         kw = {"creationflags": 0x08000000} if sys.platform == "win32" else {}     # CREATE_NO_WINDOW
         try:
             self.proc = self.popen(cmd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,

@@ -151,7 +151,7 @@ class KeyStorageTests(Base):
         self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"anthropic": KEY})
         self.assertEqual(ai.get_key("anthropic"), KEY)
         # An install whose data folder is the code folder keeps keys elsewhere.
-        with mock.patch.object(config, "platform_data_dir", lambda: self.tmp / "platform"):
+        with mock.patch.object(config, "user_data_dir", lambda: self.tmp / "platform"):
             config.use(config.Store(config.CODE_DIR / "settings.json", config.CODE_DIR))
             self.assertEqual(ai.key_file().parent.parent, self.tmp / "platform")
             self.assertFalse(ai.key_file().is_relative_to(config.CODE_DIR))
@@ -167,6 +167,15 @@ class KeyStorageTests(Base):
         self.assertNotIn(KEY, payload)
         self.assertNotIn(KEY[-6:], payload)
         self.assertIn('"saved": true', payload)
+
+    def test_key_saved_before_the_rename_moves_to_the_new_entry(self):
+        self.keyring.set_password(ai.LEGACY_KEYRING_SERVICE, "openai", KEY)
+        self.assertEqual(ai.key_status("openai"), {"saved": True, "where": "keychain"})
+        self.assertEqual(ai.get_key("openai"), KEY)
+        self.assertEqual(self.keyring.data, {(ai.KEYRING_SERVICE, "openai"): KEY})
+        self.keyring.set_password(ai.LEGACY_KEYRING_SERVICE, "openai", KEY)
+        ai.delete_key("openai")
+        self.assertEqual(self.keyring.data, {}, "removing a key removes both entries")
 
     def test_bad_key_rejected(self):
         with self.assertRaises(ValueError):

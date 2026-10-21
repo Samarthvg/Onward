@@ -9,7 +9,7 @@
 ; /SILENT /RELAUNCH=1 so the new version starts by itself afterwards.
 ;
 ; Uninstalling removes the program, its Start menu entry and its login
-; item. Your jobs, resumes and settings (%LOCALAPPDATA%\JobRadar) stay
+; item. Your jobs, resumes and settings (%LOCALAPPDATA%\Onward) stay
 ; unless you choose to delete them when asked.
 ;
 ; Code signing: set SignTool below to the owner's own certificate, e.g. in
@@ -36,7 +36,9 @@
   #define IconFile "..\..\build\icon.ico"
 #endif
 #define AppExe AppName + ".exe"
-#define DataDir "{localappdata}\JobRadar"
+#define DataDir "{localappdata}\Onward"
+; Where the data lived before the rename; the app moves it on its first start.
+#define LegacyDataDir "{localappdata}\JobRadar"
 
 [Setup]
 ; Never change AppId: it is how an upgrade finds the installed copy.
@@ -90,13 +92,21 @@ begin
   Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
 end;
 
+procedure OfferToDelete(Dir: String);
+begin
+  if DirExists(Dir) then
+    if MsgBox('Also delete your saved jobs, resumes and settings?' #13#10#13#10 + Dir + #13#10#13#10 +
+              'Choose No to keep them for a later install.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      DelTree(Dir, True, True, True);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
     RegDeleteValue(HKEY_CURRENT_USER, RunKey, '{#AppName}');
-  if (CurUninstallStep = usPostUninstall) and not UninstallSilent and DirExists(ExpandConstant('{#DataDir}')) then
-    if MsgBox('Also delete your saved jobs, resumes and settings?' #13#10#13#10 +
-              ExpandConstant('{#DataDir}') + #13#10#13#10 +
-              'Choose No to keep them for a later install.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
-      DelTree(ExpandConstant('{#DataDir}'), True, True, True);
+  if (CurUninstallStep = usPostUninstall) and not UninstallSilent then
+  begin
+    OfferToDelete(ExpandConstant('{#DataDir}'));
+    OfferToDelete(ExpandConstant('{#LegacyDataDir}'));
+  end;
 end;

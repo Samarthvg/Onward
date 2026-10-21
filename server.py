@@ -550,7 +550,7 @@ def submit(params: dict) -> str:
 # HTTP
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "jobradar/1.0"
+    server_version = "Onward/1.0"
 
     def log_message(self, fmt, *args):  # quiet; errors go to server.log
         pass
