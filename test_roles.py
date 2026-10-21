@@ -1,6 +1,6 @@
-"""Search profiles (filters.py) and how radar.py uses them.
+"""Roles (filters.py) and how radar.py uses them.
 
-Run:  python -m unittest test_profiles
+Run:  python -m unittest test_roles
 """
 
 import json
@@ -14,10 +14,36 @@ import config
 import filters
 import radar
 
+# --------------------------------------------------------------------------
+# The radar's filter from before roles existed, kept here as the reference
+# the seeded role must reproduce.
+
+SWE_TITLE = re.compile(
+    r"\b(software|sde|swe|developer|back[- ]?end|front[- ]?end|full[- ]?stack|"
+    r"platform|infrastructure|mobile|ios|android|devops|site reliability|sre|"
+    r"machine learning|ml|ai|data|founding|forward deployed|"
+    r"distributed systems|cloud|security|web|application|compiler|embedded software)\b", re.I)
+ENGINEER_WORD = re.compile(r"\b(engineer|engineering|developer|sde|swe|programmer)\b", re.I)
+NOT_SWE = re.compile(
+    r"\b(sales|solutions?|support|customer|field|hardware|mechanical|electrical|"
+    r"manufacturing|technician|recruit\w*|account|marketing|designer|analyst|"
+    r"quality assurance|qa|validation|test engineer|network engineer|process|"
+    r"civil|chemical|rf|optical|facilities|propulsion|avionics|structures|"
+    r"scientist|mission|integration|deployment strategist|softgoods|textile|industrial design|"
+    r"product design|mechanical design)\b", re.I)
+STRONG_SWE = re.compile(r"\b(software|sde|swe|developer|back[- ]?end|front[- ]?end|full[- ]?stack)\b", re.I)
+
+
+def legacy_swe_title(title: str) -> bool:
+    if not ENGINEER_WORD.search(title):
+        return False
+    if STRONG_SWE.search(title):
+        return not re.search(r"\b(sales|solutions?|support|test|qa)\s+engineer|\b(marketing|recruit\w*)\b", title, re.I)
+    return bool(SWE_TITLE.search(title) and not NOT_SWE.search(title))
+
 
 def legacy_keep(title: str, location: str, country, description: str) -> bool:
-    """build_job's filter before profiles existed, as it was written."""
-    if not (radar.is_swe_title(title) and radar.is_entry_title(title)):
+    if not (legacy_swe_title(title) and radar.is_entry_title(title)):
         return False
     if not radar.us_location(location, country):
         return False
@@ -37,6 +63,7 @@ POSTINGS = [
     ("Acme", "Backend Engineer", "Toronto, Ontario", None, REQ),
     ("Acme", "Backend Engineer", "London, UK", None, REQ),
     ("Acme", "Frontend Engineer", "Remote", None, REQ),
+    ("Acme", "Full-Stack Engineer", "Denver, CO", None, REQ),
     ("Acme", "Data Engineer", "Chicago, IL", None, REQ + "Pay range: $110,000 - $140,000 per year"),
     ("Acme", "Data Engineer", "Denver, CO", None, REQ + "• 4+ years of experience building pipelines"),
     ("Acme", "Analytics Engineer", "Atlanta, GA", None, REQ),
@@ -56,6 +83,22 @@ POSTINGS = [
     ("Initech", "Software Development Engineer", "Seattle, WA / Vancouver, BC", None, REQ),
 ]
 
+# Titles the old filter decides in less obvious ways: a software word beats
+# a non-software word, "test engineer" also covers "test engineering", and
+# words must be whole.
+TRICKY_TITLES = [
+    "Full-Stack Software Engineer, Mission Autonomy", "Software Quality Assurance Engineer",
+    "Embedded Software Engineer, RF Payloads", "Software Test Engineering Intern", "Software Engineer in Test",
+    "Solutions Engineer", "Sales Engineer, Cloud", "Software Engineer, Sales Platform", "Recruiting Engineer",
+    "Data Center Technician", "Cloud Support Engineer", "Platform Engineer", "Engineer, Data Platform",
+    "ML Engineer", "Machine Learning Scientist", "Developer Advocate", "Back-End Developer", "Front End Engineer",
+    "Fullstack Engineer", "Network Engineer", "Security Engineer", "Hardware Engineer", "AI Engineer",
+    "SDE II", "SDE2", "Software Architect", "Platforms Engineer", "Web Developer", "Customer Success Engineer",
+    "Application Support Engineer", "QA Engineer", "Programmer Analyst", "Analytics Engineer",
+    "Founding Engineer", "Forward Deployed Engineer", "Compiler Engineer", "Integration Engineer",
+    "Mobile Developer (iOS)", "Engineering Manager, Infrastructure", "DevOps Engineer",
+]
+
 
 def facts(c, t, loc, country, desc) -> filters.Facts:
     yoe = radar.min_years(desc)
@@ -63,48 +106,97 @@ def facts(c, t, loc, country, desc) -> filters.Facts:
                          bool(radar.ENTRY_HINT.search(t)), filters.pay_range(desc))
 
 
-def profile(**kw) -> dict:
-    return config.PROFILE.clean({**config.PROFILE.default, **kw}, "p", [])
+def role(**kw) -> dict:
+    return config.ROLE.clean({**config.ROLE.default, **kw}, "r", [])
 
 
-def picked(search: filters.Search, pid: str = None) -> list[tuple[str, str]]:
+def template(name: str) -> list[str]:
+    return filters.ROLE_TEMPLATES[name][1]
+
+
+def picked(search: filters.Search, rid: str = None) -> list[tuple[str, str]]:
     out = []
     for c, t, loc, country, desc in POSTINGS:
         ids = search.matching(facts(c, t, loc, country, desc))
-        if (pid in ids) if pid else ids:
+        if (rid in ids) if rid else ids:
             out.append((t, loc))
     return out
 
 
-class DefaultProfileTests(unittest.TestCase):
-    def test_default_profile_is_the_old_filter(self):
+class SeededRoleTests(unittest.TestCase):
+    """The role a new install starts with keeps what the radar always kept."""
+
+    def test_title_keywords_are_the_old_filter(self):
+        for _, t, *_ in POSTINGS:
+            self.assertEqual(filters.is_swe_title(t), legacy_swe_title(t), t)
+        for t in TRICKY_TITLES:
+            self.assertEqual(filters.is_swe_title(t), legacy_swe_title(t), t)
+
+    def test_seeded_role_is_the_old_filter(self):
         search = filters.Search()       # what radar uses without settings
         for c, t, loc, country, desc in POSTINGS:
             with self.subTest(title=t, location=loc):
                 self.assertEqual(bool(search.matching(facts(c, t, loc, country, desc))),
                                  legacy_keep(t, loc, country, desc))
-        self.assertEqual(filters.Search([config.PROFILE.default]).profiles[0].seniority, {"entry"})
-
-    def test_default_settings_profile_is_the_old_filter_too(self):
         s = config.defaults()
-        search = filters.Search(s["profiles"], s["role_families"], s["companies"]["blocked"])
-        self.assertEqual(picked(search), picked(filters.Search()))
+        self.assertEqual(picked(filters.Search(s["roles"], s["companies"]["blocked"])), picked(search))
 
     def test_prefilters_agree_with_old_ones(self):
         search = filters.Search()
         for _, t, loc, country, _ in POSTINGS:
-            self.assertEqual(search.title_wanted(t), radar.is_swe_title(t) and radar.is_entry_title(t), t)
+            self.assertEqual(search.title_wanted(t), legacy_swe_title(t) and radar.is_entry_title(t), t)
             self.assertEqual(search.location_wanted(loc, country), radar.us_location(loc, country), loc)
         self.assertEqual(search.only_country(), "US")
         self.assertFalse(search.wants_level("intern"))
 
 
-class ProfileTests(unittest.TestCase):
+class TitleKeywordTests(unittest.TestCase):
+    def test_syntax(self):
+        r = filters.TitleRules(["- manager/director", "full stack/fullstack", "ios/android + engineer/developer",
+                                "recruit*", "   ", "- /"])
+        self.assertEqual(len(r.rules), 4, "lines without words are ignored")
+        self.assertTrue(r.matches("Full-Stack Engineer"))
+        self.assertTrue(r.matches("Fullstack Developer"))
+        self.assertFalse(r.matches("Full Stack Engineering Manager"), "a drop line above wins")
+        self.assertTrue(r.matches("Engineer, Android Platform"), "parts in any order")
+        self.assertFalse(r.matches("Android Designer"), "every part must appear")
+        self.assertTrue(r.matches("Recruiting Coordinator"))
+        self.assertFalse(r.matches("Stack Full Engineer"), "a phrase's words stay in order")
+        self.assertFalse(r.matches("Data Engineer"), "no line fits: left out")
+        self.assertFalse(filters.TitleRules([]).matches("Anything"))
+        order = filters.TitleRules(["full stack", "- manager"])
+        self.assertTrue(order.matches("Full Stack Manager"), "the first line that fits decides")
+
+    def test_templates_are_only_title_keywords(self):
+        self.assertEqual(template("blank"), [])
+        self.assertIs(template("software"), filters.SOFTWARE_KEYWORDS)
+        for name, (label, kw) in filters.ROLE_TEMPLATES.items():
+            self.assertIsInstance(label, str)
+            if kw:
+                self.assertTrue(filters.TitleRules(kw).rules, name)
+        cases = {
+            "data": (["Data Engineer", "Business Intelligence Analyst", "Analytics Engineer", "Data Scientist"],
+                     ["Data Center Technician", "Clinical Data Specialist", "Sales Engineer", "Insights Analyst"]),
+            "ml": (["Machine Learning Engineer", "Applied Scientist", "Research Engineer, NLP"], ["ML Sales Lead"]),
+            "mobile": (["Android Developer", "iOS Engineer"], ["Mobile Sales Engineer"]),
+            "infra": (["Site Reliability Engineer", "DevOps Engineer", "Cloud Infrastructure Engineer"],
+                      ["Solutions Engineer, Cloud"]),
+            "fullstack": (["Full-Stack Engineer", "Backend Developer"], ["Customer Support Engineer"]),
+        }
+        for name, (yes, no) in cases.items():
+            rules = filters.TitleRules(template(name))
+            for t in yes:
+                self.assertTrue(rules.matches(t), (name, t))
+            for t in no:
+                self.assertFalse(rules.matches(t), (name, t))
+
+
+class RoleTests(unittest.TestCase):
     def test_data_engineer_any_us_city_no_visa_filters(self):
-        data = profile(id="data", name="Data engineer, any US city", roles=["data"], seniority=["entry", "mid"],
-                       visa={"status": "authorized", "hide_no_sponsorship": False})
-        search = filters.Search([config.PROFILE.default, data])
-        default, de = picked(search, "default"), picked(search, "data")
+        data = role(id="data", name="Data engineer, any US city", title_keywords=template("data"),
+                    seniority=["entry", "mid"], visa={"status": "authorized", "hide_no_sponsorship": False})
+        search = filters.Search([config.ROLE.default, data])
+        default, de = picked(search, "software"), picked(search, "data")
         self.assertNotEqual(default, de)
         self.assertIn(("Data Engineer", "Chicago, IL"), de)
         self.assertIn(("Analytics Engineer", "Atlanta, GA"), de)
@@ -113,6 +205,11 @@ class ProfileTests(unittest.TestCase):
         self.assertNotIn(("Data Engineer", "Denver, CO"), default, "asks 4 years: not entry")
         self.assertNotIn(("Software Engineer, New Grad", "New York, NY"), de)
         self.assertNotIn(("Data Analyst", "Dallas, TX"), default)
+
+    def test_user_written_role(self):
+        fs = filters.Search([role(id="fs", name="Full-stack", title_keywords=["- manager", "full stack/fullstack"],
+                                  seniority=["entry", "mid"])])
+        self.assertEqual(picked(fs), [("Full-Stack Engineer", "Denver, CO")])
 
     def test_levels(self):
         cases = {
@@ -133,18 +230,18 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(filters.levels("Software Engineer", 8, False), {"senior"})
         self.assertEqual(filters.levels("Software Engineer, New Grad", 3, True), {"entry"})
 
-    def test_senior_and_intern_profiles(self):
-        senior = filters.Search([profile(id="sr", seniority=["senior"])])
+    def test_senior_and_intern_roles(self):
+        senior = filters.Search([role(id="sr", seniority=["senior"])])
         got = picked(senior)
         self.assertIn(("Senior Software Engineer", "Remote - US"), got)
         self.assertIn(("Staff Backend Engineer", "Austin, TX"), got)
         self.assertNotIn(("Software Engineer, New Grad", "New York, NY"), got)
-        intern = filters.Search([profile(id="in", seniority=["intern"])])
+        intern = filters.Search([role(id="in", seniority=["intern"])])
         self.assertEqual(picked(intern), [("Software Engineer Intern", "Boston, MA")])
         self.assertTrue(intern.wants_level("intern"))
 
     def test_countries_cities_and_work_setting(self):
-        ca = filters.Search([profile(id="ca", countries=["CA"], seniority=["entry", "mid"], roles=["software"])])
+        ca = filters.Search([role(id="ca", countries=["CA"], seniority=["entry", "mid"])])
         got = picked(ca)
         self.assertIn(("Backend Engineer", "Toronto, Ontario"), got)
         self.assertIn(("Software Engineer", "Remote"), got, "country field CA, remote")
@@ -152,60 +249,48 @@ class ProfileTests(unittest.TestCase):
         self.assertIn(("Frontend Engineer", "Remote"), got, "bare Remote counts for any country")
         self.assertNotIn(("Backend Engineer", "London, UK"), got)
         self.assertNotIn(("Software Engineer, New Grad", "New York, NY"), got)
-        self.assertIsNone(filters.Search([config.PROFILE.default, profile(id="ca", countries=["CA"])]).only_country())
-        anywhere = filters.Search([profile(id="any", countries=[])])
+        self.assertIsNone(filters.Search([config.ROLE.default, role(id="ca", countries=["CA"])]).only_country())
+        anywhere = filters.Search([role(id="any", countries=[])])
         self.assertIn(("Backend Engineer", "London, UK"), picked(anywhere))
         self.assertIsNone(anywhere.only_country())
 
-        seattle = filters.Search([profile(id="sea", cities=["Seattle"], roles=["software", "mobile"])])
+        both = filters.SOFTWARE_KEYWORDS + template("mobile")
+        seattle = filters.Search([role(id="sea", cities=["Seattle"], title_keywords=both)])
         got = picked(seattle)
         self.assertIn(("iOS Engineer", "Hybrid - Seattle, WA"), got)
         self.assertIn(("Frontend Engineer", "Remote"), got, "remote jobs count for every city")
         self.assertNotIn(("Software Engineer, New Grad", "New York, NY"), got)
-        office = filters.Search([profile(id="sea", cities=["Seattle"], roles=["software", "mobile"], workplace=["onsite", "hybrid"])])
+        office = filters.Search([role(id="sea", cities=["Seattle"], title_keywords=both, workplace=["onsite", "hybrid"])])
         self.assertNotIn(("Frontend Engineer", "Remote"), picked(office))
-        remote = filters.Search([profile(id="r", workplace=["remote"])])
+        remote = filters.Search([role(id="r", workplace=["remote"])])
         self.assertEqual({loc for _, loc in picked(remote)} - {"Remote", "Remote - US", "Remote (US)"}, set())
         self.assertEqual(filters.workplace("Remote / New York, NY", False), {"remote", "onsite"})
         self.assertEqual(filters.workplace("Hybrid - Seattle, WA", False), {"hybrid"})
         self.assertEqual(filters.workplace("Portland, OR", False), {"onsite"})
 
     def test_keywords_pay_and_companies(self):
-        must = filters.Search([profile(id="m", roles=["data", "software"], seniority=["entry", "mid"], must_have=["pay range"])])
+        wide = filters.SOFTWARE_KEYWORDS + template("data")
+        must = filters.Search([role(id="m", title_keywords=wide, seniority=["entry", "mid"], must_have=["pay range"])])
         self.assertEqual(picked(must), [("Data Engineer", "Chicago, IL")])
-        excl = filters.Search([profile(id="x", roles=["infra", "software"], seniority=["entry", "mid"], exclude=["clearance"])])
+        infra = filters.SOFTWARE_KEYWORDS + template("infra")
+        excl = filters.Search([role(id="x", title_keywords=infra, seniority=["entry", "mid"], exclude=["clearance"])])
         self.assertNotIn(("Site Reliability Engineer", "Remote (US)"), picked(excl))
-        title = filters.Search([profile(id="t", exclude_title=["new grad"])])
+        title = filters.Search([role(id="t", title_keywords=["- new grad"] + filters.SOFTWARE_KEYWORDS)])
         self.assertNotIn(("Software Engineer, New Grad", "New York, NY"), picked(title))
-        rich = filters.Search([profile(id="p", roles=["data", "ml", "software"], seniority=["entry", "mid"], salary_min=145000)])
+        rich = filters.Search([role(id="p", title_keywords=filters.SOFTWARE_KEYWORDS + template("data") + template("ml"),
+                                    seniority=["entry", "mid"], salary_min=145000)])
         got = picked(rich)
         self.assertNotIn(("Data Engineer", "Chicago, IL"), got, "pays at most 140k")
         self.assertIn(("Machine Learning Engineer", "Mountain View, CA"), got)
         self.assertIn(("Software Engineer, New Grad", "New York, NY"), got, "no pay stated: kept")
         self.assertNotIn(("Software Engineer I", "Pittsburgh, PA"), got, "$45/hour is about 94k a year")
-        only = filters.Search([profile(id="o", companies_allow=["globex"])])
+        only = filters.Search([role(id="o", companies_allow=["globex"])])
         self.assertEqual(picked(only), [("Software Engineer I", "Pittsburgh, PA")])
-        block = filters.Search([profile(id="b", companies_block=["Acme"])])
+        block = filters.Search([role(id="b", companies_block=["Acme"])])
         self.assertEqual(picked(block), [("Software Engineer I", "Pittsburgh, PA"), ("Software Development Engineer", "Seattle, WA / Vancouver, BC")])
-        everywhere = filters.Search([config.PROFILE.default], blocked=["ACME"])
-        self.assertTrue(all(c != "Acme" for c, *_ in POSTINGS if everywhere.matching(facts(c, *_))))
+        everywhere = filters.Search([config.ROLE.default], blocked=["ACME"])
+        self.assertFalse(any(everywhere.matching(facts(*p)) for p in POSTINGS if p[0] == "Acme"))
         self.assertFalse(everywhere.company_wanted("Acme"))
-
-    def test_role_families_and_custom_roles(self):
-        fam = filters.BUILTIN_FAMILIES
-        self.assertTrue(fam["ml"].test("Machine Learning Engineer"))
-        self.assertTrue(fam["ml"].test("Applied Scientist"))
-        self.assertTrue(fam["mobile"].test("Android Developer"))
-        self.assertTrue(fam["infra"].test("Site Reliability Engineer"))
-        self.assertTrue(fam["infra"].test("DevOps Engineer"))
-        self.assertFalse(fam["infra"].test("Solutions Engineer, Cloud"))
-        self.assertTrue(fam["data"].test("Business Intelligence Analyst"))
-        self.assertFalse(fam["data"].test("Data Center Technician"))
-        self.assertFalse(fam["data"].test("Sales Engineer"))
-        custom = [{"id": "firmware", "label": "Firmware", "include": ["firmware", "embedded"], "exclude": ["hardware"]}]
-        search = filters.Search([profile(id="fw", roles=["firmware"])], custom)
-        self.assertEqual(picked(search), [("Firmware Engineer", "San Jose, CA")])
-        self.assertFalse(search.families["firmware"].test("Firmware Hardware Engineer"))
 
     def test_pay_parsing(self):
         cases = {
@@ -236,9 +321,9 @@ class RadarTaggingTests(unittest.TestCase):
     def setUp(self):
         saved = {k: getattr(radar, k) for k in ("SEARCH", "SETTINGS")}
         self.addCleanup(lambda: [setattr(radar, k, v) for k, v in saved.items()])
-        data = profile(id="data", name="Data", roles=["data"], seniority=["entry", "mid"],
-                       visa={"status": "authorized", "hide_no_sponsorship": False})
-        radar.SEARCH = filters.Search([config.PROFILE.default, data])
+        data = role(id="data", name="Data", title_keywords=template("data"), seniority=["entry", "mid"],
+                    visa={"status": "authorized", "hide_no_sponsorship": False})
+        radar.SEARCH = filters.Search([config.ROLE.default, data])
 
     def job(self, title, location="Chicago, IL", desc=REQ, **kw):
         base = dict(company="Acme", title=title, location=location, country=None, remote=False, url="u/" + title,
@@ -246,10 +331,10 @@ class RadarTaggingTests(unittest.TestCase):
                     apply_url="a/" + title, verify_url="v", posted_field="first_published", posted_raw="x")
         return radar.build_job(**{**base, **kw})
 
-    def test_build_job_tags_profiles(self):
-        self.assertEqual(json.loads(self.job("Data Engineer").profiles), ["default", "data"])
-        self.assertEqual(json.loads(self.job("Data Analyst").profiles), ["data"])
-        self.assertEqual(json.loads(self.job("Software Engineer, New Grad").profiles), ["default"])
+    def test_build_job_tags_roles(self):
+        self.assertEqual(json.loads(self.job("Data Engineer").roles), ["software", "data"])
+        self.assertEqual(json.loads(self.job("Data Analyst").roles), ["data"])
+        self.assertEqual(json.loads(self.job("Software Engineer, New Grad").roles), ["software"])
         self.assertIsNone(self.job("Sales Manager"))
         j = self.job("Data Engineer", desc=REQ + "Salary: $100,000 - $120,000", country="US")
         self.assertEqual((j.pay_min, j.pay_max, j.country), (100000, 120000, "US"))
@@ -258,8 +343,7 @@ class RadarTaggingTests(unittest.TestCase):
         conn = sqlite3.connect(":memory:")
         radar.migrate(conn)
         now = time.time()
-        jobs = [self.job("Data Engineer"), self.job("Data Analyst"), self.job("Software Engineer, New Grad")]
-        radar.store(conn, jobs, now)
+        radar.store(conn, [self.job("Data Engineer"), self.job("Data Analyst"), self.job("Software Engineer, New Grad")], now)
 
         class NoH1B:
             years = []
@@ -267,22 +351,35 @@ class RadarTaggingTests(unittest.TestCase):
             def lookup(self, company):
                 return None
         rows = radar.load_for_dashboard(conn, now, None, NoH1B())
-        self.assertEqual({r["title"]: r["profiles"] for r in rows},
-                         {"Data Engineer": ["default", "data"], "Data Analyst": ["data"],
-                          "Software Engineer, New Grad": ["default"]})
+        self.assertEqual({r["title"]: r["roles"] for r in rows},
+                         {"Data Engineer": ["software", "data"], "Data Analyst": ["data"],
+                          "Software Engineer, New Grad": ["software"]})
         radar.save_scoring(conn, rows, {"skill_w": {}, "term_w": {}}, now)
-        # The data profile is deleted: its jobs are no longer shown, and lose their tags.
-        radar.SEARCH = filters.Search([config.PROFILE.default])
+        # The data role is deleted: its jobs are no longer shown, and lose their tags.
+        radar.SEARCH = filters.Search([config.ROLE.default])
         rows = radar.load_for_dashboard(conn, now, None, NoH1B())
         self.assertEqual(sorted(r["title"] for r in rows), ["Data Engineer", "Software Engineer, New Grad"])
         radar.save_scoring(conn, rows, {"skill_w": {}, "term_w": {}}, now)
-        tags = dict(conn.execute("SELECT title, profiles FROM jobs"))
+        tags = dict(conn.execute("SELECT title, roles FROM jobs"))
         self.assertEqual(tags["Data Analyst"], "[]")
-        self.assertEqual(json.loads(tags["Data Engineer"]), ["default"])
+        self.assertEqual(json.loads(tags["Data Engineer"]), ["software"])
 
-    def test_wider_profiles_drop_the_country_filter_from_searches(self):
+    def test_profiles_column_becomes_roles(self):
+        conn = sqlite3.connect(":memory:")
+        radar.migrate(conn)
+        conn.execute("ALTER TABLE jobs RENAME COLUMN roles TO profiles")
+        conn.execute("INSERT INTO jobs (key, company, title, location, remote, url, source, posted_exact, sponsorship, "
+                     "sponsor_note, entry_hint, first_seen, last_seen, profiles) "
+                     "VALUES ('k', 'Acme', 'SWE', 'NY', 0, 'u', 'greenhouse', 1, 'unknown', '', 0, 1, 1, '[\"default\"]')")
+        radar.migrate(conn)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
+        self.assertIn("roles", cols)
+        self.assertNotIn("profiles", cols)
+        self.assertEqual(conn.execute("SELECT roles FROM jobs").fetchone()[0], '["default"]')
+
+    def test_wider_roles_drop_the_country_filter_from_searches(self):
         urls = []
-        radar.SEARCH = filters.Search([profile(id="any", countries=[])])
+        radar.SEARCH = filters.Search([role(id="any", countries=[])])
         with mock.patch.object(radar, "get_json", lambda url, *a, **k: urls.append(url) or {"content": [], "totalFound": 1}):
             radar.fetch_smartrecruiters("Acme")
         self.assertNotIn("country=", urls[0])
@@ -294,7 +391,7 @@ class RadarTaggingTests(unittest.TestCase):
         self.assertIn("country=us&", urls[0])
         self.assertEqual(radar.country_param("country", radar.ISO3), {"country": "USA"})
         self.assertEqual(radar.skipped_commitments({"contract"}, {"intern"}), {"contract", "intern"})
-        radar.SEARCH = filters.Search([profile(id="i", seniority=["intern"])])
+        radar.SEARCH = filters.Search([role(id="i", seniority=["intern"])])
         self.assertEqual(radar.skipped_commitments({"contract"}, {"intern"}), {"contract"})
 
     def test_user_companies_merge_with_the_shipped_list(self):

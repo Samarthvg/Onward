@@ -210,13 +210,18 @@ class EndpointTests(unittest.TestCase):
         st, d = self.call("/api/settings")
         self.assertEqual(st, 200)
         self.assertEqual(d["settings"], config.defaults())
-        self.assertIn("data", [f["id"] for f in d["choices"]["families"]])
+        templates = {t["id"]: t["title_keywords"] for t in d["choices"]["templates"]}
+        self.assertEqual(templates["blank"], [])
         self.assertIn({"code": "CA", "name": "Canada"}, d["choices"]["countries"])
-        data = {**d["new_profile"], "id": "data", "name": "Data engineer, any US city", "roles": ["data"],
+        self.assertNotIn("ollama", d["choices"]["backends"] + d["choices"]["draft_backends"])
+        data = {**d["new_role"], "id": "data", "name": "Data engineer, any US city", "title_keywords": templates["data"],
                 "seniority": ["entry", "mid"], "visa": {"status": "authorized", "hide_no_sponsorship": False}}
-        st, d = self.call("/api/settings", {"settings": {"profiles": [d["settings"]["profiles"][0], data]}})
+        st, d = self.call("/api/settings", {"settings": {"roles": [d["settings"]["roles"][0], data]}})
         self.assertEqual(st, 200, d)
-        self.assertEqual([p["id"] for p in self.store.load()["profiles"]], ["default", "data"])
+        self.assertEqual([r["id"] for r in self.store.load()["roles"]], ["software", "data"])
+        st, d = self.call("/api/settings", {"settings": {"roles": [{**data, "title_keywords": []}]}})
+        self.assertEqual(st, 400, "a role needs title keywords")
+        self.assertEqual(len(self.store.load()["roles"]), 2)
         st, d = self.call("/api/settings", {"settings": {"queue": {"backend": "skynet"}, "radar": {"workers": "many"}}})
         self.assertEqual(st, 400)
         self.assertEqual(len(d["errors"]), 2)

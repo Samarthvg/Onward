@@ -56,10 +56,24 @@
     autoRun: false,            // fill as soon as an application form appears
     remember: true,            // save answers typed into custom questions
     fillRemembered: true,      // reuse saved short answers automatically
-    draftBackend: "chatgpt",   // chatgpt | claude-code | ollama | manual
+    draftBackend: "chatgpt",   // one of DRAFT_BACKENDS
     helper: true,              // offer drafting through the local helper
     aiFill: true,              // answer the remaining questions with the helper after filling
   };
+  const DRAFT_BACKENDS = ["chatgpt", "claude-code", "manual"];
+
+  // Saved settings over the defaults. A drafting backend that no longer
+  // exists (the local Ollama model was removed) falls back to ChatGPT;
+  // `notice` says so, once, until the settings are saved again.
+  function withDefaults(saved) {
+    const settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+    let notice = "";
+    if (!DRAFT_BACKENDS.includes(settings.draftBackend)) {
+      notice = `Drafting with "${settings.draftBackend}" is no longer available, so drafts now use ChatGPT. Pick another under Drafting answers.`;
+      settings.draftBackend = DEFAULT_SETTINGS.draftBackend;
+    }
+    return { settings, notice };
+  }
 
   const US_STATES = {
     AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut",
@@ -354,7 +368,7 @@
 
   root.JR = root.JR || {};
   root.JR.rules = {
-    PROFILE_FIELDS, STANDARD_ANSWERS, EEO_ANSWERS, DECLINE, DEFAULT_ANSWERS, DEFAULT_PROFILE, DEFAULT_SETTINGS,
+    PROFILE_FIELDS, STANDARD_ANSWERS, EEO_ANSWERS, DECLINE, DEFAULT_ANSWERS, DEFAULT_PROFILE, DEFAULT_SETTINGS, DRAFT_BACKENDS, withDefaults,
     US_STATES, CHOICE_KINDS, TEXT_KINDS, clean, normQ, classify, answerFor, pickOption, asText, alternatives, DECLINE_RE,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

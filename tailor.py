@@ -6,7 +6,6 @@ survivors to the original source, then this module compiles and trims until
 the result fits on one page.
 
 Backends, all returning the same JSON:
-  ollama       local model (default qwen3:8b), free, private
   chatgpt      OpenAI's `codex` CLI on your ChatGPT subscription login, no API key
   claude-code  the `claude` CLI on your Claude subscription login, no API key
   claude-api   Anthropic API with ANTHROPIC_API_KEY (or an `ant auth` profile)
@@ -24,7 +23,6 @@ import re
 import shutil
 import subprocess
 import time
-import urllib.request
 from dataclasses import asdict
 from pathlib import Path
 
@@ -40,14 +38,6 @@ def _tailoring(key: str, env: str | None = None):
 def runner_dir() -> Path:
     """Empty working folder for the CLI backends, so no project files load."""
     return config.store().path_for("resume_dir") / ".claude-runner"
-
-
-def ollama_url() -> str:
-    return _tailoring("ollama_url", "JOBRADAR_OLLAMA_URL").rstrip("/")
-
-
-def ollama_model() -> str:
-    return _tailoring("ollama_model", "JOBRADAR_OLLAMA_MODEL")
 
 
 def claude_model() -> str:
@@ -136,10 +126,6 @@ def _job_block(job: dict, jd: str) -> str:
 # --------------------------------------------------------------------------
 # Backends
 
-def run_ollama(res: rt.Resume, job: dict, jd: str) -> tuple[dict, str]:
-    return _ollama_json(INSTRUCTIONS, _resume_block(res) + "\n\n" + _job_block(job, jd), SCHEMA)
-
-
 def _claude_json(prompt: str, schema: dict) -> tuple[dict, str]:
     """One structured answer from the `claude` CLI on the user's subscription login."""
     exe = shutil.which("claude")
@@ -208,27 +194,6 @@ def _codex_json(prompt: str, schema: dict) -> tuple[dict, str]:
         out_path.unlink(missing_ok=True)
         schema_path.unlink(missing_ok=True)
 
-
-def _ollama_json(system: str, user: str, schema: dict, temperature: float = 0.3) -> tuple[dict, str]:
-    body = {
-        "model": ollama_model(),
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        "format": schema,
-        "stream": False,
-        "think": False,
-        "options": {"num_ctx": 16384, "temperature": temperature},
-    }
-    req = urllib.request.Request(f"{ollama_url()}/api/chat", data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=600) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.URLError as e:
-        raise BackendError(f"Ollama isn't reachable at {ollama_url()}. Start the Ollama app. ({e.reason})") from e
-    try:
-        return json.loads(data["message"]["content"]), ollama_model()
-    except (KeyError, json.JSONDecodeError) as e:
-        raise BackendError("The local model returned malformed output. Try again.") from e
 
 
 def run_claude_code(res: rt.Resume, job: dict, jd: str) -> tuple[dict, str]:
@@ -304,8 +269,7 @@ def run_claude_api(res: rt.Resume, job: dict, jd: str) -> tuple[dict, str]:
         raise BackendError("Claude returned malformed output.") from e
 
 
-BACKENDS = {"ollama": run_ollama, "chatgpt": run_chatgpt, "claude-code": run_claude_code,
-            "claude-api": run_claude_api}
+BACKENDS = {"chatgpt": run_chatgpt, "claude-code": run_claude_code, "claude-api": run_claude_api}
 
 
 # --------------------------------------------------------------------------
@@ -441,9 +405,7 @@ def humanize(items: list[dict], backend: str, company: str = "") -> list[dict]:
             lines.append(f"[id {i['id']}]{limit}\nproblems: {'; '.join(i['problems'])}\nanswer: {i['answer']}")
         prompt = REWRITE_INSTRUCTIONS + "\n\nANSWERS\n" + "\n\n".join(lines)
         try:
-            if backend == "ollama":
-                raw, _ = _ollama_json("You return only the requested JSON.", prompt, REWRITE_SCHEMA, temperature=0.6)
-            elif backend == "chatgpt":
+            if backend == "chatgpt":
                 raw, _ = _codex_json(prompt, REWRITE_SCHEMA)
             else:
                 raw, _ = _claude_json(prompt, REWRITE_SCHEMA)
@@ -480,9 +442,9 @@ DRAFT_SCHEMA = {
     "additionalProperties": False,
 }
 
-# Subscription logins and the local model only. claude-api bills per token,
-# so drafting never uses it.
-DRAFT_BACKENDS = ("chatgpt", "claude-code", "ollama")
+# Subscription logins only. claude-api bills per token, so drafting never
+# uses it. Same list as config.DRAFT_BACKENDS.
+DRAFT_BACKENDS = config.DRAFT_BACKENDS
 
 
 def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0) -> tuple[str, str]:
@@ -573,14 +535,12 @@ def answers_prompt(master_tex: str, job: dict, profile: dict, questions: list[di
 def answer_questions(master_tex: str, job: dict, profile: dict, questions: list[dict], jd: str, backend: str) -> dict:
     """Answers for several application questions in one model call."""
     if backend not in DRAFT_BACKENDS:
-        raise BackendError(f"Answering questions can't use {backend}. Choose ChatGPT, Claude or the local model.")
+        raise BackendError(f"Answering questions can't use {backend}. Choose ChatGPT or Claude.")
     if not questions:
         return {"answers": [], "backend": backend, "model": "", "seconds": 0}
     started = time.time()
     prompt = answers_prompt(master_tex, job, profile, questions, jd)
-    if backend == "ollama":
-        raw, model = _ollama_json("You return only the requested JSON.", prompt, ANSWERS_SCHEMA, temperature=0.4)
-    elif backend == "chatgpt":
+    if backend == "chatgpt":
         raw, model = _codex_json(prompt, ANSWERS_SCHEMA)
     else:
         raw, model = _claude_json(prompt, ANSWERS_SCHEMA)
@@ -616,14 +576,12 @@ def answer_questions(master_tex: str, job: dict, profile: dict, questions: list[
 def draft_answer(master_tex: str, job: dict, question: str, context: str, jd: str,
                  backend: str, max_chars: int = 0) -> dict:
     if backend not in DRAFT_BACKENDS:
-        raise BackendError(f"Drafting can't use {backend}. Choose ChatGPT, Claude or the local model.")
+        raise BackendError(f"Drafting can't use {backend}. Choose ChatGPT or Claude.")
     if not question.strip():
         raise BackendError("No question to answer.")
     started = time.time()
     instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars)
-    if backend == "ollama":
-        raw, model = _ollama_json(instructions, material, DRAFT_SCHEMA, temperature=0.5)
-    elif backend == "chatgpt":
+    if backend == "chatgpt":
         raw, model = _codex_json(instructions + "\n\n" + material, DRAFT_SCHEMA)
     else:
         raw, model = _claude_json(instructions + "\n\n" + material, DRAFT_SCHEMA)
@@ -665,19 +623,10 @@ def _claude_logged_in(proc) -> bool:
 
 
 def backend_status() -> dict:
-    status = {"ollama": False, "ollama_model": ollama_model(),
-              "claude_code": _signed_in("claude", ["claude", "auth", "status"], _claude_logged_in),
-              "chatgpt": _signed_in("codex", ["codex", "login", "status"],
-                                    lambda p: p.returncode == 0 and "logged in" in (p.stdout + p.stderr).lower()),
-              "claude_api": bool(os.environ.get("ANTHROPIC_API_KEY"))}
-    try:
-        with urllib.request.urlopen(f"{ollama_url()}/api/tags", timeout=3) as resp:
-            names = [m["name"] for m in json.loads(resp.read()).get("models", [])]
-        status["ollama"] = ollama_model() in names or f"{ollama_model()}:latest" in names
-        status["ollama_running"] = True
-    except Exception:
-        status["ollama_running"] = False
-    return status
+    return {"claude_code": _signed_in("claude", ["claude", "auth", "status"], _claude_logged_in),
+            "chatgpt": _signed_in("codex", ["codex", "login", "status"],
+                                  lambda p: p.returncode == 0 and "logged in" in (p.stdout + p.stderr).lower()),
+            "claude_api": bool(os.environ.get("ANTHROPIC_API_KEY"))}
 
 
 # --------------------------------------------------------------------------

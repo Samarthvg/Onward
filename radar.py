@@ -35,9 +35,9 @@ from pathlib import Path
 import config
 import filters
 import reqparse
-# Title and location rules live in filters.py with the search profiles.
-from filters import (ENTRY_HINT, ENGINEER_WORD, NON_US, NOT_ENTRY, NOT_SWE, REMOTE, STRONG_SWE,  # noqa: F401
-                     SWE_TITLE, US_CITIES, US_MARKER, US_STATE_NAMES, US_STATES, is_entry_title,
+# Title and location rules live in filters.py with the user's roles.
+from filters import (ENTRY_HINT, NON_US, NOT_ENTRY, REMOTE, US_CITIES, US_MARKER,  # noqa: F401
+                     US_STATE_NAMES, US_STATES, is_entry_title,
                      is_swe_title, us_location)
 
 ROOT = Path(__file__).resolve().parent
@@ -96,14 +96,14 @@ class Job:
     country: str = ""               # the source's own country field, when it sends one
     pay_min: float | None = None    # yearly pay the posting states
     pay_max: float | None = None
-    profiles: str = "[]"            # JSON list of the search profiles that want it
+    roles: str = "[]"               # JSON list of the user's roles that want it
 
 
 # --------------------------------------------------------------------------
 # Settings
 #
 # The constants above are the defaults; configure() sets them from the
-# user's settings.json, along with their search profiles.
+# user's settings.json, along with their roles.
 
 SEARCH = filters.Search()
 SETTINGS: dict = config.defaults()
@@ -121,7 +121,7 @@ def configure(store: config.Store) -> None:
     DASHBOARD_DAYS, STALE_AFTER_DAYS, PURGE_AFTER_DAYS = r["dashboard_days"], r["stale_after_days"], r["purge_after_days"]
     WORKERS, TIMEOUT = r["workers"], r["timeout"]
     ORACLE_DATE_FACET = 7 if DASHBOARD_DAYS <= 7 else 30
-    SEARCH = filters.Search(s["profiles"], s["role_families"], s["companies"]["blocked"])
+    SEARCH = filters.Search(s["roles"], s["companies"]["blocked"])
 
 
 def load_companies(settings: dict) -> dict:
@@ -301,9 +301,9 @@ def build_job(*, company, title, location, country, remote, url, source,
     yoe = min_years(description)
     entry = bool(ENTRY_HINT.search(title))
     pay = filters.pay_range(description)
-    profiles = SEARCH.matching(filters.Facts(company, title, location, country, bool(remote or REMOTE.search(location)),
+    roles = SEARCH.matching(filters.Facts(company, title, location, country, bool(remote or REMOTE.search(location)),
                                              description or "", yoe, entry, pay))
-    if not profiles:
+    if not roles:
         return None
     spons, note = sponsorship(description)
     # "e.g." / "i.e." would end the sentence early for the [^.] window.
@@ -334,7 +334,7 @@ def build_job(*, company, title, location, country, remote, url, source,
         country=(country or "").strip()[:60],
         pay_min=pay[0] if pay else None,
         pay_max=pay[1] if pay else None,
-        profiles=json.dumps(profiles),
+        roles=json.dumps(roles),
     )
 
 
@@ -712,8 +712,8 @@ ISO3 = {"US": "USA", "CA": "CAN", "GB": "GBR", "IE": "IRL", "DE": "DEU", "FR": "
 
 
 def country_param(name: str, codes: dict[str, str] | None = None) -> dict[str, str]:
-    """A search source's country filter, when every profile wants one
-    country; otherwise none, and the profiles filter the results."""
+    """A search source's country filter, when every role wants one
+    country; otherwise none, and the roles filter the results."""
     only = SEARCH.only_country()
     value = (codes or {}).get(only) if codes is not None else filters.COUNTRIES[only][0] if only else None
     return {name: value} if only and value else {}
@@ -721,7 +721,7 @@ def country_param(name: str, codes: dict[str, str] | None = None) -> dict[str, s
 
 def skipped_commitments(always: set[str], intern: set[str]) -> set[str]:
     """Employment types a board fetcher drops before reading postings:
-    part-time and contract always, internships unless a profile wants them."""
+    part-time and contract always, internships unless a role wants them."""
     return always if SEARCH.wants_level("intern") else always | intern
 
 
@@ -1643,18 +1643,22 @@ MIGRATIONS = {
     # server.py can score jobs exactly as the dashboard does.
     "kw": "TEXT NOT NULL DEFAULT ''",
     "degree": "TEXT NOT NULL DEFAULT ''",
-    # Search profiles (filters.py): the source's country field, stated pay,
-    # and the profiles that want the job (JSON list, refreshed every render).
+    # Roles (filters.py): the source's country field, stated pay, and the
+    # roles that want the job (JSON list, refreshed every render).
     "country": "TEXT NOT NULL DEFAULT ''",
     "pay_min": "REAL",
     "pay_max": "REAL",
-    "profiles": "TEXT NOT NULL DEFAULT '[]'",
+    "roles": "TEXT NOT NULL DEFAULT '[]'",
 }
 
 
 def migrate(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     have = {row[1] for row in conn.execute("PRAGMA table_info(jobs)")}
+    if "profiles" in have and "roles" not in have:
+        # Search profiles were renamed roles; the tags carry over.
+        conn.execute("ALTER TABLE jobs RENAME COLUMN profiles TO roles")
+        have = (have - {"profiles"}) | {"roles"}
     for col, decl in MIGRATIONS.items():
         if col not in have:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {decl}")
@@ -1701,11 +1705,11 @@ def store(conn: sqlite3.Connection, jobs: list[Job], now: float) -> int:
         """INSERT INTO jobs (key, company, title, location, remote, url, source, posted_at,
                              posted_exact, sponsorship, sponsor_note, min_yoe, entry_hint,
                              first_seen, last_seen, apply_url, verify_url, posted_field,
-                             posted_raw, skills, description, no_opt, country, pay_min, pay_max, profiles)
+                             posted_raw, skills, description, no_opt, country, pay_min, pay_max, roles)
            VALUES (:key, :company, :title, :location, :remote, :url, :source, :posted_at,
                    :posted_exact, :sponsorship, :sponsor_note, :min_yoe, :entry_hint,
                    :now, :now, :apply_url, :verify_url, :posted_field, :posted_raw, :skills,
-                   :description, :no_opt, :country, :pay_min, :pay_max, :profiles)
+                   :description, :no_opt, :country, :pay_min, :pay_max, :roles)
            ON CONFLICT(key) DO UPDATE SET
                url = excluded.url, source = excluded.source,
                posted_at = excluded.posted_at, posted_exact = excluded.posted_exact,
@@ -1714,7 +1718,7 @@ def store(conn: sqlite3.Connection, jobs: list[Job], now: float) -> int:
                sponsorship = excluded.sponsorship, sponsor_note = excluded.sponsor_note,
                no_opt = excluded.no_opt, min_yoe = excluded.min_yoe, skills = excluded.skills,
                country = excluded.country, pay_min = excluded.pay_min, pay_max = excluded.pay_max,
-               profiles = excluded.profiles,
+               roles = excluded.roles,
                description = CASE WHEN excluded.description != '' THEN excluded.description
                                   ELSE jobs.description END,
                last_seen = excluded.last_seen""",
@@ -1831,15 +1835,15 @@ def load_for_dashboard(conn: sqlite3.Connection, now: float, prev_run: float | N
         # the posting's requirement lines, plus the degree it asks for.
         d["kw"] = reqparse.keywords(desc, d["title"], find_skills, term_rx) if d["has_jd"] else []
         d["degree"] = reqparse.degree(desc) if d["has_jd"] else None
-        # Tagged again with the current profiles, so a changed profile shows
-        # on the next render without refetching. Jobs no profile wants stay
-        # stored (a profile may want them again) but are not shown.
+        # Tagged again with the current roles, so a changed role shows on the
+        # next render without refetching. Jobs no role wants stay stored (a
+        # role may want them again) but are not shown.
         pay = filters.pay_range(desc)       # rows stored before pay was read have none saved
         d["pay_min"], d["pay_max"] = pay or (None, None)
-        d["profiles"] = SEARCH.matching(filters.Facts(
+        d["roles"] = SEARCH.matching(filters.Facts(
             d["company"], d["title"], d["location"], d.pop("country") or None, bool(d["remote"]), desc,
             d["min_yoe"], bool(d["entry_hint"]), pay))
-        if d["profiles"]:
+        if d["roles"]:
             out.append(d)
     return out
 
@@ -1848,11 +1852,11 @@ def save_scoring(conn: sqlite3.Connection, rows: list[dict], stats: dict, now: f
     """Checklists and keyword weights as the dashboard got them, for the
     helper's preparation queue (server.py scores with match.py)."""
     with conn:
-        conn.executemany("UPDATE jobs SET kw = ?, degree = ?, profiles = ? WHERE key = ?",
+        conn.executemany("UPDATE jobs SET kw = ?, degree = ?, roles = ? WHERE key = ?",
                          [(json.dumps(r["kw"]), json.dumps(r["degree"]) if r["degree"] else "",
-                           json.dumps(r["profiles"]), r["key"]) for r in rows])
-        # Jobs no current profile wants lose their tags, so the queue skips them.
-        conn.execute("UPDATE jobs SET profiles = '[]' WHERE profiles != '[]' "
+                           json.dumps(r["roles"]), r["key"]) for r in rows])
+        # Jobs no current role wants lose their tags, so the queue skips them.
+        conn.execute("UPDATE jobs SET roles = '[]' WHERE roles != '[]' "
                      "AND key NOT IN (SELECT value FROM json_each(?))", (json.dumps([r["key"] for r in rows]),))
         conn.execute("INSERT OR REPLACE INTO corpus (id, updated, skill_w, term_w) VALUES (1, ?, ?, ?)",
                      (now, json.dumps(stats["skill_w"]), json.dumps(stats["term_w"])))
@@ -1999,17 +2003,15 @@ def render(jobs: list[dict], meta: dict) -> None:
 
 
 def public_settings(s: dict) -> dict:
-    """The part of settings.json the dashboard page carries: profiles for the
-    switcher and visa badges, scoring weights, tailoring defaults. No paths
-    or notification topics."""
-    families = {k: f.label for k, f in filters.BUILTIN_FAMILIES.items()}
-    families.update({f["id"]: f["label"] for f in s["role_families"]})
-    return {"profiles": s["profiles"], "active_profile": s["active_profile"], "scoring": s["scoring"],
-            "tailoring": {k: s["tailoring"][k] for k in ("backend", "draft_backend")}, "families": families}
+    """The part of settings.json the dashboard page carries: roles for the
+    switcher and visa badges, scoring weights, tailoring defaults, notices.
+    No paths or notification topics."""
+    return {"roles": s["roles"], "active_role": s["active_role"], "scoring": s["scoring"],
+            "tailoring": {k: s["tailoring"][k] for k in ("backend", "draft_backend")}, "notices": s["notices"]}
 
 
 def needs_visa_data(s: dict) -> bool:
-    return any(p["visa"]["status"] != "authorized" for p in s["profiles"])
+    return any(r["visa"]["status"] != "authorized" for r in s["roles"])
 
 
 def build_dashboard(conn: sqlite3.Connection, h1b: "H1BIndex", run: dict) -> list[dict]:
@@ -2031,7 +2033,7 @@ def build_dashboard(conn: sqlite3.Connection, h1b: "H1BIndex", run: dict) -> lis
 
 def rerender(store_: config.Store | None = None) -> int:
     """Rebuilds dashboard.html from stored jobs without fetching, so changed
-    settings (profiles, visa, scoring) show at once. Returns jobs shown."""
+    settings (roles, visa, scoring) show at once. Returns jobs shown."""
     configure(store_ or config.store())
     companies = load_companies(SETTINGS)
     DISPLAY_NAMES.update(companies.pop("display_names", {}))

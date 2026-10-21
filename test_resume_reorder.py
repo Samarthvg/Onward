@@ -155,13 +155,11 @@ class InstructionTests(unittest.TestCase):
                              or ({}, name))
         tailor._codex_json, old_codex = fake("chatgpt"), tailor._codex_json
         tailor._claude_json, old_claude = fake("claude-code"), tailor._claude_json
-        tailor._ollama_json, old_ollama = fake("ollama"), tailor._ollama_json
         try:
             tailor.run_chatgpt(res, self.JOB, JD)
             tailor.run_claude_code(res, self.JOB, JD)
-            tailor.run_ollama(res, self.JOB, JD)
         finally:
-            tailor._codex_json, tailor._claude_json, tailor._ollama_json = old_codex, old_claude, old_ollama
+            tailor._codex_json, tailor._claude_json = old_codex, old_claude
         seen["manual"] = tailor.build_manual_prompt(TEX, self.JOB, JD)
         for name, prompt in seen.items():
             self.assertIn("Don't touch the Beta Site project.", prompt.replace("\\u2019", "'"), name)

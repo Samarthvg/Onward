@@ -1,8 +1,8 @@
 """User settings: one JSON file in the user's data directory.
 
 Every module reads its choices from here instead of its own constants:
-search profiles (radar.py tags jobs with the ones they match), the visa
-features they turn on, the user's own company boards, match-score weights
+the user's roles (radar.py tags jobs with the ones they match), the visa
+features each turns on, the user's own company boards, match-score weights
 (match.py and the dashboard), tailoring backends and the apply queue
 (tailor.py, prep.py), and where data files live.
 
@@ -33,9 +33,11 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
+import filters
+
 CODE_DIR = Path(__file__).resolve().parent
 SETTINGS_FILE = "settings.json"
-VERSION = 1
+VERSION = 2
 
 
 def platform_data_dir() -> Path:
@@ -210,15 +212,14 @@ class Obj(Node):
 # --------------------------------------------------------------------------
 # Choices shared with the modules that use them
 
-ROLE_FAMILIES = ("software", "data", "ml", "mobile", "infra")
 SENIORITY = ("intern", "entry", "mid", "senior")
 WORKPLACE = ("onsite", "hybrid", "remote")
 # opt: on F-1 OPT or STEM OPT (sponsorship, H-1B and OPT signals all matter);
 # sponsorship: needs H-1B or other sponsorship; authorized: citizen, permanent
 # resident or otherwise free to work, so no visa signals are shown.
 VISA_STATUS = ("opt", "sponsorship", "authorized")
-TAILOR_BACKENDS = ("chatgpt", "claude-code", "ollama", "claude-api", "manual")
-DRAFT_BACKENDS = ("chatgpt", "claude-code", "ollama")
+TAILOR_BACKENDS = ("chatgpt", "claude-code", "claude-api", "manual")
+DRAFT_BACKENDS = ("chatgpt", "claude-code")
 SOURCES = ("greenhouse", "lever", "ashby", "workday", "smartrecruiters", "oracle", "eightfold", "amazon", "icims")
 
 ID = r"[a-z0-9][a-z0-9-]{0,39}"
@@ -226,24 +227,24 @@ TIME = r"([01]?\d|2[0-3]):[0-5]\d"
 WORD = Str(max_len=80)
 
 
-def _profile_check(p: dict, path: str, errors: list[str]) -> None:
-    if not p["roles"]:
-        errors.append(f"{path}.roles: pick at least one role")
-        p["roles"] = ["software"]
-    if not p["seniority"]:
+def _role_check(r: dict, path: str, errors: list[str]) -> None:
+    if not filters.TitleRules(r["title_keywords"]).rules:
+        errors.append(f"{path}.title_keywords: add at least one title keyword")
+    if not r["seniority"]:
         errors.append(f"{path}.seniority: pick at least one level")
-        p["seniority"] = ["entry"]
-    if not p["workplace"]:
+        r["seniority"] = ["entry"]
+    if not r["workplace"]:
         errors.append(f"{path}.workplace: pick at least one of on-site, hybrid, remote")
-        p["workplace"] = list(WORKPLACE)
-    if not p["name"]:
-        p["name"] = p["id"]
+        r["workplace"] = list(WORKPLACE)
+    if not r["name"]:
+        r["name"] = r["id"]
 
 
-PROFILE = Obj({
-    "id": Str("default", 40, pattern=ID),
-    "name": Str("New grad software, US", 80),
-    "roles": List(Str(max_len=40, pattern=ID), ["software"], 20),
+ROLE = Obj({
+    "id": Str(filters.DEFAULT_ROLE["id"], 40, pattern=ID),
+    "name": Str(filters.DEFAULT_ROLE["name"], 80),
+    # Lines read top to bottom (filters.TitleRules); the first one a title fits decides.
+    "title_keywords": List(Str(max_len=1000), list(filters.SOFTWARE_KEYWORDS), 100),
     "seniority": List(Str(choices=SENIORITY), ["entry"], 4),
     # ISO 3166 alpha-2 codes (filters.COUNTRIES); empty means any country.
     "countries": List(Str(max_len=2, pattern=r"[A-Z]{2}"), ["US"], 40),
@@ -254,36 +255,29 @@ PROFILE = Obj({
     "salary_min": Int(0, 0, 10_000_000),
     "must_have": List(WORD, [], 30),            # the posting must mention every one
     "exclude": List(WORD, [], 50),              # anywhere in the posting
-    "exclude_title": List(WORD, [], 50),        # in the title only
     "companies_allow": List(Str(max_len=120), [], 500),
     "companies_block": List(Str(max_len=120), [], 500),
-    # A master .tex in the resume folder for this search; "" uses master.tex.
+    # A master .tex in the resume folder for this role; "" uses master.tex.
     "resume": Str("", 120, pattern=r"([A-Za-z0-9_.-]+\.tex)?"),
     "visa": Obj({
         "status": Str("opt", choices=VISA_STATUS),
         "hide_no_sponsorship": Bool(False),     # start with "Hide no sponsorship" on
     }),
-}, _profile_check)
+}, _role_check)
 
 
-def _profiles_check(s: dict, path: str, errors: list[str]) -> None:
+def _roles_check(s: dict, path: str, errors: list[str]) -> None:
     seen: set[str] = set()
-    profiles = []
-    for p in s["profiles"]:
-        if p["id"] in seen:
-            errors.append(f"profiles: duplicate id {p['id']!r}")
+    roles = []
+    for r in s["roles"]:
+        if r["id"] in seen:
+            errors.append(f"roles: duplicate id {r['id']!r}")
             continue
-        seen.add(p["id"])
-        profiles.append(p)
-    s["profiles"] = profiles or [PROFILE.default]
-    if s["active_profile"] not in {p["id"] for p in s["profiles"]}:
-        s["active_profile"] = s["profiles"][0]["id"]
-    known = set(ROLE_FAMILIES) | {f["id"] for f in s["role_families"]}
-    for i, p in enumerate(s["profiles"]):
-        bad = [r for r in p["roles"] if r not in known]
-        if bad:
-            errors.append(f"profiles[{i}].roles: unknown role {', '.join(bad)}")
-            p["roles"] = [r for r in p["roles"] if r in known] or ["software"]
+        seen.add(r["id"])
+        roles.append(r)
+    s["roles"] = roles or [ROLE.default]
+    if s["active_role"] not in seen:
+        s["active_role"] = s["roles"][0]["id"]
 
 
 QUEUE = Obj({
@@ -329,16 +323,8 @@ SCHEMA = Obj({
         "blocked": List(Str(max_len=120), [], 2000),       # company names never shown or fetched
         "display_names": Map(Str(max_len=120)),
     }),
-    "profiles": List(PROFILE, [PROFILE.default], 20),
-    "active_profile": Str("default", 40, pattern=ID),
-    # Extra role families next to the built-in ones: a title matches when it
-    # has any `include` word and no `exclude` word.
-    "role_families": List(Obj({
-        "id": Str("custom", 40, pattern=ID),
-        "label": Str("Custom", 80),
-        "include": List(WORD, [], 50),
-        "exclude": List(WORD, [], 50),
-    }), [], 20),
+    "roles": List(ROLE, [ROLE.default], 30),
+    "active_role": Str(filters.DEFAULT_ROLE["id"], 40, pattern=ID),    # shown first in the dashboard
     # Match score = coverage x (1 - experience_weight + experience_weight x experience fit).
     # Same formula in match.py and the dashboard's scoreJob.
     "scoring": Obj({
@@ -354,13 +340,14 @@ SCHEMA = Obj({
         "backend": Str("chatgpt", choices=TAILOR_BACKENDS),     # the tailor dialog's default
         "draft_backend": Str("chatgpt", choices=DRAFT_BACKENDS),
         "target_pages": Int(1, 1, 3),
-        "ollama_url": Str("http://127.0.0.1:11434", 300, pattern=r"https?://[^\s]+"),
-        "ollama_model": Str("qwen3:8b", 100),
         "claude_model": Str("claude-opus-5-5", 100),
     }),
     "queue": QUEUE,
     "ui": Obj({"advanced": Bool(False)}),
-}, _profiles_check)
+    # Messages for the user about changes made to their settings, shown once
+    # in the dashboard until dismissed.
+    "notices": List(Str(max_len=500), [], 20),
+}, _roles_check)
 
 
 def defaults() -> dict:
@@ -390,7 +377,49 @@ def _v1(data: dict, home: Path) -> dict:
     return data
 
 
-MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1}
+def _v2(data: dict, home: Path) -> dict:
+    """Search profiles with preset role families become roles with their own
+    title keywords (each family's keywords, so they match as before), and the
+    local Ollama backend, which was removed, becomes ChatGPT."""
+    families = {k: kw for k, (_, kw) in filters.ROLE_TEMPLATES.items()}
+    for f in data.pop("role_families", None) or []:
+        if isinstance(f, dict) and f.get("id"):
+            inc, exc = [w for w in f.get("include") or [] if w], [w for w in f.get("exclude") or [] if w]
+            families[f["id"]] = (["- " + "/".join(exc)] if exc else []) + (["/".join(inc)] if inc else [])
+    if "profiles" in data:
+        roles = []
+        for p in data.pop("profiles") or []:
+            if not isinstance(p, dict):
+                continue
+            lines = []
+            if p.get("exclude_title"):
+                lines.append("- " + "/".join(p["exclude_title"]))
+            for fam in p.get("roles") or ["software"]:
+                lines += [l for l in families.get(fam, []) if l not in lines]
+            role = {k: v for k, v in p.items() if k not in ("roles", "exclude_title")}
+            roles.append({**role, "title_keywords": lines or list(filters.SOFTWARE_KEYWORDS)})
+        data["roles"] = roles
+    if "active_profile" in data:
+        data["active_role"] = data.pop("active_profile")
+
+    notices = list(data.get("notices") or [])
+    moved = False
+    for section, key in (("tailoring", "backend"), ("tailoring", "draft_backend"), ("queue", "backend")):
+        sec = data.get(section)
+        if isinstance(sec, dict) and sec.get(key) == "ollama":
+            sec[key] = "chatgpt"
+            moved = True
+    if isinstance(data.get("tailoring"), dict):
+        data["tailoring"].pop("ollama_url", None)
+        data["tailoring"].pop("ollama_model", None)
+    if moved:
+        notices.append("The local Ollama model is no longer part of It gets easier, so tailoring and drafting "
+                       "that used it now use ChatGPT. You can pick Claude instead in Settings.")
+    data["notices"] = notices
+    return data
+
+
+MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2}
 
 
 def migrate(data: dict, home: Path) -> tuple[dict, bool]:
@@ -507,14 +536,14 @@ class Store:
         p = Path(self.load()["paths"][name] or ".").expanduser()
         return p if p.is_absolute() else self.home / p
 
-    def profile(self, pid: str | None = None) -> dict:
+    def role(self, rid: str | None = None) -> dict:
         s = self.load()
-        pid = pid or s["active_profile"]
-        return next((p for p in s["profiles"] if p["id"] == pid), s["profiles"][0])
+        rid = rid or s["active_role"]
+        return next((r for r in s["roles"] if r["id"] == rid), s["roles"][0])
 
-    def resume_for(self, pid: str | None = None) -> Path:
-        """The master .tex a profile tailors from."""
-        name = self.profile(pid)["resume"] if pid else ""
+    def resume_for(self, rid: str | None = None) -> Path:
+        """The master .tex a role tailors from."""
+        name = self.role(rid)["resume"] if rid else ""
         return self.path_for("resume_dir") / (name or "master.tex")
 
 

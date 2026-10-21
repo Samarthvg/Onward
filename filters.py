@@ -1,106 +1,134 @@
-"""Search profiles: which postings each of the user's saved searches wants.
+"""Roles: which postings each of the user's searches wants.
 
-A profile picks role families, seniority levels, countries and cities,
-on-site/hybrid/remote, a pay floor (for postings that state pay), keywords
-the posting must or must not mention, and companies to keep or drop.
-radar.py keeps a posting when at least one profile wants it and tags it with
-every profile that does; the dashboard's profile switcher shows one tag.
+The user creates roles ("Full-stack", "ML") and gives each title keywords,
+seniority levels, countries and cities, on-site/hybrid/remote, a pay floor
+(for postings that state pay), words the posting must or must not mention,
+and companies to keep or drop. radar.py keeps a posting when at least one
+role wants it and tags it with every role that does; the dashboard's role
+switcher shows one role, or all of them.
 
-The built-in "software" family and "entry" level are the radar's original
-filters, unchanged, so the default profile (software, entry, US) picks
-exactly what the radar picked before profiles existed.
+A new install starts with one role, SOFTWARE_KEYWORDS at entry level in the
+US, which is the radar's original filter: it keeps exactly what the radar
+kept before roles existed.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Iterable
+from typing import Iterable
 
 # --------------------------------------------------------------------------
-# Software titles (the original radar filter)
+# Title keywords
+#
+# A role's title keywords are lines, read top to bottom; the first line a
+# title fits decides, and a title that fits none is left out.
+#   full stack/fullstack            a phrase; "/" separates alternatives
+#   ios/android + engineer/developer  "+" joins parts that must all appear
+#   - manager/director              a leading "-" leaves matching titles out
+#   recruit*                        "*" ends a word with any ending
+# Words of a phrase must appear together, in order. Case and punctuation
+# don't matter: "Full-Stack" is the words "full stack".
 
-SWE_TITLE = re.compile(
-    r"\b(software|sde|swe|developer|back[- ]?end|front[- ]?end|full[- ]?stack|"
-    r"platform|infrastructure|mobile|ios|android|devops|site reliability|sre|"
-    r"machine learning|ml|ai|data|founding|forward deployed|"
-    r"distributed systems|cloud|security|web|application|compiler|embedded software)\b",
-    re.I,
-)
-ENGINEER_WORD = re.compile(r"\b(engineer|engineering|developer|sde|swe|programmer)\b", re.I)
-NOT_SWE = re.compile(
-    r"\b(sales|solutions?|support|customer|field|hardware|mechanical|electrical|"
-    r"manufacturing|technician|recruit\w*|account|marketing|designer|analyst|"
-    r"quality assurance|qa|validation|test engineer|network engineer|process|"
-    r"civil|chemical|rf|optical|facilities|propulsion|avionics|structures|"
-    r"scientist|mission|integration|deployment strategist|softgoods|textile|industrial design|"
-    r"product design|mechanical design)\b",
-    re.I,
-)
-STRONG_SWE = re.compile(
-    r"\b(software|sde|swe|developer|back[- ]?end|front[- ]?end|full[- ]?stack)\b", re.I)
+WORD = re.compile(r"[a-z0-9]+")
+
+
+def title_words(title: str) -> list[str]:
+    return WORD.findall((title or "").lower())
+
+
+def _phrase(text: str) -> tuple[tuple[str, bool], ...] | None:
+    words = []
+    for w in text.split():
+        star = w.endswith("*")
+        ws = title_words(w)
+        if not ws:
+            continue
+        words += [(x, False) for x in ws[:-1]] + [(ws[-1], star)]
+    return tuple(words) or None
+
+
+def _has(words: list[str], phrase: tuple[tuple[str, bool], ...]) -> bool:
+    n = len(phrase)
+    for i in range(len(words) - n + 1):
+        if all(words[i + k] == w or (star and words[i + k].startswith(w)) for k, (w, star) in enumerate(phrase)):
+            return True
+    return False
+
+
+class TitleRules:
+    """A role's title keywords, compiled. Lines that hold no words are
+    ignored."""
+
+    def __init__(self, lines: Iterable[str]) -> None:
+        self.rules: list[tuple[bool, list[list[tuple]]]] = []
+        for line in lines:
+            line = (line or "").strip()
+            drop = line.startswith("-")
+            parts = [[p for p in (_phrase(alt) for alt in part.split("/")) if p]
+                     for part in (line[1:] if drop else line).split("+")]
+            parts = [p for p in parts if p]
+            if parts:
+                self.rules.append((not drop, parts))
+
+    def matches(self, title: str) -> bool:
+        words = title_words(title)
+        for keep, parts in self.rules:
+            if all(any(_has(words, ph) for ph in alts) for alts in parts):
+                return keep
+        return False
+
+
+ROLE_WORD = "engineer/engineering/developer/sde/swe/programmer"
+
+# The radar's original software filter, written as title keywords: a
+# software word (or, failing that, a broader tech word without a non-software
+# word) next to an engineer word. The first role of a new install uses it, so
+# it keeps exactly what the radar kept before roles existed.
+SOFTWARE_KEYWORDS = [
+    "- sales engineer*/solution engineer*/solutions engineer*/support engineer*/test engineer*/qa engineer*/marketing/recruit*",
+    "software/sde/swe/developer/backend/back end/frontend/front end/fullstack/full stack + " + ROLE_WORD,
+    "- sales/solution/solutions/support/customer/field/hardware/mechanical/electrical/manufacturing/technician/"
+    "recruit*/account/marketing/designer/analyst/quality assurance/qa/validation/test engineer/network engineer/"
+    "process/civil/chemical/rf/optical/facilities/propulsion/avionics/structures/scientist/mission/integration/"
+    "deployment strategist/softgoods/textile/industrial design/product design/mechanical design",
+    "platform/infrastructure/mobile/ios/android/devops/site reliability/sre/machine learning/ml/ai/data/founding/"
+    "forward deployed/distributed systems/cloud/security/web/application/compiler/embedded software + " + ROLE_WORD,
+]
+
+NOT_TECH = "- sales/account/marketing/recruit*/customer/support/technician/mechanical/electrical/civil/chemical/" \
+           "hardware/manufacturing/facilities/clerk/data center/solution/solutions/field"
+
+# Starting points offered in the "Add role" form. Picking one only fills in
+# the new role's title keywords; the user edits them from there.
+ROLE_TEMPLATES: dict[str, tuple[str, list[str]]] = {
+    "blank": ("Blank", []),
+    "software": ("Software engineering", SOFTWARE_KEYWORDS),
+    "fullstack": ("Full-stack", [NOT_TECH, "full stack/fullstack/frontend/front end/backend/back end + "
+                                 + ROLE_WORD]),
+    "data": ("Data engineering and analytics", [
+        NOT_TECH + "/controller/clinical/accounting/entry operator",
+        "data/analytics/etl/elt/bi/business intelligence/big data/data warehouse/database/dbt + "
+        "engineer/engineering/developer/analyst/scientist/architect/modeler"]),
+    "ml": ("Machine learning and AI", [
+        NOT_TECH,
+        "machine learning/ml/ai/artificial intelligence/deep learning/computer vision/nlp/llm/llms/generative/genai/"
+        "applied scientist/research/perception/mlops/data scientist/recommendation/ranking + "
+        "engineer/engineering/scientist/researcher/developer/sde/swe"]),
+    "mobile": ("Mobile (iOS, Android)", [
+        NOT_TECH, "mobile/ios/android/react native/flutter/swift/kotlin + " + ROLE_WORD]),
+    "infra": ("SRE, DevOps and infrastructure", [
+        NOT_TECH,
+        "site reliability/sre/devops/dev ops/devsecops/infrastructure/infra/platform/cloud/reliability/production/"
+        "systems/kubernetes/observability/build/release/storage/compute + "
+        "engineer/engineering/developer/sre/administrator/architect"]),
+}
+
+_SOFTWARE = TitleRules(SOFTWARE_KEYWORDS)
 
 
 def is_swe_title(title: str) -> bool:
-    if not ENGINEER_WORD.search(title):
-        return False
-    if STRONG_SWE.search(title):
-        return not re.search(r"\b(sales|solutions?|support|test|qa)\s+engineer|\b(marketing|recruit\w*)\b",
-                             title, re.I)
-    return bool(SWE_TITLE.search(title) and not NOT_SWE.search(title))
-
-
-# --------------------------------------------------------------------------
-# Other role families. A title belongs to a family when it names the field
-# (`field`), names a role (`role`), and has none of the `not_` words.
-
-NOT_TECH = (r"sales|account|marketing|recruit\w*|customer|support|technician|mechanical|electrical|"
-            r"civil|chemical|hardware|manufacturing|facilities|clerk|entry clerk|data center")
-
-
-@dataclass(frozen=True)
-class Family:
-    id: str
-    label: str
-    test: Callable[[str], bool]
-
-
-def _family(field_rx: str, role_rx: str, not_rx: str = NOT_TECH) -> Callable[[str], bool]:
-    fld = re.compile(rf"\b(?:{field_rx})\b", re.I)
-    role = re.compile(rf"\b(?:{role_rx})\b", re.I)
-    no = re.compile(rf"\b(?:{not_rx})\b", re.I) if not_rx else None
-    return lambda t: bool(fld.search(t) and role.search(t) and not (no and no.search(t)))
-
-
-BUILTIN_FAMILIES: dict[str, Family] = {f.id: f for f in [
-    Family("software", "Software engineering", is_swe_title),
-    Family("data", "Data engineering and analytics", _family(
-        r"data|analytics|etl|elt|bi|business intelligence|big data|data warehouse|database|dbt",
-        r"engineer|engineering|developer|analyst|scientist|architect|modeler",
-        NOT_TECH + r"|solutions?|controller|clinical|accounting|entry operator")),
-    Family("ml", "Machine learning and AI", _family(
-        r"machine learning|ml|ai|artificial intelligence|deep learning|computer vision|vision|nlp|"
-        r"natural language|llms?|generative|genai|applied scien\w*|research|perception|"
-        r"reinforcement learning|mlops|data scientist|recommendation|ranking",
-        r"engineer|engineering|scientist|researcher|developer|sde|swe")),
-    Family("mobile", "Mobile (iOS, Android)", _family(
-        r"mobile|ios|android|react native|flutter|swift|kotlin|apple platforms",
-        r"engineer|engineering|developer|sde|swe|programmer")),
-    Family("infra", "SRE, DevOps and infrastructure", _family(
-        r"site reliability|sre|devops|dev ops|devsecops|infrastructure|infra|platform|cloud|reliability|"
-        r"production|systems|kubernetes|observability|build|release|network reliability|"
-        r"database reliability|storage|compute",
-        r"engineer|engineering|developer|sre|administrator|architect",
-        NOT_TECH + r"|solutions?|field|sales engineer")),
-]}
-
-
-def custom_family(fid: str, label: str, include: Iterable[str], exclude: Iterable[str]) -> Family:
-    inc = [re.escape(w) for w in include if w]
-    exc = [re.escape(w) for w in exclude if w]
-    inc_rx = re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(inc) + r")(?![A-Za-z0-9])", re.I) if inc else None
-    exc_rx = re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(exc) + r")(?![A-Za-z0-9])", re.I) if exc else None
-    return Family(fid, label, lambda t: bool(inc_rx and inc_rx.search(t) and not (exc_rx and exc_rx.search(t))))
+    return _SOFTWARE.matches(title)
 
 
 # --------------------------------------------------------------------------
@@ -395,7 +423,7 @@ def pay_range(text: str | None) -> tuple[float, float] | None:
 
 
 # --------------------------------------------------------------------------
-# Profiles
+# Roles
 
 def _words_rx(words: Iterable[str]) -> re.Pattern | None:
     ws = [re.escape(w.strip()) for w in words if w and w.strip()]
@@ -408,7 +436,7 @@ def norm_company(name: str) -> str:
 
 @dataclass
 class Facts:
-    """What a profile looks at in one posting."""
+    """What a role looks at in one posting."""
     company: str
     title: str
     location: str
@@ -421,10 +449,10 @@ class Facts:
 
 
 @dataclass
-class Profile:
+class Role:
     id: str
     name: str
-    families: list[Family]
+    title_keywords: list[str]
     seniority: set[str]
     countries: list[str]
     cities: list[str]
@@ -432,33 +460,27 @@ class Profile:
     salary_min: int = 0
     must_have: list[str] = field(default_factory=list)
     exclude: list[str] = field(default_factory=list)
-    exclude_title: list[str] = field(default_factory=list)
     allow: set[str] = field(default_factory=set)
     block: set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
+        self._titles = TitleRules(self.title_keywords)
         self._city = _words_rx(self.cities)
         self._must = [_words_rx([w]) for w in self.must_have if w.strip()]
         self._excl = _words_rx(self.exclude)
-        self._excl_title = _words_rx(self.exclude_title)
 
     @classmethod
-    def from_settings(cls, p: dict, families: dict[str, Family]) -> "Profile":
-        return cls(id=p["id"], name=p["name"], families=[families[r] for r in p["roles"] if r in families],
-                   seniority=set(p["seniority"]), countries=list(p["countries"]), cities=list(p["cities"]),
-                   workplace=set(p["workplace"]), salary_min=p["salary_min"], must_have=list(p["must_have"]),
-                   exclude=list(p["exclude"]), exclude_title=list(p["exclude_title"]),
-                   allow={norm_company(c) for c in p["companies_allow"]},
-                   block={norm_company(c) for c in p["companies_block"]})
+    def from_settings(cls, r: dict) -> "Role":
+        return cls(id=r["id"], name=r["name"], title_keywords=list(r["title_keywords"]),
+                   seniority=set(r["seniority"]), countries=list(r["countries"]), cities=list(r["cities"]),
+                   workplace=set(r["workplace"]), salary_min=r["salary_min"], must_have=list(r["must_have"]),
+                   exclude=list(r["exclude"]), allow={norm_company(c) for c in r["companies_allow"]},
+                   block={norm_company(c) for c in r["companies_block"]})
 
     # Checks that need only the listing (title, location, company), so board
     # fetchers can skip a posting before paying for its details.
     def title_ok(self, title: str) -> bool:
-        if not any(f.test(title) for f in self.families):
-            return False
-        if not (title_levels(title) & self.seniority):
-            return False
-        return not (self._excl_title and self._excl_title.search(title))
+        return self._titles.matches(title) and bool(title_levels(title) & self.seniority)
 
     def location_ok(self, location: str, country: str | None, remote: bool = False) -> bool:
         kinds = workplace(location, remote)
@@ -493,44 +515,41 @@ class Profile:
         return True
 
 
-DEFAULT_PROFILE = {
-    "id": "default", "name": "New grad software, US", "roles": ["software"], "seniority": ["entry"],
-    "countries": ["US"], "cities": [], "workplace": ["onsite", "hybrid", "remote"], "salary_min": 0,
-    "must_have": [], "exclude": [], "exclude_title": [], "companies_allow": [], "companies_block": [],
+# The role a new install starts with: the radar's original search.
+DEFAULT_ROLE = {
+    "id": "software", "name": "Software, entry level, US", "title_keywords": SOFTWARE_KEYWORDS,
+    "seniority": ["entry"], "countries": ["US"], "cities": [], "workplace": ["onsite", "hybrid", "remote"],
+    "salary_min": 0, "must_have": [], "exclude": [], "companies_allow": [], "companies_block": [],
 }
 
 
 class Search:
-    """All of the user's profiles together, as radar.py uses them."""
+    """All of the user's roles together, as radar.py uses them."""
 
-    def __init__(self, profiles: list[dict] | None = None, role_families: list[dict] | None = None,
-                 blocked: Iterable[str] = ()) -> None:
-        self.families = dict(BUILTIN_FAMILIES)
-        for f in role_families or []:
-            self.families[f["id"]] = custom_family(f["id"], f["label"], f["include"], f["exclude"])
-        self.profiles = [Profile.from_settings(p, self.families) for p in (profiles or [DEFAULT_PROFILE])]
+    def __init__(self, roles: list[dict] | None = None, blocked: Iterable[str] = ()) -> None:
+        self.roles = [Role.from_settings(r) for r in (roles or [DEFAULT_ROLE])]
         self.blocked = {norm_company(c) for c in blocked}
 
     def title_wanted(self, title: str) -> bool:
-        return any(p.title_ok(title) for p in self.profiles)
+        return any(r.title_ok(title) for r in self.roles)
 
     def location_wanted(self, location: str, country: str | None = None, remote: bool = False) -> bool:
-        return any(p.location_ok(location, country, remote) for p in self.profiles)
+        return any(r.location_ok(location, country, remote) for r in self.roles)
 
     def company_wanted(self, company: str) -> bool:
-        return norm_company(company) not in self.blocked and any(p.company_ok(company) for p in self.profiles)
+        return norm_company(company) not in self.blocked and any(r.company_ok(company) for r in self.roles)
 
     def wants_level(self, level: str) -> bool:
-        return any(level in p.seniority for p in self.profiles)
+        return any(level in r.seniority for r in self.roles)
 
     def only_country(self) -> str | None:
-        """The one country every profile is limited to, so sources that can
+        """The one country every role is limited to, so sources that can
         search by country (SmartRecruiters, Eightfold, Amazon, iCIMS) ask for
-        just that one. None when any profile looks wider."""
-        sets = {tuple(p.countries) for p in self.profiles}
+        just that one. None when any role looks wider."""
+        sets = {tuple(r.countries) for r in self.roles}
         return sets.pop()[0] if len(sets) == 1 and len(next(iter(sets))) == 1 else None
 
     def matching(self, f: Facts) -> list[str]:
         if norm_company(f.company) in self.blocked:
             return []
-        return [p.id for p in self.profiles if p.matches(f)]
+        return [r.id for r in self.roles if r.matches(f)]

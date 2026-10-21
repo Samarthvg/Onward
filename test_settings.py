@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 import config
+import filters
 import match
 import prep
 import radar
@@ -48,13 +49,16 @@ class DefaultsTests(Tmp):
         self.assertEqual(d["scoring"], {"experience_weight": 0.4, "prior_keywords": 3, "prior_credit": 0.5,
                                         "years_penalty": 0.35, "min_experience_fit": 0.15,
                                         "unstated_years_fit": 0.85, "unknown_keyword_weight": 0.8})
-        self.assertEqual(d["tailoring"]["backend"], "chatgpt")
-        self.assertEqual(d["tailoring"]["ollama_model"], "qwen3:8b")
-        (p,) = d["profiles"]
-        self.assertEqual((p["id"], p["roles"], p["seniority"], p["countries"], p["visa"]["status"]),
-                         ("default", ["software"], ["entry"], ["US"], "opt"))
-        self.assertEqual(d["active_profile"], "default")
+        self.assertEqual(d["tailoring"], {"backend": "chatgpt", "draft_backend": "chatgpt", "target_pages": 1,
+                                          "claude_model": "claude-opus-5-5"})
+        (r,) = d["roles"]
+        self.assertEqual((r["id"], r["title_keywords"], r["seniority"], r["countries"], r["visa"]["status"]),
+                         ("software", filters.SOFTWARE_KEYWORDS, ["entry"], ["US"], "opt"))
+        self.assertEqual(d["active_role"], "software")
+        self.assertEqual(d["notices"], [])
         self.assertTrue(d["radar"]["simplify_feed"])
+        self.assertEqual(config.TAILOR_BACKENDS, ("chatgpt", "claude-code", "claude-api", "manual"))
+        self.assertEqual(config.DRAFT_BACKENDS, ("chatgpt", "claude-code"))
 
     def test_missing_file_gives_defaults_without_writing(self):
         s = self.store()
@@ -83,9 +87,9 @@ class DefaultsTests(Tmp):
 
 class ValidationTests(Tmp):
     def test_bad_values_fall_back_and_are_reported(self):
-        self.write({"version": 1, "radar": {"dashboard_days": "lots", "workers": 999, "simplify_feed": "yes"},
+        self.write({"version": config.VERSION, "radar": {"dashboard_days": "lots", "workers": 999, "simplify_feed": "yes"},
                     "queue": {"threshold": -5, "backend": "gpt-9", "quiet_start": "25:00"},
-                    "tailoring": {"ollama_url": "not a url"}, "nonsense": 1})
+                    "tailoring": {"backend": "ollama"}, "nonsense": 1})
         s = self.store().load()
         self.assertEqual(s["radar"]["dashboard_days"], 7)            # wrong type: default
         self.assertEqual(s["radar"]["workers"], 64)                  # out of range: clamped
@@ -93,11 +97,11 @@ class ValidationTests(Tmp):
         self.assertEqual(s["queue"]["threshold"], 0)
         self.assertEqual(s["queue"]["backend"], "chatgpt")
         self.assertEqual(s["queue"]["quiet_start"], "22:00")
-        self.assertEqual(s["tailoring"]["ollama_url"], "http://127.0.0.1:11434")
+        self.assertEqual(s["tailoring"]["backend"], "chatgpt", "a removed backend is not valid")
         self.assertNotIn("nonsense", s)
         st = self.store()
         st.load()
-        for key in ("radar.dashboard_days", "radar.simplify_feed", "queue.backend", "queue.quiet_start", "tailoring.ollama_url"):
+        for key in ("radar.dashboard_days", "radar.simplify_feed", "queue.backend", "queue.quiet_start", "tailoring.backend"):
             self.assertTrue(any(w.startswith(key) for w in st.warnings), (key, st.warnings))
 
     def test_unreadable_file_uses_defaults(self):
@@ -116,29 +120,30 @@ class ValidationTests(Tmp):
         st.update({"queue": {"threshold": 70}})
         before = self.path.read_text(encoding="utf-8")
         with self.assertRaises(config.SettingsError) as cm:
-            st.update({"queue": {"backend": "nope"}, "profiles": [{"id": "Bad Id!"}]})
+            st.update({"queue": {"backend": "nope"}, "roles": [{"id": "Bad Id!"}]})
         self.assertTrue(any("queue.backend" in e for e in cm.exception.errors))
-        self.assertTrue(any("profiles[0].id" in e for e in cm.exception.errors))
+        self.assertTrue(any("roles[0].id" in e for e in cm.exception.errors))
         self.assertEqual(self.path.read_text(encoding="utf-8"), before)
 
-    def test_profiles_checked_together(self):
+    def test_roles_checked_together(self):
         st = self.store()
-        p = config.PROFILE.default
+        r = config.ROLE.default
         with self.assertRaises(config.SettingsError):
-            st.update({"profiles": [p, {**p, "name": "Other"}]})        # duplicate ids
-        with self.assertRaises(config.SettingsError):
-            st.update({"profiles": [{**p, "roles": ["astronaut"]}]})   # unknown role family
-        st.update({"role_families": [{"id": "firmware", "label": "Firmware", "include": ["firmware"], "exclude": []}],
-                   "profiles": [{**p, "id": "fw", "name": "Firmware", "roles": ["firmware"]}]})
+            st.update({"roles": [r, {**r, "name": "Other"}]})           # duplicate ids
+        with self.assertRaises(config.SettingsError) as cm:
+            st.update({"roles": [{**r, "title_keywords": ["  ", "- /"]}]})
+        self.assertIn("roles[0].title_keywords: add at least one title keyword", cm.exception.errors)
+        st.update({"roles": [{**r, "id": "fw", "name": "Firmware", "title_keywords": ["firmware/embedded + engineer"]}]})
         s = st.load()
-        self.assertEqual([x["id"] for x in s["profiles"]], ["fw"])
-        self.assertEqual(s["active_profile"], "fw", "active profile follows when its profile is gone")
-        s2, errors = config.validate({"profiles": []})
-        self.assertEqual([x["id"] for x in s2["profiles"]], ["default"], "never zero profiles")
-        bare, errors = config.validate({"profiles": [{"id": "x", "name": "", "roles": [], "seniority": [], "workplace": []}]})
-        (x,) = bare["profiles"]
-        self.assertEqual((x["roles"], x["seniority"], x["name"]), (["software"], ["entry"], "x"))
-        self.assertEqual(len(errors), 3)
+        self.assertEqual([x["id"] for x in s["roles"]], ["fw"])
+        self.assertEqual(s["active_role"], "fw", "the role shown first follows when its role is gone")
+        s2, errors = config.validate({"roles": []})
+        self.assertEqual([x["id"] for x in s2["roles"]], ["software"], "never zero roles")
+        bare, errors = config.validate({"roles": [{"id": "x", "name": "", "title_keywords": ["x"], "seniority": [],
+                                                   "workplace": []}]})
+        (x,) = bare["roles"]
+        self.assertEqual((x["seniority"], x["workplace"], x["name"]), (["entry"], ["onsite", "hybrid", "remote"], "x"))
+        self.assertEqual(len(errors), 2)
 
     def test_write_is_atomic_and_readable(self):
         st = self.store()
@@ -179,16 +184,59 @@ class MigrationTests(Tmp):
 
     def test_migrations_run_in_order(self):
         seen = []
+        nxt = config.VERSION + 1
 
-        def v2(data, home):
+        def step(data, home):
             seen.append(data["version"])
             data["radar"] = {**data.get("radar", {}), "dashboard_days": data.get("radar", {}).get("dashboard_days", 7) * 2}
             return data
-        self.write({"version": 1, "radar": {"dashboard_days": 5}})
-        with mock.patch.object(config, "VERSION", 2), mock.patch.dict(config.MIGRATIONS, {2: v2}):
+        self.write({"version": config.VERSION, "radar": {"dashboard_days": 5}})
+        with mock.patch.object(config, "VERSION", nxt), mock.patch.dict(config.MIGRATIONS, {nxt: step}):
             s = self.store().load()
-        self.assertEqual(seen, [1])
-        self.assertEqual((s["version"], s["radar"]["dashboard_days"]), (2, 10))
+        self.assertEqual(seen, [nxt - 1])
+        self.assertEqual((s["version"], s["radar"]["dashboard_days"]), (nxt, 10))
+
+    def test_v1_profiles_become_roles(self):
+        """Version 1 kept search profiles that picked preset role families."""
+        self.write({"version": 1, "active_profile": "data",
+                    "role_families": [{"id": "fw", "label": "Firmware", "include": ["firmware"], "exclude": ["hardware"]}],
+                    "profiles": [
+                        {"id": "default", "name": "New grad software, US", "roles": ["software"], "seniority": ["entry"]},
+                        {"id": "data", "name": "Data", "roles": ["data", "fw"], "seniority": ["entry", "mid"],
+                         "exclude_title": ["manager"], "visa": {"status": "authorized", "hide_no_sponsorship": False}}]})
+        st = self.store()
+        s = st.load()
+        self.assertEqual(st.warnings, [])
+        default, data = s["roles"]
+        self.assertEqual((default["id"], default["title_keywords"]), ("default", filters.SOFTWARE_KEYWORDS))
+        self.assertEqual(data["title_keywords"][0], "- manager")
+        self.assertIn("- hardware", data["title_keywords"])
+        self.assertIn("firmware", data["title_keywords"])
+        self.assertEqual((data["seniority"], data["visa"]["status"], s["active_role"]), (["entry", "mid"], "authorized", "data"))
+        rules = filters.TitleRules(data["title_keywords"])
+        self.assertTrue(rules.matches("Data Engineer"))
+        self.assertTrue(rules.matches("Firmware Engineer"))
+        self.assertFalse(rules.matches("Data Engineering Manager"))
+        self.assertFalse(rules.matches("Firmware Hardware Engineer"))
+        self.assertNotIn("profiles", json.loads(self.path.read_text(encoding="utf-8")))
+
+    def test_ollama_falls_back_to_chatgpt_with_a_notice(self):
+        self.write({"version": 1, "tailoring": {"backend": "ollama", "draft_backend": "ollama", "ollama_model": "qwen3:8b"},
+                    "queue": {"backend": "ollama", "threshold": 70}})
+        st = self.store()
+        s = st.load()
+        self.assertEqual((s["tailoring"]["backend"], s["tailoring"]["draft_backend"], s["queue"]["backend"]),
+                         ("chatgpt", "chatgpt", "chatgpt"))
+        self.assertNotIn("ollama_model", s["tailoring"])
+        self.assertEqual(s["queue"]["threshold"], 70)
+        (notice,) = s["notices"]
+        self.assertIn("ChatGPT", notice)
+        self.assertIn("It gets easier", notice)
+        self.assertEqual(st.warnings, [])
+        st.update({"notices": []})         # dismissed in the dashboard
+        self.assertEqual(self.store().load()["notices"], [], "shown once")
+        self.write({"version": 1, "tailoring": {"backend": "claude-code"}})
+        self.assertEqual(self.store().load()["notices"], [], "no notice when nothing changed")
 
     def test_newer_file_is_read_only(self):
         self.write({"version": config.VERSION + 5, "radar": {"dashboard_days": 3}, "future_field": True})
@@ -212,12 +260,12 @@ class PathTests(Tmp):
         self.assertEqual(st.path_for("resume_dir"), self.dir / "cv")
         self.assertEqual(st.resume_for(), self.dir / "cv" / "master.tex")
 
-    def test_profile_resume(self):
+    def test_role_resume(self):
         st = self.store()
-        st.update({"profiles": [{**config.PROFILE.default, "resume": "master-data.tex"}]})
-        self.assertEqual(st.resume_for("default"), self.dir / "resume" / "master-data.tex")
+        st.update({"roles": [{**config.ROLE.default, "resume": "master-data.tex"}]})
+        self.assertEqual(st.resume_for("software"), self.dir / "resume" / "master-data.tex")
         with self.assertRaises(config.SettingsError):
-            st.update({"profiles": [{**config.PROFILE.default, "resume": "../../etc/passwd"}]})
+            st.update({"roles": [{**config.ROLE.default, "resume": "../../etc/passwd"}]})
 
     def test_data_folder_choice(self):
         with mock.patch.dict(os.environ, {"JOBRADAR_HOME": str(self.dir / "home")}):

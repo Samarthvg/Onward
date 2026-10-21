@@ -61,11 +61,11 @@
     <h2>Drafting answers</h2>
     <p class="hint">For questions like "Why do you want to work here?", the panel can draft an answer from your master resume and the job posting, using the Job Radar helper on this computer and your existing ChatGPT or Claude login. No paid API is used. Drafts go into the field for you to edit; nothing is sent to the employer.</p>
     <div class="grid">
+      <p id="backendNotice" class="hint" role="status" hidden style="grid-column: 1 / -1"></p>
       <label for="draftBackend">Draft with</label>
       <select id="draftBackend">
         <option value="chatgpt">ChatGPT (your ChatGPT login via codex)</option>
         <option value="claude-code">Claude (your Claude login via claude CLI)</option>
-        <option value="ollama">Local model (Ollama)</option>
         <option value="manual">Manual: copy a prompt, paste it into any chat</option>
       </select>
       <span></span>

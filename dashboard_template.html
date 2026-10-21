@@ -202,6 +202,11 @@
   .prefs input[type=checkbox] { justify-self: start; accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
   .prefs input[type=time] { width: 130px; color-scheme: light dark; }
   .prefs .note { grid-column: 2; margin-top: -4px; }
+  #notices { display: grid; gap: 8px; margin-bottom: 10px; }
+  #notices:empty { display: none; }
+  .notice { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 12px; border-radius: 10px;
+    background: var(--new-soft); color: var(--text); font-size: 13px; }
+  .notice span { flex: 1 1 240px; }
   .settings { display: grid; gap: 14px; }
   .settings-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
   .settings-head h2 { font-size: 18px; margin: 0; flex: 1 1 auto; }
@@ -268,6 +273,7 @@
     <h1>Job Radar</h1>
     <div class="status" id="status"></div>
     <div class="hbtns">
+      <select id="roleSel" aria-label="Role" hidden></select>
       <span class="viewtabs" id="viewTabs" hidden>
         <button type="button" data-view="jobs" aria-pressed="true">All jobs</button>
         <button type="button" data-view="queue" aria-pressed="false">Apply queue <span class="qcount" id="qcount" hidden></span></button>
@@ -277,6 +283,7 @@
     </div>
   </header>
 
+  <div id="notices" role="status"></div>
   <div class="resume-bar" id="resumeBar"></div>
   <section id="queueView" hidden>
     <div class="qhead" id="qhead"></div>
@@ -286,7 +293,6 @@
   <div id="jobsView">
 
   <div class="controls">
-    <select id="searchSel" aria-label="Search profile" hidden></select>
     <div class="seg" id="window" role="group" aria-label="Posted within">
       <button type="button" data-h="1">1h</button>
       <button type="button" data-h="6">6h</button>
@@ -520,10 +526,18 @@ function (P, root) {
 
 <script>
 const DATA = /*__DATA__*/null;
-// The user's search profiles (settings.json); a dashboard from before them has one.
-const SETTINGS = DATA.meta.settings || { profiles: [{ id: "default", name: "Jobs", visa: { status: "opt", hide_no_sponsorship: false } }],
-  active_profile: "default", tailoring: { backend: "chatgpt" }, families: {} };
-const profileById = (id) => SETTINGS.profiles.find((p) => p.id === id) || SETTINGS.profiles[0];
+// The user's roles (settings.json); a dashboard from before them has one.
+const SETTINGS = DATA.meta.settings || { roles: [{ id: "software", name: "Jobs", visa: { status: "opt", hide_no_sponsorship: false } }],
+  active_role: "software", tailoring: { backend: "chatgpt" }, notices: [] };
+const ALL_ROLES = "*";
+const roleById = (id) => SETTINGS.roles.find((r) => r.id === id) || SETTINGS.roles[0];
+// The role switcher's choice: a role id, or ALL_ROLES.
+const shownRole = (id) => (id === ALL_ROLES && SETTINGS.roles.length > 1 ? ALL_ROLES : roleById(id).id);
+const roleName = (id) => (id === ALL_ROLES ? "All roles" : roleById(id).name);
+// Visa preferences of the shown role; for all roles, the most demanding one.
+const roleVisa = (id) => (id === ALL_ROLES
+  ? { hide_no_sponsorship: SETTINGS.roles.some((r) => r.visa && r.visa.hide_no_sponsorship) }
+  : roleById(id).visa || {});
 const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
@@ -533,9 +547,9 @@ const store = {
   del(k) { try { localStorage.removeItem("jr:" + k); } catch {} },
 };
 
-// Visa filters are kept per profile: one search may need sponsorship, another not.
-const searchKey = (k, id) => (id === "default" ? k : `${k}:${id}`);
-const initialSearch = profileById(store.get("search", SETTINGS.active_profile)).id;
+// Visa filters are kept per role: one search may need sponsorship, another not.
+const searchKey = (k, id) => (id === SETTINGS.roles[0].id ? k : `${k}:${id}`);
+const initialSearch = shownRole(store.get("role", SETTINGS.active_role));
 const state = {
   search: initialSearch,
   hours: store.get("hours", 24),
@@ -543,7 +557,7 @@ const state = {
   sort: store.get("sort", "new"),
   minMatch: store.get("minMatch", 0),
   remote: store.get("remote", false),
-  nosp: store.get(searchKey("nosp", initialSearch), !!(profileById(initialSearch).visa || {}).hide_no_sponsorship),
+  nosp: store.get(searchKey("nosp", initialSearch), !!roleVisa(initialSearch).hide_no_sponsorship),
   h1bOnly: store.get(searchKey("h1bOnly", initialSearch), false),
   hidedone: store.get("hidedone", false),
   marks: store.get("marks", {}),        // url -> "applied" | "dismissed"
@@ -836,8 +850,8 @@ function h1bTier(h) {
 // Which visa signals the shown profile wants: sponsorship and H-1B history
 // unless the user is free to work; OPT refusals only for someone on OPT.
 function visa() {
-  const status = (profileById(state.search).visa || {}).status || "opt";
-  return { sponsor: status !== "authorized", opt: status === "opt" };
+  const statuses = (state.search === ALL_ROLES ? SETTINGS.roles : [roleById(state.search)]).map((r) => (r.visa || {}).status || "opt");
+  return { sponsor: statuses.some((x) => x !== "authorized"), opt: statuses.includes("opt") };
 }
 function payLabel(j) {
   const k = (x) => (x >= 1000 ? Math.round(x / 1000) + "k" : String(Math.round(x)));
@@ -946,7 +960,7 @@ function render() {
   const V = visa();
 
   let jobs = DATA.jobs.filter((j) => {
-    if (j.profiles && !j.profiles.includes(state.search)) return false;
+    if (j.roles && (state.search === ALL_ROLES ? !j.roles.length : !j.roles.includes(state.search))) return false;
     if (now - when(j) > state.hours * 3600) return false;
     if (state.remote && !j.remote) return false;
     if (V.sponsor && state.nosp && (j.sponsorship === "no" || (V.opt && j.no_opt))) return false;
@@ -1091,9 +1105,9 @@ function render() {
   }
 
   const label = { 1: "hour", 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[state.hours];
-  const many = SETTINGS.profiles.length > 1;
-  $("count").textContent = `${jobs.length} role${jobs.length === 1 ? "" : "s"} posted in the last ${label}` +
-    (many ? ` for \u201c${profileById(state.search).name}\u201d` : "");
+  const many = SETTINGS.roles.length > 1;
+  $("count").textContent = `${jobs.length} job${jobs.length === 1 ? "" : "s"} posted in the last ${label}` +
+    (!many ? "" : state.search === ALL_ROLES ? " across all your roles" : ` for \u201c${roleName(state.search)}\u201d`);
 
   const m = DATA.meta;
   $("status").replaceChildren(
@@ -1111,10 +1125,11 @@ function render() {
 }
 
 function renderSearchControls() {
-  const V = visa(), sel = $("searchSel");
-  sel.hidden = SETTINGS.profiles.length < 2;
-  if (sel.options.length !== SETTINGS.profiles.length) {
-    sel.replaceChildren(...SETTINGS.profiles.map((p) => el("option", { value: p.id, text: p.name })));
+  const V = visa(), sel = $("roleSel");
+  sel.hidden = SETTINGS.roles.length < 2;
+  if (sel.options.length !== SETTINGS.roles.length + 1) {
+    sel.replaceChildren(...SETTINGS.roles.map((r) => el("option", { value: r.id, text: r.name })),
+      el("option", { value: ALL_ROLES, text: "All roles" }));
   }
   sel.value = state.search;
   $("h1bOnlyLbl").hidden = !V.sponsor;
@@ -1123,9 +1138,9 @@ function renderSearchControls() {
 }
 
 function switchSearch(id) {
-  state.search = profileById(id).id;
-  store.set("search", state.search);
-  state.nosp = store.get(searchKey("nosp", state.search), !!(profileById(state.search).visa || {}).hide_no_sponsorship);
+  state.search = shownRole(id);
+  store.set("role", state.search);
+  state.nosp = store.get(searchKey("nosp", state.search), !!roleVisa(state.search).hide_no_sponsorship);
   state.h1bOnly = store.get(searchKey("h1bOnly", state.search), false);
   $("nosp").checked = state.nosp;
   $("h1bOnly").checked = state.h1bOnly;
@@ -1144,7 +1159,7 @@ function masterLine() {
   const tagged = m.entries.filter((e) => e.tagged.length).length;
   return el("div", { class: "note", style: "flex-basis:100%" },
     "Master resume for tailoring: ", el("b", { text: m.name || "master.tex" }),
-    m.own ? ` (for \u201c${profileById(state.search).name}\u201d)` : "",
+    m.own ? ` (for \u201c${roleName(state.search)}\u201d)` : "",
     ` · ${m.entries.length} entries · ${m.pages || "?"} page${m.pages === 1 ? "" : "s"}`,
     tagged ? ` · ${tagged} with hidden skill tags` : " · no hidden skill tags yet",
     m.error ? el("span", { style: "color:var(--warn)", text: " · " + m.error }) : null);
@@ -1328,7 +1343,7 @@ async function api(path, body) {
 
 async function refreshStatus() {
   if (!HELPER) return;
-  try { helper.status = await api("/api/status?profile=" + encodeURIComponent(state.search)); } catch { helper.status = null; }
+  try { helper.status = await api("/api/status?role=" + encodeURIComponent(state.search === ALL_ROLES ? "" : state.search)); } catch { helper.status = null; }
   renderResumeBar();
 }
 
@@ -1336,7 +1351,6 @@ const BACKENDS = [
   { id: "chatgpt", name: "ChatGPT", desc: "Runs on your ChatGPT plan. No extra cost.", ok: (b) => b.chatgpt, setup: "codex login" },
   { id: "claude-code", name: "Claude", desc: "Runs on your Claude plan. No extra cost.", ok: (b) => b.claude_code, setup: "claude auth login" },
   { id: "manual", name: "Paste into any chat", desc: "Copy a prompt, paste the answer back.", ok: () => true },
-  { id: "ollama", name: "Local Qwen3 8B", desc: "Free and offline, but rough. Best with rewording off.", ok: (b) => b.ollama },
   { id: "claude-api", name: "Claude API key", desc: "Billed per use, about 8 to 15 cents.", ok: (b) => b.claude_api, hidden: (b) => !b.claude_api },
 ];
 
@@ -1375,6 +1389,7 @@ function tagHelp() {
 function renderTailorForm(j, jd, history) {
   const b = (helper.status && helper.status.backends) || {};
   let chosen = store.get("backend", SETTINGS.tailoring.backend || "chatgpt");
+  if (!BACKENDS.some((be) => be.id === chosen)) chosen = SETTINGS.tailoring.backend || "chatgpt";
   const opts = el("div", { class: "opts", role: "radiogroup", "aria-label": "Model" });
   for (const be of BACKENDS) {
     if (be.hidden && be.hidden(b)) continue;
@@ -1401,7 +1416,7 @@ function renderTailorForm(j, jd, history) {
     el("p", { text: "1. Copy the prompt and paste it into ChatGPT, Claude or any chat. 2. Paste its whole reply below. 3. Apply." }),
     el("div", {}, el("button", { type: "button", text: "Copy prompt", onclick: async () => {
       try {
-        const { prompt } = await api("/api/prompt", { key: j.key, jd: jdBox.value, instruction: instr.value, profile: state.search });
+        const { prompt } = await api("/api/prompt", { key: j.key, jd: jdBox.value, instruction: instr.value, role: tailorRole(j) });
         await navigator.clipboard.writeText(prompt);
         toast("Prompt copied. Paste it into your chat.");
       } catch (e) { toast(e.message); }
@@ -1452,12 +1467,19 @@ function renderTailorForm(j, jd, history) {
   syncManual();
 }
 
+// The role whose master resume tailors a job: the shown one, or with all
+// roles shown, the first role that wants the job.
+function tailorRole(j) {
+  if (state.search !== ALL_ROLES) return state.search;
+  return (j.roles && j.roles[0]) || "";
+}
+
 async function runTailor(j, opts, btn, out, onAdjust, onDone) {
   btn.disabled = true;
   out.replaceChildren(progressLine("Starting…"));
   const t0 = Date.now();
   try {
-    const { id } = await api("/api/tailor", { key: j.key, profile: state.search, ...opts });
+    const { id } = await api("/api/tailor", { key: j.key, role: tailorRole(j), ...opts });
     for (;;) {
       await sleep(1500);
       const s = await api("/api/tailor/" + id);
@@ -1820,12 +1842,12 @@ const LABELS = {
     sponsorship: ["Need visa sponsorship (H-1B or other)", "Shows sponsorship and H-1B history."],
     authorized: ["Citizen, permanent resident, or otherwise free to work", "No visa badges or filters."],
   },
-  backends: { chatgpt: "ChatGPT (your ChatGPT plan)", "claude-code": "Claude (your Claude plan)", ollama: "Local model (Ollama)",
+  backends: { chatgpt: "ChatGPT (your ChatGPT plan)", "claude-code": "Claude (your Claude plan)",
     "claude-api": "Claude API key (billed per use)", manual: "Paste into any chat" },
   sources: { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", workday: "Workday", smartrecruiters: "SmartRecruiters",
     oracle: "Oracle", eightfold: "Eightfold", amazon: "Amazon", icims: "iCIMS" },
 };
-const cfg = { data: null, companies: null, pid: null, draft: null, families: null, found: null, boardFilter: "" };
+const cfg = { data: null, companies: null, rid: null, draft: null, adding: false, found: null, boardFilter: "" };
 let uid = 0;
 const nextId = (p) => `${p}-${++uid}`;
 
@@ -1876,18 +1898,16 @@ function advanced() { return !!(cfg.data && cfg.data.settings.ui.advanced); }
 
 // The helper reports problems by setting path ("profiles[1].roles: ...");
 // shown with the profile's name and the form's own labels.
-const FIELD_LABELS = { roles: "Roles", seniority: "Level", countries: "Countries", cities: "Cities", workplace: "Work setting",
+const FIELD_LABELS = { title_keywords: "Title keywords", seniority: "Level", countries: "Countries", cities: "Cities", workplace: "Work setting",
   salary_min: "Minimum yearly pay", must_have: "Must mention", exclude: "Leave out postings mentioning",
-  exclude_title: "Leave out titles with", companies_allow: "Only these companies", companies_block: "Never these companies",
-  resume: "Master resume", name: "Profile name", id: "Profile id", status: "Work authorization", label: "Role name",
-  include: "Title words" };
+  companies_allow: "Only these companies", companies_block: "Never these companies",
+  resume: "Master resume", name: "Role name", id: "Role id", status: "Work authorization" };
 function humanError(x) {
-  return x.replace(/^profiles\[(\d+)\]\.([\w.]+?)(?:\[\d+\])?:\s*/, (m, i, path) => {
-    const p = cfg.data && cfg.data.settings.profiles[+i];
+  return x.replace(/^roles\[(\d+)\]\.([\w.]+?)(?:\[\d+\])?:\s*/, (m, i, path) => {
+    const r = cfg.data && cfg.data.settings.roles[+i];
     const key = path.split(".").pop();
-    return `${p ? "“" + p.name + "”" : "Profile"}, ${FIELD_LABELS[key] || key}: `;
-  }).replace(/^role_families\[(\d+)\]\.(\w+):\s*/, (m, i, key) => `Custom role ${+i + 1}, ${FIELD_LABELS[key] || key}: `)
-    .replace(/^(\w+)\.(\w+):\s*/, (m, sec, key) => `${sec[0].toUpperCase() + sec.slice(1)} › ${key.replace(/_/g, " ")}: `);
+    return `${r ? "“" + r.name + "”" : "Role"}, ${FIELD_LABELS[key] || key}: `;
+  }).replace(/^(\w+)\.(\w+):\s*/, (m, sec, key) => `${sec[0].toUpperCase() + sec.slice(1)} › ${key.replace(/_/g, " ")}: `);
 }
 
 function problems(e) {
@@ -1926,7 +1946,7 @@ async function openSettings() {
     view.replaceChildren(el("div", { class: "errbox", text: "The local helper isn't responding, so settings can't be changed right now. " + e.message }));
     return;
   }
-  if (!cfg.pid || !cfg.data.settings.profiles.some((p) => p.id === cfg.pid)) cfg.pid = state.search;
+  if (!cfg.rid || !cfg.data.settings.roles.some((r) => r.id === cfg.rid)) cfg.rid = state.search === ALL_ROLES ? null : state.search;
   cfg.draft = null;
   renderSettings();
 }
@@ -1947,47 +1967,92 @@ function renderSettings() {
       el("label", { class: "toggle", for: "advToggle" }, adv, "Show advanced settings")),
     d.warnings.length ? el("div", { class: "errbox", role: "status" }, "Some saved settings were invalid and fell back to their defaults: ",
       el("ul", { style: "margin:6px 0 0;padding-left:18px" }, ...d.warnings.slice(0, 8).map((w) => el("li", { text: humanError(w) })))) : null,
-    profilesCard(), companiesCard(), tailoringCard(),
+    rolesCard(), companiesCard(), tailoringCard(),
     advanced() ? scoringCard() : null, advanced() ? radarCard() : null, advanced() ? storageCard() : null,
     el("p", { class: "note", text: `Saved on this computer in ${d.file}. Nothing here leaves it.` })));
 }
 
-// ---------------------------------------------------------------- profiles
+// ---------------------------------------------------------------- roles
 
-// The profile being edited, with changes not saved yet, survives re-renders.
+// The role being edited, with changes not saved yet, survives re-renders.
 let readDraft = null;
 function keepDraft() { if (readDraft) { cfg.draft = readDraft(); } }
 
-function profilesCard() {
-  const d = cfg.data, s = d.settings;
-  const families = cfg.families || s.role_families.map((f) => ({ ...f }));
-  cfg.families = families;
-  const saved = s.profiles.find((p) => p.id === cfg.pid) || s.profiles[0];
-  const p = cfg.draft && cfg.draft.id === saved.id ? cfg.draft : JSON.parse(JSON.stringify(saved));
-  cfg.pid = p.id;
+const lines = (text) => String(text || "").split("\n").map((x) => x.trim()).filter(Boolean);
+function slug(name, taken) {
+  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 34) || "role";
+  let id = base, n = 2;
+  while (taken.has(id)) id = `${base}-${n++}`;
+  return id;
+}
 
-  const pick = select(s.profiles.map((x) => [x.id, x.name + (x.id === s.active_profile ? " (shown first)" : "")]), p.id);
-  pick.id = "profilePick";
-  pick.addEventListener("change", () => { cfg.pid = pick.value; cfg.draft = null; renderSettings(); $("profilePick").focus(); });
-  const add = (copy) => {
-    const ids = new Set(s.profiles.map((x) => x.id));
-    let n = s.profiles.length + 1, id;
-    do { id = `search-${n++}`; } while (ids.has(id));
-    const base = copy ? JSON.parse(JSON.stringify(readDraft())) : JSON.parse(JSON.stringify(d.new_profile));
-    const np = { ...base, id, name: copy ? base.name + " (copy)" : "New search", resume: copy ? base.resume : "" };
-    postSettings({ profiles: [...s.profiles, np] }).then(() => { cfg.pid = id; cfg.draft = null; renderSettings(); toast("Profile added. Edit it below and save."); })
-      .catch((e) => toast(e.message));
-  };
-  const del = el("button", { type: "button", text: "Delete", disabled: s.profiles.length < 2 ? "disabled" : null, onclick: () => {
-    if (!confirm(`Delete the profile “${saved.name}”?`)) return;
-    postSettings({ profiles: s.profiles.filter((x) => x.id !== saved.id) })
-      .then(() => { cfg.pid = null; cfg.draft = null; renderSettings(); afterProfileSave(); }).catch((e) => toast(e.message));
+function rolesCard() {
+  const s = cfg.data.settings;
+  const saved = s.roles.find((r) => r.id === cfg.rid) || s.roles[0];
+  cfg.rid = saved.id;
+
+  const pick = select(s.roles.map((x) => [x.id, x.name + (x.id === s.active_role ? " (shown first)" : "")]), saved.id);
+  pick.id = "rolePick";
+  pick.addEventListener("change", () => { cfg.rid = pick.value; cfg.draft = null; cfg.adding = false; renderSettings(); $("rolePick").focus(); });
+  const addBtn = el("button", { type: "button", id: "addRole", text: "Add role", "aria-expanded": String(!!cfg.adding),
+    onclick: () => { keepDraft(); cfg.adding = !cfg.adding; renderSettings(); $(cfg.adding ? "newRoleName" : "addRole").focus(); } });
+  const del = el("button", { type: "button", text: "Delete role", disabled: s.roles.length < 2 ? "disabled" : null, onclick: () => {
+    if (!confirm(`Delete the role “${saved.name}”?`)) return;
+    postSettings({ roles: s.roles.filter((x) => x.id !== saved.id) })
+      .then(() => { cfg.rid = null; cfg.draft = null; renderSettings(); afterRoleSave(); }).catch((e) => toast(e.message));
   } });
 
-  const name = text(p.name, "e.g. Data engineer, any US city");
-  const roleOptions = d.choices.families.filter((f) => f.builtin).map((f) => [f.id, f.label])
-    .concat(families.map((f) => [f.id, f.label || f.id]));
-  const roles = checks("Roles", roleOptions, p.roles, "A posting matches when its title fits any role you pick.", { wide: true });
+  return el("section", { class: "card", "aria-labelledby": "roleH" },
+    el("h3", { id: "roleH", text: "Roles" }),
+    el("p", { text: "A role is a search you set up yourself: the job titles it looks for, the level, where, and words a posting must or must not have. It gets easier keeps every posting at least one of your roles wants. Switch roles, or see them all, at the top of the page." }),
+    el("div", { class: "rowline" }, el("label", { for: "rolePick", class: "section-h", text: "Editing" }), pick, addBtn, del),
+    cfg.adding ? addRoleForm() : roleForm(saved));
+}
+
+// New roles start blank or from a template; a template only fills in the
+// title keywords, which the user then edits like any other role's.
+function addRoleForm() {
+  const s = cfg.data.settings, d = cfg.data;
+  const name = text("", "e.g. Full-stack, ML, Data engineer");
+  name.id = "newRoleName";
+  const from = select([...d.choices.templates.map((t) => [t.id, t.label]), ["copy", `Copy of “${(s.roles.find((r) => r.id === cfg.rid) || s.roles[0]).name}”`]], "blank");
+  const out = el("div", { "aria-live": "polite" });
+  const create = async () => {
+    const n = name.value.trim();
+    if (!n) { out.replaceChildren(el("div", { class: "errbox", role: "alert", text: "Give the role a name." })); name.focus(); return; }
+    const current = JSON.parse(JSON.stringify(s.roles.find((r) => r.id === cfg.rid) || s.roles[0]));
+    const tpl = d.choices.templates.find((t) => t.id === from.value);
+    const base = from.value === "copy" ? { ...current, resume: "" } : JSON.parse(JSON.stringify(d.new_role));
+    // A blank role looks for its own name in titles until the user writes keywords.
+    const keywords = from.value === "copy" ? current.title_keywords : tpl.title_keywords.length ? tpl.title_keywords : [n.toLowerCase()];
+    const role = { ...base, id: slug(n, new Set(s.roles.map((r) => r.id))), name: n, title_keywords: keywords };
+    try {
+      await postSettings({ roles: [...s.roles, role] });
+      cfg.rid = role.id; cfg.draft = null; cfg.adding = false;
+      renderSettings();
+      $("roleKeywords").focus();
+      toast(`Added “${n}”. Adjust its title keywords and the rest below, then save.`);
+      afterRoleSave();
+    } catch (e) { out.replaceChildren(problems(e)); }
+  };
+  name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); create(); } });
+  return el("div", { class: "found" },
+    el("div", { class: "fields" }, field("Role name", name), field("Start from", from,
+      "Only a starting point: it fills in the title keywords, which you can change.")),
+    el("div", { class: "rowline" }, el("button", { type: "button", class: "primary", text: "Create role", onclick: create }),
+      el("button", { type: "button", text: "Cancel", onclick: () => { cfg.adding = false; renderSettings(); $("addRole").focus(); } })),
+    out);
+}
+
+function roleForm(saved) {
+  const d = cfg.data, s = d.settings;
+  const p = cfg.draft && cfg.draft.id === saved.id ? cfg.draft : JSON.parse(JSON.stringify(saved));
+
+  const name = text(p.name, "e.g. Full-stack");
+  const keywords = el("textarea", { class: "jd", rows: String(Math.min(12, Math.max(4, p.title_keywords.length + 2))),
+    spellcheck: "false", placeholder: "full stack/fullstack\n- manager" });
+  keywords.value = p.title_keywords.join("\n");
+  keywords.id = "roleKeywords";
   const levels = checks("Level", d.choices.seniority.map((x) => [x, LABELS.seniority[x]]), p.seniority,
     "Titles without a level (“Software Engineer”) count as entry and mid level. Postings asking 3+ years drop out of entry level.", { wide: true });
 
@@ -1998,7 +2063,7 @@ function profilesCard() {
   const cpick = el("select", { "aria-label": "Add a country" });
   const drawCountries = () => {
     cbox.replaceChildren(...(countries.length ? countries.map((c) => el("span", { class: "tag" }, cname(c),
-      el("button", { type: "button", "aria-label": `Remove ${cname(c)}`, text: "×", onclick: () => { countries = countries.filter((x) => x !== c); drawCountries(); } })))
+      el("button", { type: "button", "aria-label": `Remove ${cname(c)}`, text: "×", onclick: () => { countries = countries.filter((x) => x !== c); drawCountries(); cpick.focus(); } })))
       : [el("span", { class: "note", text: "Any country" })]));
     cpick.replaceChildren(el("option", { value: "", text: "Add a country…" }),
       ...d.choices.countries.filter((c) => !countries.includes(c.code)).map((c) => el("option", { value: c.code, text: c.name })));
@@ -2015,89 +2080,61 @@ function profilesCard() {
   const visaPick = radios("Work authorization", "visa-" + p.id, d.choices.visa.map((x) => [x, ...LABELS.visa[x]]), p.visa.status);
   const hideNo = el("input", { type: "checkbox" });
   hideNo.checked = p.visa.hide_no_sponsorship;
-  const hideNoField = el("label", { class: "toggle" }, hideNo, "Start with “Hide no sponsorship” turned on");
   const isDefault = el("input", { type: "checkbox" });
-  isDefault.checked = s.active_profile === p.id;
+  isDefault.checked = s.active_role === p.id;
 
   const must = text(p.must_have, "e.g. Python");
   const excl = text(p.exclude, "e.g. clearance, PHP");
-  const exclTitle = text(p.exclude_title, "e.g. manager, sales");
   const allow = text(p.companies_allow, "Leave empty for all companies");
   const block = text(p.companies_block, "e.g. Acme");
 
-  const known = new Set(roleOptions.map(([id]) => id));
   readDraft = () => ({
-    ...p, name: name.value.trim(), roles: roles.get().filter((r) => known.has(r)), seniority: levels.get(), countries: [...countries], cities: words(cities.value),
-    workplace: work.get(), salary_min: +pay.value || 0, must_have: words(must.value), exclude: words(excl.value),
-    exclude_title: words(exclTitle.value), companies_allow: words(allow.value), companies_block: words(block.value),
+    ...p, name: name.value.trim(), title_keywords: lines(keywords.value), seniority: levels.get(), countries: [...countries],
+    cities: words(cities.value), workplace: work.get(), salary_min: +pay.value || 0, must_have: words(must.value),
+    exclude: words(excl.value), companies_allow: words(allow.value), companies_block: words(block.value),
     visa: { status: visaPick.get() || "opt", hide_no_sponsorship: hideNo.checked },
   });
 
-  const save = saveBar("Save profile", async () => {
+  const save = saveBar("Save role", async () => {
     const draft = readDraft();
-    const profiles = s.profiles.map((x) => (x.id === draft.id ? draft : x));
-    await postSettings({ profiles, role_families: families, active_profile: isDefault.checked ? draft.id : s.active_profile === draft.id ? s.profiles.find((x) => x.id !== draft.id)?.id || draft.id : s.active_profile });
+    const roles = s.roles.map((x) => (x.id === draft.id ? draft : x));
+    const first = isDefault.checked ? draft.id
+      : s.active_role === draft.id ? (s.roles.find((x) => x.id !== draft.id) || draft).id : s.active_role;
+    await postSettings({ roles, active_role: first });
     cfg.draft = null;
     renderSettings();
-    $("profilePick").focus();
-    toast("Saved. Rebuilding the job list with this profile…");
-    afterProfileSave();
+    $("rolePick").focus();
+    toast("Saved. Rebuilding the job list with this role…");
+    afterRoleSave();
   });
 
   const adv = advanced();
-  return el("section", { class: "card", "aria-labelledby": "profH" },
-    el("h3", { id: "profH", text: "Search profiles" }),
-    el("p", { text: "Each profile is a saved search. The radar keeps every posting at least one profile wants, and the job list shows one profile at a time (switch at the top of the list)." }),
-    el("div", { class: "rowline" }, el("label", { for: "profilePick", class: "section-h", text: "Editing" }), pick,
-      el("button", { type: "button", text: "New profile", onclick: () => add(false) }),
-      el("button", { type: "button", text: "Duplicate", onclick: () => add(true) }), del),
+  return el("div", { style: "display:grid;gap:14px" },
     el("div", { class: "fields" },
-      field("Profile name", name),
+      field("Role name", name),
       field("Minimum yearly pay", pay, "Only postings that state pay are held to this."),
-      roles.node, levels.node, countryField,
+      field("Title keywords", keywords,
+        "One per line, read from the top; the first line a title fits decides. “full stack/fullstack”: either phrase. " +
+        "“ios/android + engineer/developer”: both parts. A line starting with “-” leaves those titles out, " +
+        "so put it above the lines it should beat. “recruit*” matches any ending.", { wide: true }),
+      levels.node, countryField,
       field("Cities", cities, "Comma separated. Empty means any city in your countries. Remote postings count for every city."),
       work.node, visaPick.node,
-      el("div", { class: "field" }, hideNoField, el("label", { class: "toggle" }, isDefault, "Show this profile first"))),
+      el("div", { class: "field" },
+        el("label", { class: "toggle" }, hideNo, "Start with “Hide no sponsorship” turned on"),
+        el("label", { class: "toggle" }, isDefault, "Show this role first"))),
     adv ? el("div", { class: "fields" },
       field("Must mention all of", must, "Words the title or description must contain, comma separated."),
       field("Leave out postings mentioning", excl, "Anywhere in the title or description."),
-      field("Leave out titles with", exclTitle),
       field("Only these companies", allow, "Comma separated company names."),
       field("Never these companies", block),
-      customRoles(families),
       resumeField(p)) : null,
     save);
 }
 
-function customRoles(families) {
-  const list = el("div", { style: "display:grid;gap:8px" });
-  const draw = () => list.replaceChildren(...families.map((f, i) => {
-    const label = text(f.label, "Role name"), inc = text(f.include, "Title words, e.g. firmware, embedded"), exc = text(f.exclude, "Not with, e.g. hardware");
-    label.setAttribute("aria-label", "Custom role name");
-    inc.setAttribute("aria-label", `${f.label}: title words`);
-    exc.setAttribute("aria-label", `${f.label}: excluded title words`);
-    label.addEventListener("input", () => { f.label = label.value; });
-    inc.addEventListener("input", () => { f.include = words(inc.value); });
-    exc.addEventListener("input", () => { f.exclude = words(exc.value); });
-    return el("div", { class: "rowline" }, label, inc, exc,
-      el("button", { type: "button", text: "Remove", "aria-label": `Remove custom role ${f.label}`, onclick: () => { families.splice(i, 1); draw(); } }));
-  }));
-  draw();
-  const add = el("button", { type: "button", text: "Add a custom role", onclick: () => {
-    const ids = new Set([...Object.keys(SETTINGS.families), ...families.map((f) => f.id)]);
-    let n = 1;
-    while (ids.has(`custom-${n}`)) n++;
-    families.push({ id: `custom-${n}`, label: `Custom role ${n}`, include: [], exclude: [] });
-    draw();
-  } });
-  return el("fieldset", { class: "field wide" }, el("legend", { text: "Custom roles" }),
-    el("p", { class: "note", text: "Roles the built-in list misses. A title matches when it has any of the words and none of the “not with” words. Save the profile, then tick the new role under Roles." }),
-    list, el("div", {}, add));
-}
-
 function resumeField(p) {
   const meta = (cfg.data.resumes || {})[p.id];
-  const file = el("input", { type: "file", accept: ".tex", "aria-label": "Upload a master resume for this profile" });
+  const file = el("input", { type: "file", accept: ".tex", "aria-label": "Upload a master resume for this role" });
   const status = el("div", { class: "note", "aria-live": "polite", text: meta && meta.own
     ? `Uses its own master resume: ${meta.name || p.resume}.` : "Uses your main master resume." });
   file.addEventListener("change", async () => {
@@ -2105,7 +2142,7 @@ function resumeField(p) {
     if (!f) return;
     status.textContent = "Checking and compiling…";
     try {
-      const r = await api("/api/master", { name: f.name, tex: await f.text(), profile: p.id });
+      const r = await api("/api/master", { name: f.name, tex: await f.text(), role: p.id });
       status.textContent = `Saved: ${r.entries.length} entries, ${r.pages} page${r.pages === 1 ? "" : "s"}.`;
       cfg.data = await api("/api/settings");
     } catch (e) { status.textContent = e.message; }
@@ -2113,18 +2150,17 @@ function resumeField(p) {
   });
   const reset = el("button", { type: "button", text: "Use the main master resume", hidden: !(meta && meta.own), onclick: async () => {
     try {
-      const profiles = cfg.data.settings.profiles.map((x) => (x.id === p.id ? { ...x, resume: "" } : x));
-      await postSettings({ profiles });
+      await postSettings({ roles: cfg.data.settings.roles.map((x) => (x.id === p.id ? { ...x, resume: "" } : x)) });
       renderSettings();
     } catch (e) { toast(e.message); }
   } });
-  return el("fieldset", { class: "field wide" }, el("legend", { text: "Master resume for this profile" }),
-    el("p", { class: "note", text: "Tailoring for this profile's jobs starts from this .tex. Handy when a data search needs a different resume than a software one." }),
+  return el("fieldset", { class: "field wide" }, el("legend", { text: "Master resume for this role" }),
+    el("p", { class: "note", text: "Tailoring for this role's jobs starts from this .tex. Handy when an ML search needs a different resume than a full-stack one." }),
     el("div", { class: "rowline" }, file, reset), status);
 }
 
 // The job list is rebuilt on the helper; reload once it's done.
-async function afterProfileSave() {
+async function afterRoleSave() {
   const t0 = Date.now() / 1000;
   for (let i = 0; i < 120; i++) {
     await sleep(1500);
@@ -2133,7 +2169,7 @@ async function afterProfileSave() {
     if (!r.pending && r.finished >= t0) {
       if (r.error) { toast("Couldn't rebuild the job list: " + r.error); return; }
       cfg.rendered = true;
-      toast(`Job list rebuilt: ${r.jobs} jobs across your profiles. Open All jobs to see it.`);
+      toast(`Job list rebuilt: ${r.jobs} jobs across your roles. Open All jobs to see it.`);
       return;
     }
   }
@@ -2244,7 +2280,7 @@ function tailoringCard() {
   const backend = select(ch.backends.map((b) => [b, LABELS.backends[b] || b]), t.backend);
   const draft = select(ch.draft_backends.map((b) => [b, LABELS.backends[b] || b]), t.draft_backend);
   const pages = number(t.target_pages, 1, 3, 1);
-  const ourl = text(t.ollama_url), omodel = text(t.ollama_model), cmodel = text(t.claude_model);
+  const cmodel = text(t.claude_model);
   const adv = advanced();
   return el("section", { class: "card", "aria-labelledby": "tailH" },
     el("h3", { id: "tailH", text: "Resume tailoring and the apply queue" }),
@@ -2252,13 +2288,12 @@ function tailoringCard() {
       field("Tailor with", backend, "The model picked first in the Tailor resume dialog."),
       field("Draft form answers with", draft, "Used by the browser extension when you don't pick one."),
       adv ? field("Resume length (pages)", pages) : null,
-      adv ? field("Ollama address", ourl) : null, adv ? field("Ollama model", omodel) : null,
       adv ? field("Claude API model", cmodel) : null),
     el("div", { class: "rowline" },
       el("button", { type: "button", text: "Apply queue settings…", onclick: async () => { await loadQueue(); openPrefs(); } }),
       el("span", { class: "note", text: "Minimum match, daily model runs, notifications." })),
     saveBar("Save tailoring", () => postSettings({ tailoring: {
-      backend: backend.value, draft_backend: draft.value, ...(adv ? { target_pages: +pages.value, ollama_url: ourl.value, ollama_model: omodel.value, claude_model: cmodel.value } : {}),
+      backend: backend.value, draft_backend: draft.value, ...(adv ? { target_pages: +pages.value, claude_model: cmodel.value } : {}),
     } }).then(() => { SETTINGS.tailoring.backend = backend.value; store.del("backend"); })));
 }
 
@@ -2343,8 +2378,21 @@ for (const id of ["remote", "nosp", "h1bOnly", "hidedone"]) {
   $(id).checked = state[id];
   $(id).addEventListener("change", (e) => { state[id] = e.target.checked; store.set(key(), state[id]); render(); });
 }
-$("searchSel").addEventListener("change", (e) => switchSearch(e.target.value));
+$("roleSel").addEventListener("change", (e) => switchSearch(e.target.value));
 
+function renderNotices() {
+  const box = $("notices");
+  box.replaceChildren(...(SETTINGS.notices || []).map((msg) => el("div", { class: "notice" }, el("span", { text: msg }),
+    HELPER ? el("button", { type: "button", text: "Dismiss", onclick: async () => {
+      try {
+        await api("/api/settings", { settings: { notices: [] } });
+        SETTINGS.notices = [];
+        renderNotices();
+      } catch (e) { toast(e.message); }
+    } }) : null)));
+}
+
+renderNotices();
 rescore();
 updateBookmarklet();
 render();

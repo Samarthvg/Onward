@@ -30,7 +30,7 @@
     store = {
       profile: Object.assign({}, R.DEFAULT_PROFILE, s.profile),
       answers: Object.assign({}, R.DEFAULT_ANSWERS, s.answers),
-      settings: Object.assign({}, R.DEFAULT_SETTINGS, s.settings),
+      settings: R.withDefaults(s.settings).settings,
     };
     return store;
   }
@@ -257,7 +257,7 @@
 
   /* ------------------------------------------------------- AI answers */
 
-  const BACKEND_NAMES = { chatgpt: "ChatGPT", "claude-code": "Claude", ollama: "the local model" };
+  const BACKEND_NAMES = { chatgpt: "ChatGPT", "claude-code": "Claude" };
   const AI_TEXT = new Set(["text", "email", "url", "number", "search", "date", "combo", "prompt", "textarea"]);
 
   async function helperJob(start) {

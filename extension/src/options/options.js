@@ -47,7 +47,9 @@ async function load() {
   const s = await api.storage.local.get(["profile", "answers", "settings", "resume"]);
   state.profile = Object.assign({}, R.DEFAULT_PROFILE, s.profile);
   state.answers = Object.assign({}, R.DEFAULT_ANSWERS, s.answers);
-  state.settings = Object.assign({}, R.DEFAULT_SETTINGS, s.settings);
+  const loaded = R.withDefaults(s.settings);
+  state.settings = loaded.settings;
+  state.notice = loaded.notice;
   renderProfile();
   renderStd();
   renderEeo();
@@ -133,6 +135,13 @@ function renderSettings() {
   const b = $("draftBackend");
   b.value = state.settings.draftBackend;
   b.onchange = () => { state.settings.draftBackend = b.value; save("settings"); };
+  if (state.notice) {
+    // Shown once: saving the corrected backend means it won't come back.
+    $("backendNotice").textContent = state.notice;
+    $("backendNotice").hidden = false;
+    state.notice = "";
+    save("settings");
+  }
 }
 
 $("helperCheck").addEventListener("click", async () => {
@@ -144,7 +153,6 @@ $("helperCheck").addEventListener("click", async () => {
   const parts = [
     "ChatGPT " + (b.chatgpt ? "signed in" : "not signed in"),
     "Claude " + (b.claude_code ? "signed in" : "not signed in"),
-    "Ollama " + (b.ollama ? "ready" : "not ready"),
   ];
   out.textContent = "Running. " + parts.join(", ") + "." + (r.master ? "" : " Upload your master .tex resume in the dashboard to enable drafts.");
 });

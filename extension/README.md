@@ -59,7 +59,6 @@ On an application form, press the **Autofill** button in the bottom-right corner
 - **Drafts:** writing questions ("Why do you want to work here?") get a **Draft an answer** button. The draft goes into the field for you to edit and is never sent anywhere else. Drafting uses the Job Radar helper (`pythonw server.py`), your master resume uploaded in the dashboard, the job description (looked up from the posting's URL in `jobs.db`, otherwise read from the page), and your choice of backend:
   - ChatGPT, through `codex` on your ChatGPT login;
   - Claude, through the `claude` CLI on your Claude login;
-  - the local Ollama model;
   - **Manual**, which shows a prompt to paste into any chat.
 
   The paid Anthropic API is never used for drafts.

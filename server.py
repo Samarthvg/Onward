@@ -55,7 +55,6 @@ EXT_ORIGIN = re.compile(r"^(moz|chrome)-extension://[A-Za-z0-9-]+$")
 EXT_CLIENT = "autofill"
 
 EXECUTOR = ThreadPoolExecutor(max_workers=2)
-GPU_LOCK = threading.Lock()          # one local-model run at a time
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
 
@@ -153,7 +152,7 @@ RENDER_WAKE = threading.Event()
 
 def schedule_render() -> None:
     """Rebuild dashboard.html from stored jobs (radar.rerender) in the
-    background, so changed profiles show without waiting for the next run.
+    background, so changed roles show without waiting for the next run.
     Requests that arrive while one is running coalesce into one more."""
     RENDER["pending"] = True
     RENDER_WAKE.set()
@@ -173,29 +172,28 @@ def _render_loop() -> None:
 
 def settings_payload() -> dict:
     s = STORE.load()
-    families = [{"id": k, "label": f.label, "builtin": True} for k, f in filters.BUILTIN_FAMILIES.items()]
-    families += [{"id": f["id"], "label": f["label"], "builtin": False} for f in s["role_families"]]
     return {
         "settings": s, "warnings": STORE.warnings, "home": str(STORE.home), "file": str(STORE.path),
-        "defaults": config.defaults(), "new_profile": config.PROFILE.default,
+        "defaults": config.defaults(), "new_role": {**config.ROLE.default, "id": "", "name": "", "title_keywords": []},
         "choices": {
-            "families": families,
+            # Starting points for the "Add role" form; they only fill in title keywords.
+            "templates": [{"id": k, "label": label, "title_keywords": kw} for k, (label, kw) in filters.ROLE_TEMPLATES.items()],
             "countries": [{"code": c, "name": n} for c, (n, _) in filters.COUNTRIES.items()],
             "seniority": list(config.SENIORITY), "workplace": list(config.WORKPLACE),
             "visa": list(config.VISA_STATUS), "backends": list(config.TAILOR_BACKENDS),
             "draft_backends": list(config.DRAFT_BACKENDS), "sources": list(config.SOURCES),
         },
-        "resumes": {p["id"]: master_meta(p["id"]) for p in s["profiles"]},
+        "resumes": {r["id"]: master_meta(r["id"]) for r in s["roles"]},
         "render": RENDER,
     }
 
 
-def set_profile_resume(pid: str, name: str) -> None:
+def set_role_resume(rid: str, name: str) -> None:
     with STORE.lock:
         s = STORE.load()
-        for p in s["profiles"]:
-            if p["id"] == pid:
-                p["resume"] = name
+        for r in s["roles"]:
+            if r["id"] == rid:
+                r["resume"] = name
         STORE.save(s)
 
 
@@ -242,16 +240,16 @@ def company_list() -> dict:
     return {"boards": rows, "blocked": c["blocked"]}
 
 
-def master_path(profile: str = "") -> Path:
-    """The master resume a search profile tailors from: its own, when it has
-    one uploaded, else master.tex."""
-    p = STORE.profile(profile) if profile else None
-    own = RESUME_DIR / p["resume"] if p and p["resume"] else None
+def master_path(role: str = "") -> Path:
+    """The master resume a role tailors from: its own, when it has one
+    uploaded, else master.tex."""
+    r = STORE.role(role) if role else None
+    own = RESUME_DIR / r["resume"] if r and r["resume"] else None
     return own if own and own.exists() else MASTER
 
 
-def master_meta(profile: str = "") -> dict | None:
-    path = master_path(profile)
+def master_meta(role: str = "") -> dict | None:
+    path = master_path(role)
     if not path.exists():
         return None
     meta_path = path.with_suffix(".json")
@@ -275,18 +273,13 @@ def run_job(jid: str, params: dict) -> None:
 
     update(state="running", started=time.time())
     try:
-        master = master_path(params.get("profile", "")).read_text(encoding="utf-8")
+        master = master_path(params.get("role", "")).read_text(encoding="utf-8")
         backend = params["backend"]
         meta = {"company": params.get("company", ""), "title": params.get("title", ""),
                 "instruction": params.get("instruction", "")}
-        if backend == "ollama":
-            with GPU_LOCK:
-                result = tailor.tailor(master, meta, params["jd"], backend, OUT_DIR,
-                                       rewrite_bullets=params.get("rewrite", True))
-        else:
-            result = tailor.tailor(master, meta, params["jd"], backend, OUT_DIR,
-                                   rewrite_bullets=params.get("rewrite", True),
-                                   manual_answer=params.get("answer"))
+        result = tailor.tailor(master, meta, params["jd"], backend, OUT_DIR,
+                               rewrite_bullets=params.get("rewrite", True),
+                               manual_answer=params.get("answer"))
         conn = db()
         try:
             with conn:
@@ -320,11 +313,7 @@ def run_draft(jid: str, params: dict) -> None:
         else:
             call = lambda: tailor.draft_answer(master, job, params["question"], params["context"], params["jd"],
                                                params["backend"], params["max_chars"])
-        if params["backend"] == "ollama":
-            with GPU_LOCK:
-                result = call()
-        else:
-            result = call()
+        result = call()
         update(state="done", result=result)
     except (tailor.BackendError, ValueError) as e:
         update(state="error", error=str(e))
@@ -424,8 +413,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, DASHBOARD.read_bytes(), "text/html; charset=utf-8")
 
         if path == "/api/status":
-            profile = (q.get("profile") or [""])[0][:40]
-            return self._json(200, {"backends": tailor.backend_status(), "master": master_meta(profile)})
+            role = (q.get("role") or [""])[0][:40]
+            return self._json(200, {"backends": tailor.backend_status(), "master": master_meta(role)})
 
         if path == "/api/settings":
             return self._json(200, settings_payload())
@@ -546,40 +535,40 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/master":
             tex = str(data.get("tex", ""))
-            # With a profile, the resume becomes that search's own master.
-            profile = str(data.get("profile") or "")[:40]
-            if profile and profile not in {p["id"] for p in STORE.load()["profiles"]}:
-                return self._err(HTTPStatus.BAD_REQUEST, "Unknown search profile")
+            # With a role, the resume becomes that role's own master.
+            role = str(data.get("role") or "")[:40]
+            if role and role not in {r["id"] for r in STORE.load()["roles"]}:
+                return self._err(HTTPStatus.BAD_REQUEST, "Unknown role")
             try:
                 res = rt.parse(tex)
                 pages = rt.compile_pdf(tex)
             except (ValueError, rt.CompileError) as e:
                 return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, f"Couldn't use this resume: {e}")
             RESUME_DIR.mkdir(parents=True, exist_ok=True)
-            target = RESUME_DIR / f"master-{profile}.tex" if profile else MASTER
+            target = RESUME_DIR / f"master-{role}.tex" if role else MASTER
             target.write_text(tex, encoding="utf-8")
             target.with_suffix(".json").write_text(json.dumps({"name": str(data.get("name", "master.tex"))[:200],
                                                                "uploaded": time.time(), "pages": pages}), encoding="utf-8")
-            if profile:
-                set_profile_resume(profile, target.name)
+            if role:
+                set_role_resume(role, target.name)
             PREP.poke()
             return self._json(200, {**rt.summary(res), "pages": pages, "name": data.get("name")})
 
         if path in ("/api/tailor", "/api/prompt"):
-            profile = str(data.get("profile") or "")[:40]
-            if not master_path(profile).exists():
+            role = str(data.get("role") or "")[:40]
+            if not master_path(role).exists():
                 return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume first")
             key = str(data.get("key", ""))
             row = job_row(key) or {}
             jd = str(data.get("jd") or row.get("description") or "")
             params = {"key": key, "jd": jd, "company": row.get("company", data.get("company", "")),
                       "title": row.get("title", data.get("title", "")),
-                      "backend": str(data.get("backend", "ollama")), "rewrite": bool(data.get("rewrite", True)),
+                      "backend": str(data.get("backend") or STORE.section("tailoring")["backend"]), "rewrite": bool(data.get("rewrite", True)),
                       "answer": data.get("answer"), "instruction": tailor.clean_instruction(data.get("instruction")),
-                      "profile": profile}
+                      "role": role}
             if path == "/api/prompt":
                 try:
-                    prompt = tailor.build_manual_prompt(master_path(profile).read_text(encoding="utf-8"), params, jd)
+                    prompt = tailor.build_manual_prompt(master_path(role).read_text(encoding="utf-8"), params, jd)
                 except ValueError as e:
                     return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
                 return self._json(200, {"prompt": prompt})
@@ -691,7 +680,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume in the dashboard first")
         backend = str(data.get("backend", "chatgpt"))
         if backend not in set(tailor.DRAFT_BACKENDS) | {"manual"}:
-            return self._err(HTTPStatus.BAD_REQUEST, "Drafting works with chatgpt, claude-code, ollama or manual")
+            return self._err(HTTPStatus.BAD_REQUEST, "Drafting works with chatgpt, claude-code or manual")
         question = str(data.get("question", "")).strip()[:2000]
         if not question:
             return self._err(HTTPStatus.BAD_REQUEST, "No question to answer")
@@ -718,7 +707,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume in the dashboard first")
         backend = str(data.get("backend", "chatgpt"))
         if backend not in tailor.DRAFT_BACKENDS:
-            return self._err(HTTPStatus.BAD_REQUEST, "Answering works with chatgpt, claude-code or ollama")
+            return self._err(HTTPStatus.BAD_REQUEST, "Answering works with chatgpt or claude-code")
         questions = []
         for q in (data.get("questions") or [])[:60]:
             if not isinstance(q, dict) or not str(q.get("question", "")).strip():

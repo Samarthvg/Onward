@@ -167,11 +167,11 @@ class Preparer:
     def weights(self) -> dict:
         return self.store.section("scoring")
 
-    def master_for(self, profiles: list[str]) -> Path:
-        """The master resume for a job: that of the first of its profiles
-        with a resume of its own, else master.tex."""
-        own = {p["id"]: p["resume"] for p in self.store.load()["profiles"] if p["resume"]}
-        name = next((own[p] for p in profiles if p in own and (self.resume_dir / own[p]).exists()), "")
+    def master_for(self, roles: list[str]) -> Path:
+        """The master resume for a job: that of the first of its roles with
+        a resume of its own, else master.tex."""
+        own = {r["id"]: r["resume"] for r in self.store.load()["roles"] if r["resume"]}
+        name = next((own[r] for r in roles if r in own and (self.resume_dir / own[r]).exists()), "")
         return self.resume_dir / name if name else self.master_path
 
     def save_scoring(self, data: dict) -> None:
@@ -241,25 +241,25 @@ class Preparer:
 
     JOB_COLS = ("key", "company", "title", "location", "remote", "sponsorship", "no_opt", "min_yoe",
                 "entry_hint", "kw", "degree", "has_jd", "first_seen", "last_seen", "url", "apply_url", "source",
-                "profiles")
+                "roles")
 
     def _job(self, row) -> dict:
         j = dict(zip(self.JOB_COLS, row))
         j["kw"] = json.loads(j["kw"] or "[]")
         j["degree"] = json.loads(j["degree"]) if j["degree"] else None
         j["has_jd"] = bool(j["has_jd"])
-        j["profiles"] = json.loads(j["profiles"] or "[]")
+        j["roles"] = json.loads(j["roles"] or "[]")
         return j
 
     @staticmethod
     def _tagged(conn) -> bool:
-        """Whether radar.py has tagged jobs with search profiles yet."""
-        return "profiles" in {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
+        """Whether radar.py has tagged jobs with the user's roles yet."""
+        return "roles" in {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
 
     def _select(self, conn) -> str:
-        profiles = "profiles" if self._tagged(conn) else "'[]'"
+        roles = "roles" if self._tagged(conn) else "'[]'"
         return ("SELECT key, company, title, location, remote, sponsorship, no_opt, min_yoe, entry_hint, kw, degree, "
-                f"length(description) > 200, first_seen, last_seen, url, apply_url, source, {profiles} FROM jobs ")
+                f"length(description) > 200, first_seen, last_seen, url, apply_url, source, {roles} FROM jobs ")
 
     def scan(self, now: float | None = None) -> int:
         """Queue newly seen jobs that qualify. Returns how many were added."""
@@ -284,7 +284,7 @@ class Preparer:
             masters: dict[Path, rt.Resume] = {}
 
             def master_of(j: dict) -> rt.Resume:
-                path = self.master_for(j["profiles"])
+                path = self.master_for(j["roles"])
                 if path not in masters:
                     masters[path] = rt.parse(path.read_text(encoding="utf-8"))
                 return masters[path]
@@ -304,10 +304,10 @@ class Preparer:
                     conn.execute("UPDATE prep SET score = ? WHERE job_key = ?", (sc["pct"], j["key"]))
                     if sc["pct"] is None or sc["pct"] < s["threshold"] or self.eligible(j, s):
                         conn.execute("DELETE FROM prep WHERE job_key = ? AND state = 'queued'", (j["key"],))
-                # Only jobs one of the user's search profiles wants.
+                # Only jobs one of the user's roles wants.
                 rows = conn.execute(
                     self._select(conn) + "WHERE kw != '' AND first_seen >= ? AND last_seen >= ? "
-                    + ("AND profiles != '[]' " if self._tagged(conn) else "")
+                    + ("AND roles != '[]' " if self._tagged(conn) else "")
                     + "AND key NOT IN (SELECT job_key FROM prep)",
                     (now - s["lookback_hours"] * 3600, now - STALE_AFTER)).fetchall()
                 added = 0
@@ -373,9 +373,9 @@ class Preparer:
         conn = self.connect()
         self.current = key
         try:
-            profiles = "j.profiles" if self._tagged(conn) else "'[]'"
+            roles = "j.roles" if self._tagged(conn) else "'[]'"
             row = conn.execute("SELECT j.company, j.title, j.description, j.apply_url, p.decision, p.attempts, p.answers, "
-                               f"p.instruction, {profiles} FROM prep p JOIN jobs j ON j.key = p.job_key "
+                               f"p.instruction, {roles} FROM prep p JOIN jobs j ON j.key = p.job_key "
                                "WHERE p.job_key = ?", (key,)).fetchone()
             if not row:
                 return "done"
