@@ -1,0 +1,792 @@
+{
+ "jobs": [
+  {
+   "data": {
+    "slug": "86587",
+    "language": "en-us",
+    "languages": [
+     "en-us"
+    ],
+    "client_code": "amd",
+    "req_id": "86587",
+    "title": "AI Scale-up Switch System Design Engineer",
+    "description": "<strong class=\"jdheading\"></strong><br><br><p style=\"margin: 0px; padding: 0px; color: windowtext;\"><strong><span style=\"margin: 0px; padding: 0px; font-size: 12pt; font-family: Arial, Arial_EmbeddedFont, Arial_MSCustomFont, Arial_MSFontService, sans-serif;\" data-contrast=\"auto\"><span style=\"margin: 0px; padding: 0px;\">WHAT YOU DO AT AMD CHANGES EVERYTHING</span></span></strong><span style=\"margin: 0px; padding: 0px; font-size: 12pt; font-family: Arial, Arial_EmbeddedFont, Arial_MSCustomFont, Arial_MSFontService, sans-serif;\" data-ccp-props=\"{}\"> </span></p><p style=\"margin: 0px; padding: 0px; color: windowtext;\"><span style=\"margin: 0px; padding: 0px; font-size: 12pt; font-family: Arial, Arial_EmbeddedFont, Arial_MSCustomFont, Arial_MSFontService, sans-serif;\" data-contrast=\"auto\"><span style=\"margin: 0px; padding: 0px;\">At AMD, our mission is to build great products that accelerate next-generation computing experiences—from AI and data centers, to PCs, </span><span style=\"margin: 0px; padding: 0px;\">gaming</span><span style=\"margin: 0px; padding: 0px;\"> and embedded systems. Grounded in a culture of innovation and collaboration, we believe real progress comes from bold ideas, human </span><span style=\"margin: 0px; padding: 0px; border-bottom: 1px solid transparent;\">ingenuity</span><span style=\"margin: 0px; padding: 0px;\"> and a shared passion to create something extraordinary. When you join AMD, </span><span style=\"margin: 0px; padding: 0px;\">you’ll</span><span style=\"margin: 0px; padding: 0px;\"> discover the real differentiator is our culture. We push the limits of innovation to solve the world’s most important challenges—striving for execution excellence, while being direct, humble, collaborative, and inclusive of diverse perspectives. Join us as we shape the future of AI and beyond.</span><span style=\"margin: 0px; padding: 0px;\">  </span></span><strong><span style=\"margin: 0px; padding: 0px; font-size: 12pt; font-family: Arial, Arial_EmbeddedFont, Arial_MSCustomFont, Arial_MSFontService, sans-serif;\" data-contrast=\"auto\"><span style=\"margin: 0px; padding: 0px;\">Together, we advance your career. </span></span></strong><span style=\"margin: 0px; padding: 0px; font-size: 12pt; font-family: Arial, Arial_EmbeddedFont, Arial_MSCustomFont, Arial_MSFontService, sans-serif;\" data-ccp-props=\"{}\"> </span></p> <br><strong class=\"jdheading\"></strong><br><br><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">THE ROLE:</span></strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\"> </span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">We are looking for a hands-on, technically sharp system design engineer to join our growing team and lead the bring-up of cutting-edge scale-up switches at the heart of next-generation AI rack infrastructure. As a key contributor, you will bring deep expertise in high-speed Ethernet, server management, and platform validation to drive switch platforms from initial power-on through full system qualification. In this role, you will take full ownership of bring-up execution, apply your debugging skills to solve complex multi-layer problems, and collaborate closely with hardware, firmware, and software teams to deliver production-ready systems.</span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">THE PERSON:</span></strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\"> </span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">You're a highly motivated team player with a strong development background, problem solving mentality, excellent communication skills, ability to prioritize tasks along with willingness to learn and adapt. Excellent teamwork skills and capable of working independently.  </span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">KEY RESPONSIBILITIES</span></strong></p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Lead the system bring-up and validation of state-of-the-art AI scale-up switches purpose-built for high-density GPU compute racks, from initial power-on through full system validation</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Perform high-speed SerDes and link bring-up, including configuring and validating Auto-Negotiation/Link Training (AN/LT), tuning TX equalization, and characterizing signal integrity across 200G/400G/800G interfaces</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Execute comprehensive link qualification testing using PRBS (Pseudo-Random Binary Sequence), Snake Traffic loopback testing, and FEC (Forward Error Correction) analysis to validate BER performance at scale</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Utilize LinkCAT and Broadcom SDK tools to characterize port performance, diagnose link failures, and validate PHY configurations across large port counts</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Integrate and validate server management infrastructure including BMC/IPMI, Redfish API, and out-of-band management workflows for automated bring-up and health monitoring</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Develop and maintain bring-up scripts and test automation (Python) to accelerate validation coverage across chassis configurations</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Debug complex system-level failures spanning hardware, firmware, and software including signal integrity issues, firmware crashes, and management plane anomalies and drive issues to root cause</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Collaborate with hardware, firmware, and software teams to reproduce failures, document findings, and verify fixes across platform revisions</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Maintain detailed bring-up documentation, test reports, and issue tracking throughout the product development lifecycle</span></li></ul><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\"> </span></strong></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">PREFERRED EXPERIENCE</span></strong></p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Extensive hands-on experience in hardware bring-up, platform validation, or high-speed networking silicon characterization</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Experience with high-speed switch ASICs (Broadcom TH6/Tomahawk series preferred) and familiarity with Broadcom's SDK/DAPI frameworks</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Deep understanding of high-speed Ethernet standards (400GbE, 800GbE) including AN/LT (IEEE 802.3), RS-FEC / KP4-FEC, and PAM4 SerDes technology</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Hands-on experience with PRBS testing, BER measurement, eye diagram analysis, and Snake/loopback traffic validation methodologies</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Familiarity with LinkCAT or equivalent PHY/link characterization tools</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Experience with server management protocols: IPMI, Redfish/OpenBMC, KCS, IPMB, and PLDM for out-of-band control and telemetry</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Proficiency in Python for test automation, log parsing, and data analysis</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Strong debugging skills — comfortable working across hardware (oscilloscope, protocol analyzer), firmware logs, and software traces to isolate root cause</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Experience reading schematics and PCB layout to correlate signal integrity observations with hardware design</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Excellent communication skills with the ability to document findings clearly and collaborate across multidisciplinary teams</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Experience with high-density switch/router platforms or AI/ML fabric infrastructure is a strong plus</span></li></ul><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">ACADEMIC CREDENTIALS:</span></strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\"> </span></p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Bachelor’s/Master’s degree in Computer Science or related field strongly preferred </span></li></ul><p style=\"margin: 0px;\"> </p><p style=\"margin: 0px;\"><span style=\"font-family: arial, helvetica, sans-serif; font-size: 12pt;\"><strong>This role is not eligible for visa sponsorship.</strong></span></p><p style=\"margin: 0px;\"> </p><p style=\"margin: 0px;\"> </p><p style=\"margin: 0px;\"> </p><p style=\"margin: 0px;\"><span style=\"font-family: arial, helvetica, sans-serif; font-size: 12pt;\"><strong>#LI-SC3</strong></span></p> <br><strong class=\"jdheading\"></strong><br><br><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">Benefits offered are described:  </span></em><span style=\"font-family: 'Arial',sans-serif; color: black;\"><a href=\"https://www.amd.com/en/corporate/careers/benefits.html\" target=\"_blank\" rel=\"noopener\">AMD benefits at a glance</a>.</span></span></p><p style=\"margin: 0px;\"><span style=\"color: black; font-size: 12pt;\"> </span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">AMD does not accept unsolicited resumes from headhunters, recruitment agencies, or fee-based recruitment services. AMD and its subsidiaries are equal opportunity, inclusive employers and will consider all applicants without regard to age, ancestry, color, marital status, medical condition, mental or physical disability, national origin, race, religion, political and/or third-party affiliation, sex, pregnancy, sexual orientation, gender identity, military or veteran status, or any other characteristic protected by law.   We encourage applications from all qualified candidates and will accommodate applicants’ needs under the respective laws throughout all stages of the recruitment and selection process.</span></em></span></p><p style=\"margin: 0px;\"><span style=\"color: black; font-size: 12pt;\"> </span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">AMD may use Artificial Intelligence to help screen, assess or select applicants for this position.  AMD’s “Responsible AI Policy” is available <a href=\"https://www.amd.com/en/legal/responsible-ai-use-policy.html\" target=\"_blank\" rel=\"noopener\">here.</a></span></em></span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\"> </span></em></span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">This posting is for an existing vacancy.</span></em></span></p>",
+    "location_name": "US,NJ,Secaucus_Meadowlands",
+    "street_address": "333 Meadowlands Parkway 1st FL.",
+    "city": "Secaucus",
+    "state": "New Jersey",
+    "country": "United States",
+    "country_code": "US",
+    "postal_code": "07094",
+    "location_type": "LAT_LNG",
+    "latitude": 40.791,
+    "longitude": -74.0634,
+    "categories": [
+     {
+      "name": "Engineering"
+     }
+    ],
+    "tags1": [
+     "No"
+    ],
+    "tags2": [
+     "USD $102,550.00/Yr."
+    ],
+    "tags3": [
+     "USD $146,500.00/Yr."
+    ],
+    "tags4": [
+     "US Careers (External)"
+    ],
+    "tags5": [
+     "USD $117,200.00/Yr."
+    ],
+    "tags6": [
+     "USD $175,800.00/Yr."
+    ],
+    "tags7": [
+     "117200"
+    ],
+    "tags8": [
+     "175800"
+    ],
+    "department": "",
+    "salary_value": 0,
+    "salary_min_value": 0,
+    "salary_max_value": 0,
+    "employment_type": "FULL_TIME",
+    "qualifications": "<p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">Benefits offered are described:&nbsp; </span></em><span style=\"font-family: 'Arial',sans-serif; color: black;\"><a href=\"https://www.amd.com/en/corporate/careers/benefits.html\" target=\"_blank\" rel=\"noopener\">AMD benefits at a glance</a>.</span></span></p><p style=\"margin: 0px;\"><span style=\"color: black; font-size: 12pt;\">&nbsp;</span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">AMD does not accept unsolicited resumes from headhunters, recruitment agencies, or fee-based recruitment services. AMD and its subsidiaries are equal opportunity, inclusive employers and will consider all applicants without regard to age, ancestry, color, marital status, medical condition, mental or physical disability, national origin, race, religion, political and/or third-party affiliation, sex, pregnancy, sexual orientation, gender identity, military or veteran status, or any other characteristic protected by law.&nbsp;&nbsp; We encourage applications from all qualified candidates and will accommodate applicants&rsquo; needs under the respective laws throughout all stages of the recruitment and selection process.</span></em></span></p><p style=\"margin: 0px;\"><span style=\"color: black; font-size: 12pt;\">&nbsp;</span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">AMD may use Artificial Intelligence to help screen, assess or select applicants for this position.&nbsp; AMD&rsquo;s &ldquo;Responsible AI Policy&rdquo; is available <a href=\"https://www.amd.com/en/legal/responsible-ai-use-policy.html\" target=\"_blank\" rel=\"noopener\">here.</a></span></em></span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">&nbsp;</span></em></span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">This posting is for an existing vacancy.</span></em></span></p>",
+    "hiring_organization": "Advanced Micro Devices, Inc",
+    "hiring_organization_logo": "https://www.amd.com/content/dam/code/images/header/amd-header-logo.svg",
+    "responsibilities": "<p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">THE ROLE:</span></strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">&nbsp;</span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">We are looking for a hands-on, technically sharp system design engineer to join our growing team and lead the bring-up of cutting-edge scale-up switches at the heart of next-generation AI rack infrastructure. As a key contributor, you will bring deep expertise in high-speed Ethernet, server management, and platform validation to drive switch platforms from initial power-on through full system qualification. In this role, you will take full ownership of bring-up execution, apply your debugging skills to solve complex multi-layer problems, and collaborate closely with hardware, firmware, and software teams to deliver production-ready systems.</span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">THE PERSON:</span></strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">&nbsp;</span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">You're a highly motivated team player with a strong development background, problem solving mentality, excellent communication skills, ability to prioritize tasks along with willingness to learn and adapt. Excellent teamwork skills and capable of working independently.&nbsp;&nbsp;</span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">KEY RESPONSIBILITIES</span></strong></p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Lead the system&nbsp;bring-up and validation of state-of-the-art AI scale-up switches purpose-built for high-density GPU compute racks, from initial power-on through full system validation</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Perform high-speed SerDes and link bring-up, including configuring and validating Auto-Negotiation/Link Training (AN/LT), tuning TX equalization, and characterizing signal integrity across 200G/400G/800G interfaces</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Execute comprehensive link qualification testing using PRBS (Pseudo-Random Binary Sequence), Snake Traffic loopback testing, and FEC (Forward Error Correction) analysis to validate BER performance at scale</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Utilize LinkCAT and Broadcom SDK tools to characterize port performance, diagnose link failures, and validate PHY configurations across large port counts</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Integrate and validate server management infrastructure including BMC/IPMI, Redfish API, and out-of-band management workflows for automated bring-up and health monitoring</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Develop and maintain bring-up scripts and test automation (Python) to accelerate validation coverage across chassis configurations</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Debug complex system-level failures spanning hardware, firmware, and software including signal integrity issues, firmware crashes, and management plane anomalies and drive issues to root cause</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Collaborate with hardware, firmware, and software teams to reproduce failures, document findings, and verify fixes across platform revisions</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Maintain detailed bring-up documentation, test reports, and issue tracking throughout the product development lifecycle</span></li></ul><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">&nbsp;</span></strong></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">PREFERRED EXPERIENCE</span></strong></p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Extensive hands-on experience in hardware bring-up, platform validation, or high-speed networking silicon characterization</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Experience with high-speed switch ASICs (Broadcom TH6/Tomahawk series preferred) and familiarity with Broadcom's SDK/DAPI frameworks</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Deep understanding of high-speed Ethernet standards (400GbE, 800GbE) including AN/LT (IEEE 802.3), RS-FEC / KP4-FEC, and PAM4 SerDes technology</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Hands-on experience with PRBS testing, BER measurement, eye diagram analysis, and Snake/loopback traffic validation methodologies</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Familiarity with LinkCAT or equivalent PHY/link characterization tools</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Experience with server management protocols: IPMI, Redfish/OpenBMC, KCS, IPMB, and PLDM for out-of-band control and telemetry</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Proficiency in Python for test automation, log parsing, and data analysis</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Strong debugging skills &mdash; comfortable working across hardware (oscilloscope, protocol analyzer), firmware logs, and software traces to isolate root cause</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Experience reading schematics and PCB layout to correlate signal integrity observations with hardware design</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Excellent communication skills with the ability to document findings clearly and collaborate across multidisciplinary teams</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Experience with high-density switch/router platforms or AI/ML fabric infrastructure is a strong plus</span></li></ul><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">ACADEMIC CREDENTIALS:</span></strong><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">&nbsp;</span></p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-size: 11.0pt; font-family: Arial, sans-serif;\">Bachelor&rsquo;s/Master&rsquo;s degree in Computer Science or related field strongly preferred&nbsp;</span></li></ul><p style=\"margin: 0px;\">&nbsp;</p><p style=\"margin: 0px;\"><span style=\"font-family: arial, helvetica, sans-serif; font-size: 12pt;\"><strong>This role is not eligible for visa sponsorship.</strong></span></p><p style=\"margin: 0px;\">&nbsp;</p><p style=\"margin: 0px;\">&nbsp;</p><p style=\"margin: 0px;\">&nbsp;</p><p style=\"margin: 0px;\"><span style=\"font-family: arial, helvetica, sans-serif; font-size: 12pt;\"><strong>#LI-SC3</strong></span></p>",
+    "posted_date": "2026-10-20T21:51:00+0000",
+    "apply_url": "https://careers-amd.icims.com/jobs/86587/login",
+    "internal": false,
+    "external": false,
+    "searchable": true,
+    "applyable": true,
+    "li_easy_applyable": true,
+    "ats_code": "icims",
+    "hiring_flow_name": "iCIMS ATS Hiring Flow",
+    "isFrontLineAIJob": false,
+    "isApplyFlowJob": false,
+    "meta_data": {
+     "mongo": {
+      "mongo_created": true
+     },
+     "openingjobs": {
+      "openingJobId": "00002d27d39e205c507efeece18c8417291f"
+     },
+     "icims": {
+      "jps_is_public": true,
+      "primary_posted_site_object": {
+       "site": "careers-amd",
+       "siteId": "c0855819-5879-4b81-8974-83b570f1d047",
+       "datePosted": "2026-10-20T21:51:00+0000"
+      },
+      "date_updated": "2026-10-20T21:52:04Z",
+      "config_keys": {
+       "jobposting.external.company.name": "Advanced Micro Devices, Inc",
+       "jobposting.external.indeed.screenerquestions": "1",
+       "icims.external.xml.feeds": "icims.adzuna.xml.enabled,icims.aeroemploiformation.xml.enabled,icims.apec.xml.enabled,icims.careerbuilder.xml.enabled,icims.careerarc.xml.enabled,icims.careerlink.xml.enabled,icims.clearbold.xml.enabled,icims.constructionjobs.xml.enabled,icims.craigslist.xml.enabled,icims.cv-library.xml.enabled,icims.cvaden.xml.enabled,icims.direct-employers.xml.enabled,icims.hireheroesusa.xml.enabled,icims.hireahero.xml.enabled,icims.hirepurpose.xml.enabled,icims.hospitalcareers.xml.enabled,icims.iberempleos.xml.enabled,icims.indeed.xml.enabled,icims.inhersight.xml.enabled,icims.irishjobs.xml.enabled,icims.itjobscafe.xml.enabled,icims.jobbio.xml.enabled,icims.jobcase.xml.enabled,icims.jobsite.xml.enabled,icims.linkedin.xml.enabled,icims.monster.xml.enabled,icims.msep.xml.enabled,icims.nijobs.xml.enabled,icims.oneten.xml.enabled,icims.pallet-labs.xml.enabled,icims.paradox.xml.enabled,icims.practicematch.xml.enabled,icims.prideatwork.xml.enabled,icims.professionaldiversitynetwork.xml.enabled,icims.propellum.xml.enabled,icims.qkly.xml.enabled,icims.radancy.xml.enabled,icims.recruitnet.xml.enabled,icims.recruitmilitary.xml.enabled,icims.regionsjob.xml.enabled,icims.resume-library.xml.enabled,icims.snagajob.xml.enabled,icims.upward.xml.enabled,icims.vonq.xml.enabled,icims.webengineering.xml.enabled,icims.webscribble.xml.enabled,icims.ziprecruiter.xml.enabled,icims.zippia.xml.enabled,icims.nexxt.xml.enabled",
+       "icims.config.web.apply.jobpost": "1",
+       "portal.id": "17",
+       "jobposting.external.parent.organization.name": "Advanced Micro Devices, Inc",
+       "ccc.attract.portal.url": "https://careers.amd.com",
+       "icims.config.web.indeed.easy.apply": "0"
+      },
+      "revision_int": 25,
+      "uuid": "c43043e6-4371-41ed-85aa-824acce0ea1f"
+     },
+     "ats_job_hash": "2383e5851a079b3b2780b027bd062b79",
+     "googlejobs": {
+      "jobName": "projects/helpful-passage-853/tenants/cb22eb5b-7e00-0000-0000-007edad744d3/jobs/81523841599185606"
+     },
+     "import_id": "b79d0921-549a-479c-92eb-25eec2f9d30c",
+     "redirectOnApply": true,
+     "questionservice": {
+      "id": "45114640"
+     },
+     "canonical_url": "https://careers.amd.com/jobs/86587?lang=en-us",
+     "gdpr": false,
+     "last_mod": "2026-10-20T21:52:31+0000",
+     "elasticsearch": {
+      "es_created": false
+     },
+     "opensearch": {
+      "hit_score": "NaN",
+      "hit_explanation": null,
+      "hit_matched_queries": [
+       "internal",
+       "applyable",
+       "term-language",
+       "term-countries",
+       "searchable",
+       "term-client_code"
+      ],
+      "hit_index": "jobs",
+      "hit_shard": null
+     },
+     "import_source": "ImporterService",
+     "client_code": "amd"
+    },
+    "update_date": "2026-10-20T21:52:31+0000",
+    "create_date": "2026-06-15T18:34:43+0000",
+    "category": [
+     " Engineering"
+    ],
+    "full_location": "Secaucus, New Jersey",
+    "short_location": "Secaucus, New Jersey",
+    "multipleLocations": false
+   }
+  },
+  {
+   "data": {
+    "slug": "93705",
+    "language": "en-us",
+    "languages": [
+     "en-us"
+    ],
+    "client_code": "amd",
+    "req_id": "93705",
+    "title": "AI Solution Architect",
+    "description": "<strong class=\"jdheading\"></strong><br><br><p style=\"margin: 0px;\"><span style=\"font-size: 12pt; font-family: arial, helvetica, sans-serif;\"><strong>ADVANCE YOUR CAREER. ADVANCE THE WORLD. </strong></span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt; font-family: arial, helvetica, sans-serif;\">At AMD, we believe technology has the power to solve the world’s most important challenges. From advancing healthcare and scientific discovery to powering AI and the technologies people rely on every day, innovation at AMD is shaping the future. </span></p><p style=\"margin: 0px;\"> </p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt; font-family: arial, helvetica, sans-serif;\">Whether you’re designing next-gen processors, enabling AI breakthroughs, or bringing leading edge products to market, every role at AMD contributes to something bigger — technology that moves the world forward. Join us and, together, we’ll advance your career.</span></p> <br><strong class=\"jdheading\"></strong><br><br><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-family: Arial, sans-serif;\">THE ROLE:</span></strong></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">AMD is seeking an AI Software Development Engineer to architect, develop and accelerate the delivery of scalable, production-ready AI/ML solutions in support of AMD portfolio of AI products.  Successful candidates will be responsible for analysis and development of machine learning reference solutions that demonstrate end-to-end value within specific application segments of AMD’s AI portfolio of products.  </span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">You will engage and provide liaison directly with technical and business teams to define a roadmap of AI solutions, work with marketing teams to deploy early PoCs, and engage Tier 1 customers to support their custom applications based on these reference solutions.</span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Other responsibilities will be to analyze emerging AI trends, and technologies and to continuously integrate new concepts & capabilities into the roadmap of reference solutions.  Through this work, the candidate will be a trusted advisor in providing learned insights to product and technical teams within AMD.  </span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">As a member of the Developer Acceleration Team within AMD’s AI Product Management organization, you will have opportunity to work closely with internal stakeholders across the company as well as engage directly with external customers.  Close interaction with Engineering, Applications, and Business Unit stakeholders is essential. </span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-family: Arial, sans-serif;\">THE PERSON:</span></strong></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">The type of person who will be successful in this role is highly collaborative, and willing to trailblaze and champion new ideas. You will exhibit excellent written and verbal communication skills, and you will be highly analytical.  Applicants should possess a BS/MS in CSE/EE or equivalent.  The position requires comprehensive knowledge of machine learning architectures, models, and industry developer tools. Prior work experience in developing production software solutions and CI/CD methods is critical.</span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Develop and deliver machine learning solutions that demonstrate customer value across AMD’s AI product portfolio</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Implementation and training of machine learning models in common frameworks including fine-tuning models, and deployment on hardware systems</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Experience with deployed production runtime serving of machine learning applications</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Experience publishing to open source, including GitHub repositories and industry collaborations</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Experience emerging software frameworks for Generative AI and Agentic AI</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Developing in Python, C/C++, and deployment of solutions within Jupyter notebooks</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Integration and development of demonstration/application software</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Benchmarking on cloud environments (AWS, GCP, Azure)</span></li></ul><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-family: Arial, sans-serif;\">PREFERRED EXPERIENCE:</span></strong></p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">History of impactful contributions to open-source projects. Experience maintaining a popular open-source project is a plus.</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Full stack software experience (front end user interfaces) is a plus.</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Experience with foundational machine learning model architecture development or implementation including Agentic AI, LLMs, RAG pipelines, multi-modal applications including ASR/TTS, and Image Generation pipelines</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Domain expertise in a machine learning application development – especially in developing production scale consumer or commercial software.</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Technical publication within machine learning industry</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Collaboration with industry standards bodies</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Bash/Python/C++ scripting for test automation</span></li></ul><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-family: Arial, sans-serif;\">ACADEMIC CREDENTIALS:</span></strong></p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">BS/MS (Computer Science, Computer Engineering, Electrical Engineering, or related equivalent)</span></li></ul><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"> </p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-family: Arial, sans-serif;\">LOCATION:</span></strong><span style=\"font-family: Arial, sans-serif;\"><br>San Jose, CA - onsite</span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt; font-family: arial, helvetica, sans-serif; color: #32363a;\"><em>AMD does not accept unsolicited resumes from headhunters, recruitment agencies or fee based recruitment services. AMD and its subsidiaries are equal opportunity employers and will consider all applicants without regard to race, marital status, sex, age, color, religion, national origin, veteran status, disability or any other characteristic protected by law. EOE/MFDV</em></span></p><p style=\"margin: 0px;\"><span style=\"font-family: arial, helvetica, sans-serif; font-size: 12pt;\"><em> </em></span></p><p style=\"margin: 0px;\"><span style=\"font-family: arial, helvetica, sans-serif; font-size: 12pt;\"><strong>This role is not eligible for visa sponsorship.</strong></span></p> <br><strong class=\"jdheading\"></strong><br><br><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">Benefits offered are described:  </span></em><span style=\"font-family: 'Arial',sans-serif; color: black;\"><a href=\"https://www.amd.com/en/corporate/careers/benefits.html\" target=\"_blank\" rel=\"noopener\">AMD benefits at a glance</a>.</span></span></p><p style=\"margin: 0px;\"><span style=\"color: black; font-size: 12pt;\"> </span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">AMD does not accept unsolicited resumes from headhunters, recruitment agencies, or fee-based recruitment services. AMD and its subsidiaries are equal opportunity, inclusive employers and will consider all applicants without regard to age, ancestry, color, marital status, medical condition, mental or physical disability, national origin, race, religion, political and/or third-party affiliation, sex, pregnancy, sexual orientation, gender identity, military or veteran status, or any other characteristic protected by law.   We encourage applications from all qualified candidates and will accommodate applicants’ needs under the respective laws throughout all stages of the recruitment and selection process.</span></em></span></p><p style=\"margin: 0px;\"><span style=\"color: black; font-size: 12pt;\"> </span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">AMD may use Artificial Intelligence to help screen, assess or select applicants for this position.  AMD’s “Responsible AI Policy” is available <a href=\"https://www.amd.com/en/legal/responsible-ai-use-policy.html\" target=\"_blank\" rel=\"noopener\">here.</a></span></em></span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\"> </span></em></span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">This posting is for an existing vacancy.</span></em></span></p>",
+    "location_name": "US,CA,San Jose",
+    "street_address": "2100 Logic Drive",
+    "city": "San Jose",
+    "state": "California",
+    "country": "United States",
+    "country_code": "US",
+    "postal_code": "95124",
+    "location_type": "LAT_LNG",
+    "latitude": 37.2563,
+    "longitude": -121.9229,
+    "categories": [
+     {
+      "name": "Engineering"
+     }
+    ],
+    "tags1": [
+     "No"
+    ],
+    "tags2": [
+     "USD $150,500.00/Yr."
+    ],
+    "tags3": [
+     "USD $215,000.00/Yr."
+    ],
+    "tags4": [
+     "US Careers (External)"
+    ],
+    "tags5": [
+     "USD $172,000.00/Yr."
+    ],
+    "tags6": [
+     "USD $258,000.00/Yr."
+    ],
+    "tags7": [
+     "172000"
+    ],
+    "tags8": [
+     "258000"
+    ],
+    "department": "",
+    "salary_value": 0,
+    "salary_min_value": 0,
+    "salary_max_value": 0,
+    "employment_type": "FULL_TIME",
+    "qualifications": "<p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">Benefits offered are described:&nbsp; </span></em><span style=\"font-family: 'Arial',sans-serif; color: black;\"><a href=\"https://www.amd.com/en/corporate/careers/benefits.html\" target=\"_blank\" rel=\"noopener\">AMD benefits at a glance</a>.</span></span></p><p style=\"margin: 0px;\"><span style=\"color: black; font-size: 12pt;\">&nbsp;</span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">AMD does not accept unsolicited resumes from headhunters, recruitment agencies, or fee-based recruitment services. AMD and its subsidiaries are equal opportunity, inclusive employers and will consider all applicants without regard to age, ancestry, color, marital status, medical condition, mental or physical disability, national origin, race, religion, political and/or third-party affiliation, sex, pregnancy, sexual orientation, gender identity, military or veteran status, or any other characteristic protected by law.&nbsp;&nbsp; We encourage applications from all qualified candidates and will accommodate applicants&rsquo; needs under the respective laws throughout all stages of the recruitment and selection process.</span></em></span></p><p style=\"margin: 0px;\"><span style=\"color: black; font-size: 12pt;\">&nbsp;</span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">AMD may use Artificial Intelligence to help screen, assess or select applicants for this position.&nbsp; AMD&rsquo;s &ldquo;Responsible AI Policy&rdquo; is available <a href=\"https://www.amd.com/en/legal/responsible-ai-use-policy.html\" target=\"_blank\" rel=\"noopener\">here.</a></span></em></span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">&nbsp;</span></em></span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt;\"><em><span style=\"font-family: 'Arial',sans-serif; color: black;\">This posting is for an existing vacancy.</span></em></span></p>",
+    "hiring_organization": "Advanced Micro Devices, Inc",
+    "hiring_organization_logo": "https://www.amd.com/content/dam/code/images/header/amd-header-logo.svg",
+    "responsibilities": "<p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-family: Arial, sans-serif;\">THE ROLE:</span></strong></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">AMD is seeking an AI Software Development Engineer to architect, develop and accelerate the delivery of scalable, production-ready AI/ML solutions in support of AMD portfolio of AI products. &nbsp;Successful candidates will be responsible for analysis and development of machine learning reference solutions that demonstrate end-to-end value within specific application segments of AMD&rsquo;s AI portfolio of products.&nbsp; </span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">You will engage and provide liaison directly with technical and business teams to define a roadmap of AI solutions, work with marketing teams to deploy early PoCs, and engage Tier 1 customers to support their custom applications based on these reference solutions.</span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Other responsibilities will be to analyze emerging AI trends, and technologies and to continuously integrate new concepts &amp; capabilities into the roadmap of reference solutions.&nbsp; Through this work, the candidate will be a trusted advisor in providing learned insights to product and technical teams within AMD.&nbsp; </span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">As a member of the Developer Acceleration Team within AMD&rsquo;s AI Product Management organization, you will have opportunity to work closely with internal stakeholders across the company as well as engage directly with external customers.&nbsp; Close interaction with Engineering, Applications, and Business Unit stakeholders is essential. </span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-family: Arial, sans-serif;\">THE PERSON:</span></strong></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">The type of person who will be successful in this role is highly collaborative, and willing to trailblaze and champion new ideas. You will exhibit excellent written and verbal communication skills, and you will be highly analytical.&nbsp; Applicants should possess a BS/MS in CSE/EE or equivalent.&nbsp; The position requires comprehensive knowledge of machine learning architectures, models, and industry developer tools. Prior work experience in developing production software solutions and CI/CD methods is critical.</span></p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Develop and deliver machine learning solutions that demonstrate customer value across AMD&rsquo;s AI product portfolio</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Implementation and training of machine learning models in common frameworks including fine-tuning models, and deployment on hardware systems</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Experience with deployed production runtime serving of machine learning applications</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Experience publishing to open source, including GitHub repositories and industry collaborations</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Experience emerging software frameworks for Generative AI and Agentic AI</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Developing in Python, C/C++, and deployment of solutions within Jupyter notebooks</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Integration and development of demonstration/application software</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Benchmarking on cloud environments (AWS, GCP, Azure)</span></li></ul><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-family: Arial, sans-serif;\">PREFERRED EXPERIENCE:</span></strong></p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">History of impactful contributions to open-source projects. Experience maintaining a popular open-source project is a plus.</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Full stack software experience (front end user interfaces) is a plus.</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Experience with foundational machine learning model architecture development or implementation including Agentic AI, LLMs, RAG pipelines, multi-modal applications including ASR/TTS, and Image Generation pipelines</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Domain expertise in a machine learning application development &ndash; especially in developing production scale consumer or commercial software.</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Technical publication within machine learning industry</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Collaboration with industry standards bodies</span></li><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">Bash/Python/C++ scripting for test automation</span></li></ul><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-family: Arial, sans-serif;\">ACADEMIC CREDENTIALS:</span></strong></p><ul style=\"margin-top: 0in; margin-bottom: 0in;\" type=\"disc\"><li style=\"margin-top: 0in; margin-right: 0in; margin-bottom: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><span style=\"font-family: Arial, sans-serif;\">BS/MS (Computer Science, Computer Engineering, Electrical Engineering, or related equivalent)</span></li></ul><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\">&nbsp;</p><p style=\"margin: 0in; font-size: 12pt; font-family: Aptos, sans-serif;\"><strong><span style=\"font-family: Arial, sans-serif;\">LOCATION:</span></strong><span style=\"font-family: Arial, sans-serif;\"><br>San Jose, CA - onsite</span></p><p style=\"margin: 0px;\"><span style=\"font-size: 12pt; font-family: arial, helvetica, sans-serif; color: #32363a;\"><em>AMD does not accept unsolicited resumes from headhunters, recruitment agencies or fee based recruitment services. AMD and its subsidiaries are equal opportunity employers and will consider all applicants without regard to race, marital status, sex, age, color, religion, national origin, veteran status, disability or any other characteristic protected by law. EOE/MFDV</em></span></p><p style=\"margin: 0px;\"><span style=\"font-family: arial, helvetica, sans-serif; font-size: 12pt;\"><em>&nbsp;</em></span></p><p style=\"margin: 0px;\"><span style=\"font-family: arial, helvetica, sans-serif; font-size: 12pt;\"><strong>This role is not eligible for visa sponsorship.</strong></span></p>",
+    "posted_date": "2026-10-21T00:01:00+0000",
+    "apply_url": "https://careers-amd.icims.com/jobs/93705/login",
+    "internal": false,
+    "external": false,
+    "searchable": true,
+    "applyable": true,
+    "li_easy_applyable": true,
+    "ats_code": "icims",
+    "hiring_flow_name": "iCIMS ATS Hiring Flow",
+    "isFrontLineAIJob": false,
+    "isApplyFlowJob": false,
+    "meta_data": {
+     "mongo": {
+      "mongo_created": true
+     },
+     "openingjobs": {
+      "openingJobId": "00001263438d0368a9aa2bb2beb7770712ee"
+     },
+     "icims": {
+      "jps_is_public": true,
+      "primary_posted_site_object": {
+       "site": "careers-amd",
+       "siteId": "c0855819-5879-4b81-8974-83b570f1d047",
+       "datePosted": "2026-10-21T00:01:00+0000"
+      },
+      "date_updated": "2026-10-21T00:03:19Z",
+      "config_keys": {
+       "jobposting.external.company.name": "Advanced Micro Devices, Inc",
+       "jobposting.external.indeed.screenerquestions": "1",
+       "icims.external.xml.feeds": "icims.adzuna.xml.enabled,icims.aeroemploiformation.xml.enabled,icims.apec.xml.enabled,icims.careerbuilder.xml.enabled,icims.careerarc.xml.enabled,icims.careerlink.xml.enabled,icims.clearbold.xml.enabled,icims.constructionjobs.xml.enabled,icims.craigslist.xml.enabled,icims.cv-library.xml.enabled,icims.cvaden.xml.enabled,icims.direct-employers.xml.enabled,icims.hireheroesusa.xml.enabled,icims.hireahero.xml.enabled,icims.hirepurpose.xml.enabled,icims.hospitalcareers.xml.enabled,icims.iberempleos.xml.enabled,icims.indeed.xml.enabled,icims.inhersight.xml.enabled,icims.irishjobs.xml.enabled,icims.itjobscafe.xml.enabled,icims.jobbio.xml.enabled,icims.jobcase.xml.enabled,icims.jobsite.xml.enabled,icims.linkedin.xml.enabled,icims.monster.xml.enabled,icims.msep.xml.enabled,icims.nijobs.xml.enabled,icims.oneten.xml.enabled,icims.pallet-labs.xml.enabled,icims.paradox.xml.enabled,icims.practicematch.xml.enabled,icims.prideatwork.xml.enabled,icims.professionaldiversitynetwork.xml.enabled,icims.propellum.xml.enabled,icims.qkly.xml.enabled,icims.radancy.xml.enabled,icims.recruitnet.xml.enabled,icims.recruitmilitary.xml.enabled,icims.regionsjob.xml.enabled,icims.resume-library.xml.enabled,icims.snagajob.xml.enabled,icims.upward.xml.enabled,icims.vonq.xml.enabled,icims.webengineering.xml.enabled,icims.webscribble.xml.enabled,icims.ziprecruiter.xml.enabled,icims.zippia.xml.enabled,icims.nexxt.xml.enabled",
+       "icims.config.web.apply.jobpost": "1",
+       "portal.id": "17",
+       "jobposting.external.parent.organization.name": "Advanced Micro Devices, Inc",
+       "ccc.attract.portal.url": "https://careers.amd.com",
+       "icims.config.web.indeed.easy.apply": "0"
+      },
+      "revision_int": 1,
+      "uuid": "495ef0e9-3d34-485f-a4c9-5e047b8fb36e"
+     },
+     "ats_job_hash": "977cbc45b930f6c1ebfcc92c17c00ef2",
+     "googlejobs": {
+      "jobName": "projects/helpful-passage-853/tenants/cb22eb5b-7e00-0000-0000-007edad744d3/jobs/109684084048831174"
+     },
+     "import_id": "b9fc95fb-b2cf-447c-83ee-96898fd2f30d",
+     "redirectOnApply": true,
+     "questionservice": {
+      "id": "46835326"
+     },
+     "canonical_url": "https://careers.amd.com/jobs/93705?lang=en-us",
+     "gdpr": false,
+     "last_mod": "2026-10-21T00:03:30+0000",
+     "elasticsearch": {
+      "es_created": true
+     },
+     "opensearch": {
+      "hit_score": "NaN",
+      "hit_explanation": null,
+      "hit_matched_queries": [
+       "internal",
+       "applyable",
+       "term-language",
+       "term-countries",
+       "searchable",
+       "term-client_code"
+      ],
+      "hit_index": "jobs",
+      "hit_shard": null
+     },
+     "import_source": "ImporterService",
+     "client_code": "amd"
+    },
+    "update_date": "2026-10-21T00:03:30+0000",
+    "create_date": "2026-10-21T00:03:30+0000",
+    "category": [
+     " Engineering"
+    ],
+    "full_location": "San Jose, California",
+    "short_location": "San Jose, California",
+    "multipleLocations": false
+   }
+  }
+ ],
+ "locations": [],
+ "totalCount": 647,
+ "request_id": false,
+ "meta_data": false,
+ "count": 647,
+ "filter": {
+  "facetList": {
+   "city": [
+    {
+     "term": "Austin",
+     "count": 267
+    },
+    {
+     "term": "Bellevue",
+     "count": 4
+    },
+    {
+     "term": "Boxborough",
+     "count": 25
+    },
+    {
+     "term": "CALIFORNIA",
+     "count": 1
+    },
+    {
+     "term": "Fishkill",
+     "count": 23
+    },
+    {
+     "term": "Folsom",
+     "count": 2
+    },
+    {
+     "term": "Fort Collins",
+     "count": 30
+    },
+    {
+     "term": "GEORGIA",
+     "count": 1
+    },
+    {
+     "term": "Longmont",
+     "count": 20
+    },
+    {
+     "term": "Rochester",
+     "count": 15
+    },
+    {
+     "term": "San Diego",
+     "count": 2
+    },
+    {
+     "term": "San Jose",
+     "count": 169
+    },
+    {
+     "term": "Santa Clara",
+     "count": 143
+    },
+    {
+     "term": "Seattle",
+     "count": 11
+    },
+    {
+     "term": "Secaucus",
+     "count": 42
+    },
+    {
+     "term": "Washington",
+     "count": 1
+    },
+    {
+     "term": "WIXOM",
+     "count": 1
+    }
+   ],
+   "country": [
+    {
+     "term": "United States",
+     "count": 647
+    }
+   ],
+   "tags1": [
+    {
+     "term": "No",
+     "count": 636
+    },
+    {
+     "term": "Yes",
+     "count": 11
+    }
+   ]
+  },
+  "displayLimit": 10,
+  "brands": {
+   "all": [],
+   "shortlist": []
+  },
+  "categories": {
+   "all": [
+    {
+     "category": "Accounting/Finance",
+     "numJobs": 2
+    },
+    {
+     "category": "Customer Service/Support",
+     "numJobs": 2
+    },
+    {
+     "category": "Engineering",
+     "numJobs": 465
+    },
+    {
+     "category": "General Management/ Administration/ Support",
+     "numJobs": 55
+    },
+    {
+     "category": "Human Resources",
+     "numJobs": 4
+    },
+    {
+     "category": "Information Technology",
+     "numJobs": 3
+    },
+    {
+     "category": "Manufacturing",
+     "numJobs": 2
+    },
+    {
+     "category": "Sales / Marketing",
+     "numJobs": 45
+    },
+    {
+     "category": "Student / Intern / Temp",
+     "numJobs": 67
+    },
+    {
+     "category": "Supply Chain",
+     "numJobs": 2
+    }
+   ],
+   "shortlist": [
+    {
+     "category": "Accounting/Finance",
+     "numJobs": 2
+    },
+    {
+     "category": "Customer Service/Support",
+     "numJobs": 2
+    },
+    {
+     "category": "Engineering",
+     "numJobs": 465
+    },
+    {
+     "category": "General Management/ Administration/ Support",
+     "numJobs": 55
+    },
+    {
+     "category": "Human Resources",
+     "numJobs": 4
+    },
+    {
+     "category": "Information Technology",
+     "numJobs": 3
+    },
+    {
+     "category": "Manufacturing",
+     "numJobs": 2
+    },
+    {
+     "category": "Sales / Marketing",
+     "numJobs": 45
+    },
+    {
+     "category": "Student / Intern / Temp",
+     "numJobs": 67
+    },
+    {
+     "category": "Supply Chain",
+     "numJobs": 2
+    }
+   ]
+  },
+  "locations": {
+   "all": [
+    {
+     "city": "Austin",
+     "state": "Texas",
+     "country": "United States",
+     "count": 267
+    },
+    {
+     "city": "Bellevue",
+     "state": "Washington",
+     "country": "United States",
+     "count": 4
+    },
+    {
+     "city": "Boxborough",
+     "state": "Massachusetts",
+     "country": "United States",
+     "count": 25
+    },
+    {
+     "city": "CALIFORNIA",
+     "state": "California",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": "Fishkill",
+     "state": "New York",
+     "country": "United States",
+     "count": 23
+    },
+    {
+     "city": "Folsom",
+     "state": "California",
+     "country": "United States",
+     "count": 2
+    },
+    {
+     "city": "Fort Collins",
+     "state": "Colorado",
+     "country": "United States",
+     "count": 30
+    },
+    {
+     "city": "GEORGIA",
+     "state": "Georgia",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": "Longmont",
+     "state": "Colorado",
+     "country": "United States",
+     "count": 20
+    },
+    {
+     "city": "Rochester",
+     "state": "New York",
+     "country": "United States",
+     "count": 15
+    },
+    {
+     "city": "San Diego",
+     "state": "California",
+     "country": "United States",
+     "count": 2
+    },
+    {
+     "city": "San Jose",
+     "state": "California",
+     "country": "United States",
+     "count": 169
+    },
+    {
+     "city": "Santa Clara",
+     "state": "California",
+     "country": "United States",
+     "count": 143
+    },
+    {
+     "city": "Seattle",
+     "state": "Washington",
+     "country": "United States",
+     "count": 11
+    },
+    {
+     "city": "Secaucus",
+     "state": "New Jersey",
+     "country": "United States",
+     "count": 42
+    },
+    {
+     "city": "WIXOM",
+     "state": "Michigan",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": "Washington",
+     "state": null,
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "Arizona",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "California",
+     "country": "United States",
+     "count": 4
+    },
+    {
+     "city": null,
+     "state": "Illinois",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "New Hampshire",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "New Jersey",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "New York",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "Oregon",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "Texas",
+     "country": "United States",
+     "count": 9
+    },
+    {
+     "city": null,
+     "state": "Virginia",
+     "country": "United States",
+     "count": 1
+    }
+   ],
+   "shortlist": [
+    {
+     "city": "Austin",
+     "state": "Texas",
+     "country": "United States",
+     "count": 267
+    },
+    {
+     "city": "Bellevue",
+     "state": "Washington",
+     "country": "United States",
+     "count": 4
+    },
+    {
+     "city": "Boxborough",
+     "state": "Massachusetts",
+     "country": "United States",
+     "count": 25
+    },
+    {
+     "city": "CALIFORNIA",
+     "state": "California",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": "Fishkill",
+     "state": "New York",
+     "country": "United States",
+     "count": 23
+    },
+    {
+     "city": "Folsom",
+     "state": "California",
+     "country": "United States",
+     "count": 2
+    },
+    {
+     "city": "Fort Collins",
+     "state": "Colorado",
+     "country": "United States",
+     "count": 30
+    },
+    {
+     "city": "GEORGIA",
+     "state": "Georgia",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": "Longmont",
+     "state": "Colorado",
+     "country": "United States",
+     "count": 20
+    },
+    {
+     "city": "Rochester",
+     "state": "New York",
+     "country": "United States",
+     "count": 15
+    },
+    {
+     "city": "San Diego",
+     "state": "California",
+     "country": "United States",
+     "count": 2
+    },
+    {
+     "city": "San Jose",
+     "state": "California",
+     "country": "United States",
+     "count": 169
+    },
+    {
+     "city": "Santa Clara",
+     "state": "California",
+     "country": "United States",
+     "count": 143
+    },
+    {
+     "city": "Seattle",
+     "state": "Washington",
+     "country": "United States",
+     "count": 11
+    },
+    {
+     "city": "Secaucus",
+     "state": "New Jersey",
+     "country": "United States",
+     "count": 42
+    },
+    {
+     "city": "WIXOM",
+     "state": "Michigan",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": "Washington",
+     "state": null,
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "Arizona",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "California",
+     "country": "United States",
+     "count": 4
+    },
+    {
+     "city": null,
+     "state": "Illinois",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "New Hampshire",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "New Jersey",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "New York",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "Oregon",
+     "country": "United States",
+     "count": 1
+    },
+    {
+     "city": null,
+     "state": "Texas",
+     "country": "United States",
+     "count": 9
+    },
+    {
+     "city": null,
+     "state": "Virginia",
+     "country": "United States",
+     "count": 1
+    }
+   ]
+  },
+  "experienceLevels": {
+   "all": [],
+   "shortlist": []
+  }
+ }
+}

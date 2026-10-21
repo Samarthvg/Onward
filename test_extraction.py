@@ -74,6 +74,21 @@ class SkillTests(unittest.TestCase):
                 self.assertFalse(banned & radar.find_skills(text), radar.find_skills(text))
 
 
+class TitleTests(unittest.TestCase):
+    KEEP = ["Software Engineer", "Software Development Engineer I – AI/ML Network Infrastructure",
+            "Early Careers: Software Development Engineer", "Entry Level Software Engineer (Spring 2027)"]
+    DROP = ["Software Solution Engineer", "Solutions Engineer", "Sr Software Engineer",
+            "Software Engineer II", "Principal Data Engineering Architect"]
+
+    def test_titles(self):
+        for title in self.KEEP:
+            with self.subTest(title=title):
+                self.assertTrue(radar.is_swe_title(title) and radar.is_entry_title(title))
+        for title in self.DROP:
+            with self.subTest(title=title):
+                self.assertFalse(radar.is_swe_title(title) and radar.is_entry_title(title))
+
+
 class KeywordTests(unittest.TestCase):
     def test_sections_weight_keywords(self):
         desc = ("About Acme\nWe build rockets with Fortran.\n"

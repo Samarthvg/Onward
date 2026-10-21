@@ -1,0 +1,102 @@
+{
+ "id": "743999658679125",
+ "name": "Software Engineer",
+ "uuid": "a38f0bfe-cd7d-470f-8052-b11e36628967",
+ "jobId": "f3425c3a-f9cf-4916-b205-75eb56851c07",
+ "jobAdId": "b0c097d8-ec57-4070-b2e5-8f35d4e05dce",
+ "defaultJobAd": true,
+ "refNumber": "15482-en_US",
+ "company": {
+  "name": "Northwestern Mutual",
+  "identifier": "NorthwesternMutual"
+ },
+ "location": {
+  "city": "Franklin",
+  "region": "WI",
+  "country": "us",
+  "remote": false,
+  "hybrid": false,
+  "fullLocation": "Franklin, WI, United States"
+ },
+ "customField": [
+  {
+   "fieldId": "58b7e4d7e4b0885c92cd9906",
+   "fieldLabel": "Department",
+   "valueId": "952007",
+   "valueLabel": "Digital Insurance and Field Solutions"
+  },
+  {
+   "fieldId": "COUNTRY",
+   "fieldLabel": "Country/Region",
+   "valueId": "us",
+   "valueLabel": "United States"
+  },
+  {
+   "fieldId": "56560606e4b0b89914e5b7d2",
+   "fieldLabel": "Strategy",
+   "valueId": "bc1462c0-850c-46a1-9b98-e6d264494643",
+   "valueLabel": "Technology"
+  },
+  {
+   "fieldId": "560c1ccfe4b0dfe375e89619",
+   "fieldLabel": "Brands",
+   "valueId": "default",
+   "valueLabel": "Northwestern Mutual"
+  }
+ ],
+ "releasedDate": "2017-08-28T04:03:11.000Z",
+ "creator": {
+  "name": "",
+  "avatarUrl": ""
+ },
+ "postingUrl": "https://jobs.smartrecruiters.com/NorthwesternMutual/743999658679125-software-engineer",
+ "applyUrl": "https://jobs.smartrecruiters.com/NorthwesternMutual/743999658679125-software-engineer?oga=true",
+ "referralUrl": "https://jobs.smartrecruiters.com/external-referrals/company/NorthwesternMutual/publication/a38f0bfe-cd7d-470f-8052-b11e36628967?dcr_ci=NorthwesternMutual",
+ "jobAd": {
+  "sections": {
+   "companyDescription": {
+    "title": "Company Description",
+    "text": "<p><strong>You and Northwestern Mutual. </strong>We believe relationships are built on trust. That our lives and our work matter. And we’re much stronger together than we are apart. These beliefs launched our company nearly 160 years ago. Today, they’re just a few of the reasons why people choose to build careers at Northwestern Mutual.</p>\n<p>Our business is about helping people secure their financial futures, and that starts with putting people first – our clients, our employees and our field representatives. Northwestern Mutual is known for financial strength. We’re strong, innovative and growing. Come grow with us.</p>"
+   },
+   "jobDescription": {
+    "title": "Job Description",
+    "text": "<p><span><span><span><strong>At Northwestern Mutual, we believe relationships are built on trust.</strong> That our lives and our work matter. These beliefs launched our company nearly 160 years ago. Today, they&apos;re just a few of the reasons why people choose to build careers at Northwestern Mutual.</span></span></span></p><p><span><span><span><strong>We&apos;re strong and growing.</strong><span> In a company with such a long and storied history, this may be the most exciting and important time to be a part of Northwestern Mutual. We&apos;re strong, innovative and growing.</span></span></span></span></p><p><span><span><span><strong>We invest in our people. </strong><span>We provide opportunities for employees to grow themselves, their career and in turn, our business.</span></span></span></span></p><p><span><span><span><strong>We care.  </strong><span>We make a positive difference in our communities. Nationally, thousands have benefitted from our support of research and programs to fight childhood cancer. Each year, our Foundation, employees and financial representatives donate time, talent and financial support to causes they&apos;re passionate about.</span></span></span></span></p><p> </p><p><span><span><span><em>We are an equal opportunity/affirmative action employer and all qualified applicants will receive consideration for employment without regard to race, color, religion, gender identity or expression, sexual orientation, national origin, disability, age or status as a protected veteran, or any other characteristic protected by law.</em></span></span></span></p><p> </p><p>Join one of the most agile development teams in Milwaukee and help them build new products and solutions.  The team you’ll be joining is using modern development practices including Continuous Delivery Automation and Scaled Agile Framework.  While the team is primarily focused on the mainframe platform, they’re working towards test driven design and automated testing.  Bring your engineering mastery and passion for making a difference, to help Northwestern Mutual create an industry leading digital experience.  If you love to solve complex problems, and love the idea of making a difference as we revolutionize the world of personal financial planning, we want you.  Be a part of the movement.  We are in this to win!</p><p> </p><p>Your general milestones are as follows:<br /> <br />• Within the first month - while working with other developers on the teams, be able to jump head-first into modifying applications and ask the appropriate questions / do the appropriate research to identify the general functions and behaviors of the applications you&apos;re working on.<br />• Within three months - be able to pick up and work on any existing application, contribute directly to technical and business discussions that affect the current and future state of the applications.  Essentially, contributing to the team at your full capacity.<br /> <br />Competencies:</p><p> </p><ul><li>Fast learner and self-starter.  The people you will work with are incredibly kind, talented, and extremely willing to share knowledge and a helping hand, but you have to be willing to take ownership of the outlined goals and make things happen.</li><li>Ability to take initiative and work with minimal supervision, yet actively interact with other team members in person or over the Internet (chat, videoconference, email).</li><li>Work collaboratively on creative solutions with product owners and developers.</li><li>Bring new ideas and new ways of solving problems to the team.</li><li>Passionate about learning new technologies and developing additional skills.</li></ul><p> </p><p>Education / Professional Experience:</p><p> </p><ul><li>Bachelor&apos;s degree or Associate&apos;s degree in Computer Science or a related field</li><li>0 to 3 years Development experience in software engineering technology</li><li>Experienced and confident coding in the following languages<ul><li>NodeJS</li><li>ReactJS</li><li>Nginx</li><li>Docker</li><li>NOSQL Database (e.g. MongoDB)</li><li>REST API</li></ul></li><li>Having worked with the following tools is a plus:<ul><li>Github</li><li>Jenkins</li><li>Gradle/Maven</li><li>Nexus</li><li>Urban Code</li></ul></li><li>Experience using the following methodologies:<ul><li>Continuous Integration / Continuous Development</li><li>Test Driven Development</li><li>Feature toggles</li><li>Automated testing</li><li>Scrum, Agile, XP</li></ul></li></ul><p> </p><p><span><span><span><strong>Req ID:</strong> 15482</span></span></span><br /><span><span><span><strong>Position Type:</strong> Regular Full Time<br /><strong>Education Experience:</strong> Bachelor&apos;s Required<br /><strong>Employment Experience:</strong> 0-2 years<br /><strong>Licenses/Certifications: </strong><br /><strong>FLSA Status:</strong> Exempt<br /><strong>Posting Date:</strong> 07/13/2017</span></span></span></p>"
+   },
+   "qualifications": {
+    "title": "Qualifications",
+    "text": ""
+   },
+   "additionalInformation": {
+    "title": "Additional Information",
+    "text": ""
+   }
+  }
+ },
+ "active": true,
+ "visibility": "PUBLIC",
+ "industry": {
+  "id": "financial_services",
+  "label": "Financial Services"
+ },
+ "function": {
+  "id": "other",
+  "label": "Other"
+ },
+ "department": {
+  "id": 952007,
+  "label": "Digital Insurance and Field Solutions"
+ },
+ "experienceLevel": {
+  "id": "not_applicable",
+  "label": "Not Applicable"
+ },
+ "typeOfEmployment": {
+  "id": "permanent",
+  "label": "Full-time"
+ },
+ "language": {
+  "code": "en",
+  "label": "English",
+  "labelNative": "English (US)"
+ }
+}

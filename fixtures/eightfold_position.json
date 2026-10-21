@@ -1,0 +1,56 @@
+{
+ "status": 200,
+ "error": {
+  "message": "",
+  "body": ""
+ },
+ "data": {
+  "id": 1970393556982911,
+  "displayJobId": "200052442",
+  "name": "Software Engineer - CTJ - TS (Cleared)",
+  "locations": [
+   "United States, Virginia, Reston"
+  ],
+  "standardizedLocations": [
+   "Reston, VA, US"
+  ],
+  "postedTs": 1790110540,
+  "stars": 0,
+  "department": "Software Engineering",
+  "creationTs": 1787910953,
+  "jobDescription": "<b>Overview</b><br><div><p>Join the Microsoft Specialized Cloud (MSC) team, where engineers build and operate highly secure cloud platforms, services, and developer experiences that support mission-critical workloads for U.S. Government customers. MSC software engineering teams design, develop, and evolve technologies that enable customers to operate at scale while meeting specialized security, compliance, and operational requirements. Drawing on expertise across distributed systems, cloud infrastructure, data, reliability, performance, and developer productivity, engineers collaborate across Microsoft to deliver trusted, resilient, and innovative solutions. </p></div><div><p>Working in Microsoft Specialized Clouds offers unique opportunities to solve technical challenges not commonly found in commercial cloud environments. Engineers build software for highly regulated and security-sensitive scenarios, develop solutions that operate in specialized and restricted environments, and help shape cloud technologies that support critical government missions and services. </p></div><div><p>We welcome engineers with diverse experiences, perspectives, and approaches to problem solving. We believe innovation is strengthened through inclusion and are committed to creating an environment where individuals can learn, grow, and contribute meaningfully. Whether your experience comes from industry, research, open-source projects, military service, technical training, or other pathways, we encourage you to apply. </p></div><div><p><em>At Microsoft, our mission—to empower every person and every organization on the planet to achieve more—guides how we partner with customers to deliver trusted, impactful solutions. With a growth mindset culture, we innovate responsibly and measure success by shared progress—people, teams, and customers. Join us to do meaningful work that changes the world and helps shape what’s next for everyone.   </em></p><p><strong><span>This role is targeting a Summer 2027 (May- September) start date. </span> <span> </span> </strong></p></div><br><br><b>Responsibilities</b><br><ul><li><span>Contribute to the design and evolution of scalable distributed systems, APIs, services, and platform capabilities, balancing requirements related to security, reliability, performance, maintainability, and cost.</span> </li><li><span>Develop automated tests, monitoring, telemetry, and operational tooling to improve software quality, observability, and long-term service health.</span> </li><li><span>Apply security, privacy, and compliance best practices throughout the software development lifecycle while working within specialized cloud environments.</span> </li><li><span>Diagnose, debug, and resolve technical issues across the software stack, using data and telemetry to improve performance, reliability, and maintainability over time.</span></li><li><span>Design, implement, test, and maintain software features and services that meet customer and product requirements while operating within specialized security and compliance constraints.</span></li><li><span>Participate in operational activities, including monitoring, incident response, and readiness reviews, to ensure services remain dependable in specialized and restricted environments.</span></li><li><span>Partner with product managers, designers, security engineers, infrastructure teams, and engineering peers to deliver customer-focused solutions.</span></li><li><span>Learn new technologies, tools, and engineering practices while contributing to a culture of knowledge sharing, continuous improvement, and technical growth.</span> </li><li><span>Collaborate with teammates to analyze requirements, review designs and code, and continuously improve engineering quality, reliability, and operational readiness.</span> </li><li><span>Embody our </span><a href=\"https://careers.microsoft.com/v2/global/en/culture\" target=\"_blank\" rel=\"noreferrer noopener\"><span>culture</span></a><span> and </span><a href=\"https://www.microsoft.com/en-us/about\" target=\"_blank\" rel=\"noreferrer noopener\"><span>values</span></a><span>.</span><span> </span></li></ul><br><br><b>Qualifications</b><br><div><div><p><strong><span>Required Qualifications:</span><span> </span></strong></p></div><div><ul><li><span>Bachelor's Degree in Computer Science, or related technical discipline with proven experience coding in languages including, but not limited to, C, C++, C#, Java, JavaScript, or Python</span> <ul><li><span>OR equivalent experience. </span><span> </span></li></ul></li></ul></div><div><p><strong><span>Other Requirements:</span><span> </span></strong></p></div><div><p><span>Security Clearance Requirements:</span><span> Candidates must be able to meet Microsoft, customer and/or government security screening requirements are required for this role. These requirements include, but are not limited to the following specialized security screenings: </span><span> </span></p></div><div><ul><li><span>The successful candidate must have an active U.S. Government Top Secret Security Clearance. Ability to meet Microsoft, customer and/or government security screening requirements are required for this role. Failure to maintain or obtain the appropriate clearance and/or customer screening requirements may result in employment action up to and including termination.</span> </li><li><span><strong>Clearance Verification:</strong> </span><span>This position requires successful verification of the stated security clearance to meet federal government customer requirements. You will be asked to provide clearance verification information prior to an offer of employment.</span> </li><li><span><strong>Microsoft Cloud Background Check:</strong> </span><span>This position will be required to pass the Microsoft Cloud background check upon hire/transfer and every two years thereafter.</span> </li><li><strong><span>Citizenship &amp; Citizenship Verification:</span></strong><span> This position requires verification of U.S. citizenship due to citizenship-based legal restrictions. Specifically, this position supports United States federal, state, and/or local United States government agency customer and is subject to certain citizenship-based restrictions where required or permitted by applicable law. To meet this legal requirement, citizenship will be verified via a valid passport, or other approved documents, or verified US government Clearance.</span><span> </span></li></ul></div></div><div><div><p><strong><span>Preferred Qualifications:</span><span> </span></strong></p></div><div><ul><li><span>Master's Degree in Computer Science or related technical field with proven experience coding in languages including, but not limited to, C, C++, C#, Java, JavaScript, or Python </span> <ul><li><span>OR Bachelor's Degree in Computer Science or related technical field AND 2+ years technical engineering experience with coding in languages including, but not limited to, C, C++, C#, Java, JavaScript, or Python </span><span> </span></li><li><span>OR equivalent experience.</span> </li></ul></li><li><span>Experience building cloud-native applications or services on Azure or another major cloud platform.</span> </li><li><span>Experience with distributed systems, microservices, APIs, or large-scale backend services.</span> </li><li><span>Experience with containers, Kubernetes, infrastructure as code, or modern CI/CD practices.</span> </li><li><span>Experience using telemetry, monitoring, logging, or observability solutions to diagnose and improve system health.</span> </li><li><span>Experience developing applications for regulated, security-sensitive, or highly available environments.</span> </li><li><span>Experience applying AI-assisted development tools or building AI-enabled applications.</span><span> </span></li></ul></div></div> <br><br><p>Software Engineering IC2 - The typical base pay range for this role across the U.S. is USD $85,400 - $168,100 per year. There is a different range applicable to specific work locations, within the San Francisco Bay area and New York City metropolitan area, and the base pay range for this role in those locations is USD $111,100 - $183,700 per year. </p><p></p> <p>Certain roles may be eligible for benefits and other compensation. Find additional benefits and pay information here:<br><a href=\"https://careers.microsoft.com/us/en/us-corporate-pay\">https://careers.microsoft.com/us/en/us-corporate-pay</a></p><br><p>This position will be open for a minimum of 5 days, with applications accepted on an ongoing basis until the position is filled.</p><br><hr><br><p>Microsoft is an equal opportunity employer. All qualified applicants will receive consideration for employment without regard to age, ancestry, citizenship, color, family or medical care leave, gender identity or expression, genetic information, immigration status, marital status, medical condition, national origin, physical or mental disability, political affiliation, protected veteran or military status, race, ethnicity, religion, sex (including pregnancy), sexual orientation, or any other characteristic protected by applicable local laws, regulations and ordinances. If you need assistance with religious accommodations and/or a reasonable accommodation due to a disability during the application process, read more about <a href=\"https://careers.microsoft.com/v2/global/en/accessibility.html\"><b><u>requesting accommodations.</u></b></a></p> ",
+  "location": "United States, Virginia, Reston",
+  "isHot": 0,
+  "workLocationOption": "onsite",
+  "locationFlexibility": null,
+  "atsJobId": "200052442",
+  "positionUrl": "/careers/job/1970393556982911",
+  "publicUrl": "https://apply.careers.microsoft.com/careers/job/1970393556982911",
+  "efcustomTextWorkSite": [
+   "4 days / week in-office"
+  ],
+  "efcustomTextRequiredTravel": [
+   "Less than 25%"
+  ],
+  "efcustomTextCurrentProfession": [
+   "Software Engineering"
+  ],
+  "efcustomTextTaDisciplineName": [
+   "Software Engineering"
+  ],
+  "efcustomTextRoletype": [
+   "Individual Contributor"
+  ],
+  "efcustomTextEmploymentType": [
+   "Full-Time"
+  ],
+  "jdHighlight": [],
+  "positionUserActions": {
+   "isSaved": false,
+   "applyAction": {
+    "status": "log_in"
+   }
+  }
+ },
+ "metadata": null
+}

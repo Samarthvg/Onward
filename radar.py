@@ -12,18 +12,23 @@ from __future__ import annotations
 import argparse
 import bisect
 import csv
+import email.utils
+import gzip
 import math
 import html
 import json
 import re
 import sqlite3
 import sys
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Callable
 from pathlib import Path
 
 import reqparse
@@ -78,6 +83,9 @@ class Job:
     posted_raw: str             # that field's value, exactly as the source sent it
     skills: str                 # JSON {"t": title, "r": required, "p": preferred}
     description: str            # plain text, for resume tailoring
+    # Key the job had as a bare SimplifyJobs listing, when it was then read
+    # from its own posting (whose title and location give it a new key).
+    listing_key: str = ""
 
 
 # --------------------------------------------------------------------------
@@ -222,7 +230,7 @@ def is_swe_title(title: str) -> bool:
     if not ENGINEER_WORD.search(title):
         return False
     if STRONG_SWE.search(title):
-        return not re.search(r"\b(sales|solutions|support|test|qa)\s+engineer|\b(marketing|recruit\w*)\b",
+        return not re.search(r"\b(sales|solutions?|support|test|qa)\s+engineer|\b(marketing|recruit\w*)\b",
                              title, re.I)
     return bool(SWE_TITLE.search(title) and not NOT_SWE.search(title))
 
@@ -391,71 +399,429 @@ def build_job(*, company, title, location, country, remote, url, source,
 
 # --------------------------------------------------------------------------
 # HTTP
+#
+# Every request goes through one gate per host: requests to a host start at
+# least its interval apart (HOST_INTERVAL, or the robots.txt Crawl-delay when
+# that is longer), a 429/503 pauses the whole host for as long as it asked,
+# and robots.txt rules are honored. Different hosts still run in parallel, so
+# politeness costs little wall time.
 
 class BoardMissing(Exception):
-    pass
+    """404/410: the board, or the posting, no longer exists."""
+
+
+class Throttled(Exception):
+    """The host kept answering 429, or asked for a longer pause than a run can wait."""
+
+
+class Disallowed(Exception):
+    """The host's robots.txt does not allow the request."""
+
+
+DEFAULT_INTERVAL = 1.0          # unknown hosts, e.g. company career pages
+HOST_INTERVAL = {               # seconds between request starts, matched by host suffix
+    "raw.githubusercontent.com": 0.0,
+    "boards-api.greenhouse.io": 0.1,
+    "api.ashbyhq.com": 0.1,
+    "api.smartrecruiters.com": 0.25,
+    "myworkdayjobs.com": 0.5,
+    "myworkdaysite.com": 0.5,
+    "oraclecloud.com": 0.5,
+    "eightfold.ai": 3.0,        # Eightfold throttles bursts: 429s for ~20s after a few quick requests
+    "careers.microsoft.com": 3.0,
+}
+RETRY_STATUS = {429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
+MAX_RETRY_WAIT = 30             # a longer Retry-After ends that host for this run
+THROTTLE_RETRIES = 2            # extra attempts after a 429, which usually clears within seconds
+
+# Hosts whose robots.txt speaks to crawlers while the API itself is published
+# for programmatic use. api.smartrecruiters.com disallows "*", but its Posting
+# API is documented for listing a company's public postings without a key:
+# https://developers.smartrecruiters.com/docs/posting-api
+ROBOTS_EXEMPT = {"api.smartrecruiters.com"}
+ROBOTS_TTL = 86400
+ROBOTS: dict[str, tuple[float, str]] = {}      # netloc -> (fetched, robots.txt body), kept in the db
+ROBOTS_FETCHED: set[str] = set()                # netlocs whose entry changed this run
+
+
+class HostGate:
+    def __init__(self, interval: float) -> None:
+        self.lock = threading.Lock()
+        self.interval = interval
+        self.next_at = 0.0          # monotonic time the next request may start
+        self.paused_until = 0.0
+
+    def wait(self, url: str) -> None:
+        with self.lock:
+            now = time.monotonic()
+            if self.paused_until - now > MAX_RETRY_WAIT:
+                raise Throttled(f"{url} (host asked to pause {self.paused_until - now:.0f}s)")
+            start = max(now, self.next_at, self.paused_until)
+            self.next_at = start + self.interval
+        if start > now:
+            time.sleep(start - now)
+
+    def pause(self, seconds: float) -> None:
+        with self.lock:
+            self.paused_until = max(self.paused_until, time.monotonic() + seconds)
+
+
+class Robots:
+    """robots.txt as RFC 9309 reads it: the group naming our product token,
+    else the "*" groups; the longest matching rule wins and Allow wins ties;
+    "*" and a trailing "$" work in patterns."""
+
+    AGENT = "jobradar"
+
+    def __init__(self, body: str) -> None:
+        groups: list[tuple[list[str], list[tuple[bool, str]], list[float]]] = []
+        in_agents = False
+        for raw in body.splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if ":" not in line:
+                continue
+            field, value = (s.strip() for s in line.split(":", 1))
+            field = field.lower()
+            if field == "user-agent":
+                if not in_agents:
+                    groups.append(([], [], []))
+                groups[-1][0].append(value.lower())
+                in_agents = True
+                continue
+            in_agents = False
+            if not groups:
+                continue
+            if field in ("allow", "disallow") and value:
+                groups[-1][1].append((field == "allow", value))
+            elif field == "crawl-delay":
+                try:
+                    groups[-1][2].append(float(value))
+                except ValueError:
+                    pass
+        chosen = ([g for g in groups if self.AGENT in g[0]]
+                  or [g for g in groups if "*" in g[0]])
+        self.rules = [(allow, _robots_pattern(p), len(p)) for g in chosen for allow, p in g[1]]
+        self.delay = max((d for g in chosen for d in g[2]), default=None)
+
+    def allowed(self, path: str) -> bool:
+        best: tuple[int, bool] | None = None
+        for allow, rx, length in self.rules:
+            if rx.match(path) and (best is None or length > best[0] or (length == best[0] and allow)):
+                best = (length, allow)
+        return best is None or best[1]
+
+
+def _robots_pattern(pattern: str) -> re.Pattern:
+    anchored = pattern.endswith("$")
+    body = re.escape(pattern[:-1] if anchored else pattern).replace(r"\*", ".*")
+    return re.compile(body + ("$" if anchored else ""))
+
+
+_GATES: dict[str, HostGate] = {}
+_ROBOTS_PARSED: dict[str, Robots] = {}
+_HOST_LOCKS: dict[str, threading.Lock] = {}
+_REGISTRY_LOCK = threading.Lock()
+
+
+def _host_lock(netloc: str) -> threading.Lock:
+    with _REGISTRY_LOCK:
+        return _HOST_LOCKS.setdefault(netloc, threading.Lock())
+
+
+def gate_for(netloc: str) -> HostGate:
+    with _REGISTRY_LOCK:
+        gate = _GATES.get(netloc)
+        if gate is None:
+            host = netloc.split(":")[0]
+            interval = next((sec for suffix, sec in HOST_INTERVAL.items()
+                             if host == suffix or host.endswith("." + suffix)), DEFAULT_INTERVAL)
+            gate = _GATES[netloc] = HostGate(interval)
+        return gate
+
+
+def robots_for(scheme: str, netloc: str) -> Robots:
+    with _host_lock(netloc):
+        parsed = _ROBOTS_PARSED.get(netloc)
+        if parsed is None:
+            hit = ROBOTS.get(netloc)
+            if hit and time.time() - hit[0] < ROBOTS_TTL:
+                body = hit[1]
+            else:
+                body = _fetch_robots(scheme, netloc)
+                if body is not None:
+                    ROBOTS[netloc] = (time.time(), body)
+                    ROBOTS_FETCHED.add(netloc)
+            parsed = _ROBOTS_PARSED[netloc] = Robots(body or "")
+            if parsed.delay:
+                gate = gate_for(netloc)
+                gate.interval = max(gate.interval, parsed.delay)
+        return parsed
+
+
+def _fetch_robots(scheme: str, netloc: str) -> str | None:
+    """robots.txt body; "" when the site has none. None when it couldn't be
+    read: the request then goes ahead and robots.txt is tried again next run."""
+    url = f"{scheme}://{netloc}/robots.txt"
+    gate_for(netloc).wait(url)
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            body = _read(resp)
+            # Some sites answer with their HTML home page; that holds no rules.
+            if not resp.headers.get("Content-Type", "text/plain").startswith("text/plain"):
+                return ""
+            return body.decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return "" if 400 <= e.code < 500 else None     # RFC 9309: 4xx means no rules
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return None
+
+
+def _read(resp) -> bytes:
+    raw = resp.read()
+    if (resp.headers.get("Content-Encoding") or "").lower() == "gzip":
+        raw = gzip.decompress(raw)
+    return raw
+
+
+def retry_after(value: str | None) -> float | None:
+    """Seconds to wait from a Retry-After header (delay-seconds or HTTP-date)."""
+    if not value:
+        return None
+    value = value.strip()
+    if value.isdigit():
+        return float(value)
+    try:
+        when = email.utils.parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0.0, when.timestamp() - time.time())
+
+
+def fetch(url: str, body: dict | None = None, *, accept: str = "application/json",
+          retries: int = 3) -> bytes:
+    parts = urllib.parse.urlsplit(url)
+    netloc = parts.netloc
+    if parts.hostname not in ROBOTS_EXEMPT:
+        path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+        if not robots_for(parts.scheme, netloc).allowed(path):
+            raise Disallowed(url)
+    gate = gate_for(netloc)
+    headers = {"User-Agent": USER_AGENT, "Accept": accept, "Accept-Encoding": "gzip"}
+    data = None
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(body).encode("utf-8")
+    delay = 2.0
+    attempt = 0
+    while True:
+        attempt += 1
+        gate.wait(url)
+        req = urllib.request.Request(url, data=data, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                return _read(resp)
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 410):
+                raise BoardMissing(url) from e
+            if e.code not in RETRY_STATUS:
+                raise
+            asked = retry_after(e.headers.get("Retry-After"))
+            # Without a Retry-After, back off from at least twice the host's own spacing.
+            wait = asked if asked is not None else max(delay, 2 * gate.interval)
+            delay = wait * 2
+            # The pause holds every request to this host, not just this one.
+            gate.pause(wait)
+            limit = retries + THROTTLE_RETRIES if e.code == 429 else retries
+            if wait > MAX_RETRY_WAIT or attempt >= limit:
+                if e.code == 429 or asked is not None:
+                    raise Throttled(f"{netloc} answered {e.code}"
+                                    + (f" with Retry-After {asked:.0f}s" if asked is not None else "")) from e
+                raise
+        except (urllib.error.URLError, TimeoutError):
+            if attempt >= retries:
+                raise
+            time.sleep(delay)
+            delay *= 2
+
+
+def get_json(url: str, retries: int = 3, body: dict | None = None):
+    return json.loads(fetch(url, body, retries=retries).decode("utf-8"))
 
 
 def post_json(url: str, body: dict, retries: int = 3):
     return get_json(url, retries, body)
 
 
-def get_json(url: str, retries: int = 3, body: dict | None = None):
-    delay = 2.0
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
-    data = None
-    if body is not None:
-        headers["Content-Type"] = "application/json"
-        data = json.dumps(body).encode("utf-8")
-    for attempt in range(retries):
-        req = urllib.request.Request(url, data=data, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                raise BoardMissing(url) from e
-            if e.code in (429, 500, 502, 503, 504) and attempt < retries - 1:
-                time.sleep(delay)
-                delay *= 2
-                continue
-            raise
-        except (urllib.error.URLError, TimeoutError):
-            if attempt < retries - 1:
-                time.sleep(delay)
-                delay *= 2
-                continue
-            raise
+def get_text(url: str) -> str:
+    return fetch(url, accept="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8").decode(
+        "utf-8", "replace")
+
+
+_ONCE: dict[str, object] = {}
+
+
+def get_json_once(url: str):
+    """For a feed several fetchers read in one run (an Ashby board that is
+    both in companies.json and behind Simplify listings): fetched once."""
+    with _host_lock("once:" + url):
+        if url not in _ONCE:
+            try:
+                _ONCE[url] = get_json(url)
+            except Exception as e:      # remembered too, so a dead board is asked once
+                _ONCE[url] = e
+        hit = _ONCE[url]
+    if isinstance(hit, Exception):
+        raise hit
+    return hit
+
+
+# --------------------------------------------------------------------------
+# Posting detail cache
+#
+# Detail records cost one request per posting. Each is fetched once and kept
+# in the details table under the posting's URL, including postings that turned
+# out to be closed or to have no machine-readable record, so no run asks for
+# them again.
+
+DETAILS: dict[str, dict] = {}
+NEW_DETAILS: dict[str, dict] = {}
+_DETAILS_LOCK = threading.Lock()
+GONE = {"gone": True}                   # 404/410 at the source: the posting closed
+UNAVAILABLE = {"unavailable": True}     # page exists but carries no posting record
+
+
+def cached_posting(key: str, load: Callable[[], dict | None]) -> dict:
+    """build_job() keyword arguments (minus company) for one posting, or GONE / UNAVAILABLE."""
+    hit = DETAILS.get(key)
+    if hit is not None:
+        return hit
+    try:
+        posting = load() or UNAVAILABLE
+    except BoardMissing:
+        posting = GONE
+    with _DETAILS_LOCK:
+        DETAILS[key] = NEW_DETAILS[key] = posting
+    return posting
+
+
+def is_posting(p: dict | None) -> bool:
+    return bool(p) and "title" in p
+
+
+def _day_start(raw: str | None) -> float | None:
+    """Local midnight of the date a date-only field names ("2026-10-21...")."""
+    try:
+        return datetime.strptime((raw or "")[:10], "%Y-%m-%d").timestamp()
+    except ValueError:
+        return None
+
+
+_CLOCK = re.compile(r"T(\d{2}):(\d{2})(?::(\d{2}))?")
+
+
+def _has_clock_time(raw: str | None) -> bool:
+    """Some sources write a bare date as midnight in some zone
+    ("2026-02-27T05:00:00.000Z" is midnight Eastern). A real clock time almost
+    never lands on :00:00, so only a nonzero minute or second counts as exact."""
+    m = _CLOCK.search(raw or "")
+    return bool(m and (int(m.group(2)) or int(m.group(3) or 0)))
+
+
+def _dated(raw: str | None) -> tuple[float | None, bool]:
+    """(posted_at, posted_exact) for an ISO field that may be a bare date."""
+    if _has_clock_time(raw):
+        return parse_iso(raw), True
+    return _day_start(raw), False
+
+
+def _sections(*parts: tuple[str, str | None]) -> str:
+    """Join (heading, html) pairs into one description with the headings kept
+    on their own lines, so reqparse reads each part as the section it is."""
+    out = []
+    for heading, body in parts:
+        text = strip_html(body)
+        if text and text.upper() != "UNAVAILABLE":
+            out.append(f"{heading}\n{text}" if heading else text)
+    return "\n".join(out)
 
 
 # --------------------------------------------------------------------------
 # Sources
+#
+# Each posting is turned into build_job() keyword arguments by one function
+# per source (_greenhouse_posting, ...). Board fetchers and Simplify listing
+# enrichment share them, so a posting reads the same whichever way it came.
+#
+# Big Tech careers sites left out on purpose (their Simplify listings stay
+# listing-only):
+#   Apple   jobs.apple.com: Apple's Website Terms of Use forbid robots, spiders
+#           and page-scraping of its sites.
+#   Google  robots.txt disallows /about/careers/applications/jobs/results, and
+#           Google's terms bind automated access to robots.txt.
+#   Meta    metacareers.com robots.txt: automated collection is prohibited
+#           without written permission.
+# LinkedIn's user agreement forbids scraping, so its job pages are skipped too.
+NO_AUTOMATED_ACCESS = ("jobs.apple.com", "google.com", "metacareers.com", "facebook.com", "linkedin.com")
+
+
+def _greenhouse_posting(token: str, j: dict) -> dict:
+    first = parse_iso(j.get("first_published"))
+    jid = j.get("id")
+    return dict(
+        title=j.get("title"),
+        location=(j.get("location") or {}).get("name", ""),
+        country=None,
+        remote=False,
+        url=j.get("absolute_url"),
+        source="greenhouse",
+        posted_at=first or parse_iso(j.get("updated_at")),
+        posted_exact=first is not None,
+        description=strip_html(j.get("content")),
+        apply_url=f"https://job-boards.greenhouse.io/embed/job_app?for={token}&token={jid}",
+        verify_url=f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs/{jid}",
+        posted_field="first_published" if first else "updated_at",
+        posted_raw=j.get("first_published") or j.get("updated_at"),
+    )
+
 
 def fetch_greenhouse(token: str) -> list[Job]:
     data = get_json(f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true")
     out = []
     for j in data.get("jobs", []):
-        first = parse_iso(j.get("first_published"))
-        jid = j.get("id")
-        job = build_job(
-            company=j.get("company_name") or token,
-            title=j.get("title"),
-            location=(j.get("location") or {}).get("name", ""),
-            country=None,
-            remote=False,
-            url=j.get("absolute_url"),
-            source="greenhouse",
-            posted_at=first or parse_iso(j.get("updated_at")),
-            posted_exact=first is not None,
-            description=strip_html(j.get("content")),
-            apply_url=f"https://job-boards.greenhouse.io/embed/job_app?for={token}&token={jid}",
-            verify_url=f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs/{jid}",
-            posted_field="first_published" if first else "updated_at",
-            posted_raw=j.get("first_published") or j.get("updated_at"),
-        )
+        job = build_job(company=j.get("company_name") or token, **_greenhouse_posting(token, j))
         if job:
             out.append(job)
     return out
+
+
+def _lever_posting(token: str, j: dict, api: str = "https://api.lever.co") -> dict:
+    cats = j.get("categories") or {}
+    locs = cats.get("allLocations") or [cats.get("location") or ""]
+    created = j.get("createdAt")
+    # Lever keeps requirement lists apart from the body, each with its own
+    # heading ("Core Requirements", "Preferred"). They go in with those
+    # headings and before the closing text (salary, benefits), so the
+    # requirement parser reads them as the sections they are.
+    lists = "\n".join(f"{l.get('text') or ''}:\n{strip_html(l.get('content'))}"
+                      for l in j.get("lists") or [])
+    return dict(
+        title=j.get("text"),
+        location=" / ".join(l for l in locs if l),
+        country=j.get("country"),
+        remote=(j.get("workplaceType") == "remote"),
+        url=j.get("hostedUrl"),
+        source="lever",
+        posted_at=created / 1000 if created else None,
+        posted_exact=created is not None,
+        description="\n".join(filter(None, [j.get("descriptionPlain"), lists, j.get("additionalPlain")])),
+        apply_url=j.get("applyUrl"),
+        verify_url=f"{api}/v0/postings/{token}/{j.get('id')}",
+        posted_field="createdAt",
+        posted_raw=created,
+    )
 
 
 def fetch_lever(token: str) -> list[Job]:
@@ -465,71 +831,49 @@ def fetch_lever(token: str) -> list[Job]:
         cats = j.get("categories") or {}
         if (cats.get("commitment") or "").lower() in {"intern", "internship", "part-time", "contract"}:
             continue
-        locs = cats.get("allLocations") or [cats.get("location") or ""]
-        created = j.get("createdAt")
-        # Lever keeps requirement lists apart from the body, each with its own
-        # heading ("Core Requirements", "Preferred"). They go in with those
-        # headings and before the closing text (salary, benefits), so the
-        # requirement parser reads them as the sections they are.
-        lists = "\n".join(f"{l.get('text') or ''}:\n{strip_html(l.get('content'))}"
-                          for l in j.get("lists") or [])
-        desc = "\n".join(filter(None, [j.get("descriptionPlain"), lists, j.get("additionalPlain")]))
-        job = build_job(
-            company=display_name(token),
-            title=j.get("text"),
-            location=" / ".join(l for l in locs if l),
-            country=j.get("country"),
-            remote=(j.get("workplaceType") == "remote"),
-            url=j.get("hostedUrl"),
-            source="lever",
-            posted_at=created / 1000 if created else None,
-            posted_exact=created is not None,
-            description=desc,
-            apply_url=j.get("applyUrl"),
-            verify_url=f"https://api.lever.co/v0/postings/{token}/{j.get('id')}",
-            posted_field="createdAt",
-            posted_raw=created,
-        )
+        job = build_job(company=display_name(token), **_lever_posting(token, j))
         if job:
             out.append(job)
     return out
 
 
+def _ashby_posting(token: str, j: dict) -> dict:
+    locs = [j.get("location") or ""] + [s.get("location", "") for s in j.get("secondaryLocations") or []]
+    country = (((j.get("address") or {}).get("postalAddress") or {}).get("addressCountry"))
+    if len(locs) > 1:
+        country = None  # multi-location postings: judge by the strings
+    return dict(
+        title=j.get("title"),
+        location=" / ".join(l for l in locs if l),
+        country=country,
+        remote=bool(j.get("isRemote")) or j.get("workplaceType") == "Remote",
+        url=j.get("jobUrl"),
+        source="ashby",
+        posted_at=parse_iso(j.get("publishedAt")),
+        posted_exact=True,
+        description=j.get("descriptionPlain") or strip_html(j.get("descriptionHtml")),
+        apply_url=j.get("applyUrl"),
+        verify_url=f"https://api.ashbyhq.com/posting-api/job-board/{token}",
+        posted_field="publishedAt",
+        posted_raw=j.get("publishedAt"),
+    )
+
+
 def fetch_ashby(token: str) -> list[Job]:
-    data = get_json(f"https://api.ashbyhq.com/posting-api/job-board/{token}")
+    data = get_json_once(f"https://api.ashbyhq.com/posting-api/job-board/{token}")
     out = []
     for j in data.get("jobs", []):
         if j.get("isListed") is False:
             continue
         if (j.get("employmentType") or "") in {"Intern", "PartTime", "Contract", "Temporary"}:
             continue
-        locs = [j.get("location") or ""] + [s.get("location", "") for s in j.get("secondaryLocations") or []]
-        country = (((j.get("address") or {}).get("postalAddress") or {}).get("addressCountry"))
-        if len(locs) > 1:
-            country = None  # multi-location postings: judge by the strings
-        job = build_job(
-            company=display_name(token),
-            title=j.get("title"),
-            location=" / ".join(l for l in locs if l),
-            country=country,
-            remote=bool(j.get("isRemote")) or j.get("workplaceType") == "Remote",
-            url=j.get("jobUrl"),
-            source="ashby",
-            posted_at=parse_iso(j.get("publishedAt")),
-            posted_exact=True,
-            description=j.get("descriptionPlain") or strip_html(j.get("descriptionHtml")),
-            apply_url=j.get("applyUrl"),
-            verify_url=f"https://api.ashbyhq.com/posting-api/job-board/{token}",
-            posted_field="publishedAt",
-            posted_raw=j.get("publishedAt"),
-        )
+        job = build_job(company=display_name(token), **_ashby_posting(token, j))
         if job:
             out.append(job)
     return out
 
 
 WORKDAY_MAX_PAGES = 25
-WORKDAY_KNOWN: dict[str, dict] = {}   # posting URL -> stored fields, filled in main()
 _POSTED_ON = re.compile(r"posted\s+(today|yesterday|(\d+)\+?\s+days?\s+ago)", re.I)
 
 
@@ -544,14 +888,39 @@ def _workday_days(posted_on: str | None) -> int | None:
     return 0 if word == "today" else 1 if word == "yesterday" else int(m.group(2))
 
 
+def _workday_posting(base: str, cxs: str, site: str, path: str, list_location: str = "") -> dict:
+    """base: public site root ("https://nvidia.wd5.myworkdayjobs.com"),
+    cxs: its JSON API root, path: "/job/<location>/<title>_<req id>"."""
+    info = get_json(f"{cxs}{path}").get("jobPostingInfo") or {}
+    locs = [info.get("location") or list_location] + list(info.get("additionalLocations") or [])
+    location = " / ".join(l for l in locs if l)
+    start = info.get("startDate") or ""
+    url = f"{base}/{site}{path}"
+    return dict(
+        title=info.get("title") or "",
+        location=location,
+        country=None if len(locs) > 1 else ((info.get("country") or {}).get("descriptor")),
+        remote=bool(REMOTE.search(location)),
+        url=url,
+        source="workday",
+        posted_at=_day_start(start),
+        posted_exact=False,          # Workday gives a date, never a time
+        description=strip_html(info.get("jobDescription")),
+        apply_url=f"{url}/apply",
+        verify_url=f"{cxs}{path}",
+        posted_field="startDate",
+        posted_raw=start,
+    )
+
+
 def fetch_workday(token: str) -> list[Job]:
     """token: "<tenant>.<wdN>/<site>", e.g. "nvidia.wd5/NVIDIAExternalCareerSite".
 
     With an empty search the CXS feed lists newest postings first (a few
     sites pin older "featured" postings on top), so pages are read until the
     last posting on a page is past the dashboard window. Detail records
-    (location, description, posting date) are fetched only for new postings
-    whose titles pass the filters; known ones reuse stored data."""
+    (location, description, posting date) are fetched only for postings whose
+    titles pass the filters, once each (see cached_posting)."""
     host_part, site = token.split("/", 1)
     tenant = host_part.split(".")[0]
     base = f"https://{host_part}.myworkdayjobs.com"
@@ -572,44 +941,14 @@ def fetch_workday(token: str) -> list[Job]:
             if not (is_swe_title(title) and is_entry_title(title)):
                 continue
             path = p.get("externalPath") or ""
-            url = f"{base}/{site}{path}"
-            known = WORKDAY_KNOWN.get(url)
-            if known:
-                location, desc, start, country = known["location"], known["description"], known["posted_raw"], None
-            else:
-                try:
-                    info = get_json(f"{cxs}{path}").get("jobPostingInfo") or {}
-                except BoardMissing:
-                    continue
-                locs = [info.get("location") or p.get("locationsText") or ""] + list(info.get("additionalLocations") or [])
-                location = " / ".join(l for l in locs if l)
-                desc = strip_html(info.get("jobDescription"))
-                start = info.get("startDate") or ""
-                country = None if len(locs) > 1 else ((info.get("country") or {}).get("descriptor"))
-            posted = None
-            if start:
-                try:
-                    posted = datetime.strptime(start[:10], "%Y-%m-%d").timestamp()
-                except ValueError:
-                    posted = None
+            posting = cached_posting(f"{base}/{site}{path}", lambda: _workday_posting(
+                base, cxs, site, path, p.get("locationsText") or ""))
+            if not is_posting(posting):
+                continue
+            posted = posting["posted_at"]
             if posted is not None and posted < cutoff - 86400:
                 continue
-            job = build_job(
-                company=company,
-                title=title,
-                location=location,
-                country=country,
-                remote=bool(REMOTE.search(location)),
-                url=url,
-                source="workday",
-                posted_at=posted,
-                posted_exact=False,          # Workday gives a date, never a time
-                description=desc,
-                apply_url=f"{url}/apply",
-                verify_url=f"{cxs}{path}",
-                posted_field="startDate",
-                posted_raw=start,
-            )
+            job = build_job(company=company, **{**posting, "title": title})
             if job:
                 out.append(job)
         if page == 0:
@@ -622,44 +961,583 @@ def fetch_workday(token: str) -> list[Job]:
     return out
 
 
+SR_API = "https://api.smartrecruiters.com/v1/companies"
+SR_PAGE = 100
+SR_MAX_PAGES = 10
+
+
+def _smartrecruiters_posting(company: str, d: dict) -> dict:
+    loc = d.get("location") or {}
+    ad = (d.get("jobAd") or {}).get("sections") or {}
+    pid = d.get("id")
+    url = d.get("postingUrl") or f"https://jobs.smartrecruiters.com/{company}/{pid}"
+    released = d.get("releasedDate")
+    location = loc.get("fullLocation") or ", ".join(
+        filter(None, [loc.get("city"), loc.get("region"), loc.get("country")]))
+    return dict(
+        title=d.get("name"),
+        location=location,
+        country=loc.get("country"),
+        remote=bool(loc.get("remote")),
+        url=url,
+        source="smartrecruiters",
+        posted_at=parse_iso(released),
+        posted_exact=released is not None,
+        description=_sections(*(((ad.get(k) or {}).get("title") or "", (ad.get(k) or {}).get("text"))
+                                for k in ("jobDescription", "qualifications", "additionalInformation")),
+                              ("About the company", (ad.get("companyDescription") or {}).get("text"))),
+        apply_url=d.get("applyUrl") or url,
+        verify_url=f"{SR_API}/{company}/postings/{pid}",
+        posted_field="releasedDate",
+        posted_raw=released,
+    )
+
+
+def fetch_smartrecruiters(token: str) -> list[Job]:
+    """token: the company identifier in jobs.smartrecruiters.com/<identifier>.
+    The postings list comes newest first; descriptions need one request each."""
+    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    out: list[Job] = []
+    for page in range(SR_MAX_PAGES):
+        data = get_json(f"{SR_API}/{token}/postings?country=us&limit={SR_PAGE}&offset={page * SR_PAGE}")
+        content = data.get("content") or []
+        total = data.get("totalFound") or 0
+        # An unknown identifier answers 200 with nothing in it, the same as a
+        # company with no US openings; only the unfiltered count tells them apart.
+        if page == 0 and not total and not get_json(f"{SR_API}/{token}/postings?limit=1").get("totalFound"):
+            raise BoardMissing(f"smartrecruiters:{token}")
+        for p in content:
+            released = parse_iso(p.get("releasedDate"))
+            title = p.get("name") or ""
+            if (released and released < cutoff) or not (is_swe_title(title) and is_entry_title(title)):
+                continue
+            pid = p.get("id")
+            posting = cached_posting(f"https://jobs.smartrecruiters.com/{token}/{pid}", lambda: _smartrecruiters_posting(
+                token, get_json(f"{SR_API}/{token}/postings/{pid}")))
+            if not is_posting(posting):
+                continue
+            company = DISPLAY_NAMES.get(token) or (p.get("company") or {}).get("name") or token
+            job = build_job(company=company, **posting)
+            if job:
+                out.append(job)
+        last = parse_iso(content[-1].get("releasedDate")) if content else None
+        if not content or (page + 1) * SR_PAGE >= total or (last and last < cutoff):
+            break
+    return out
+
+
+ORACLE_PAGE = 200
+ORACLE_MAX_PAGES = 10
+ORACLE_DATE_FACET = 7 if DASHBOARD_DAYS <= 7 else 30     # the site's own "posted within" buckets
+
+
+def _oracle_api(host: str) -> str:
+    return f"https://{host}/hcmRestApi/resources/latest"
+
+
+def _oracle_page(host: str, site: str, rid: str) -> str:
+    return f"https://{host}/hcmUI/CandidateExperience/en/sites/{site}/job/{rid}"
+
+
+def _oracle_posting(host: str, site: str, rid: str, page_site: str | None = None) -> dict:
+    """site: the site number for the API; page_site: the site as the public
+    job page URL names it, when that differs."""
+    url = (f"{_oracle_api(host)}/recruitingCEJobRequisitionDetails?expand=all&onlyData=true"
+           f"&finder=ById;Id=%22{rid}%22,siteNumber={site}")
+    items = get_json(url).get("items") or []
+    if not items:
+        raise BoardMissing(url)
+    d = items[0]
+    locs = [d.get("PrimaryLocation") or ""] + [s.get("Name") or "" for s in d.get("secondaryLocations") or []]
+    location = " / ".join(l for l in locs if l)
+    raw = d.get("ExternalPostedStartDate")
+    posted, exact = _dated(raw)
+    page = _oracle_page(host, page_site or site, rid)
+    description = _sections(("", d.get("ExternalDescriptionStr")),
+                            ("Responsibilities", d.get("ExternalResponsibilitiesStr")),
+                            ("Qualifications", d.get("ExternalQualificationsStr")))
+    return dict(
+        title=d.get("Title"),
+        location=location,
+        country=d.get("PrimaryLocationCountry") if len(locs) == 1 else None,
+        remote=bool(REMOTE.search(location)) or "remote" in (d.get("WorkplaceType") or "").lower(),
+        url=page,
+        source="oracle",
+        posted_at=posted,
+        posted_exact=exact,
+        description=_sections(("", description or d.get("ShortDescriptionStr")),
+                              ("About the company", d.get("CorporateDescriptionStr"))),
+        apply_url=page,
+        verify_url=url,
+        posted_field="ExternalPostedStartDate",
+        posted_raw=raw,
+    )
+
+
+def fetch_oracle(token: str) -> list[Job]:
+    """token: "<host>/<site number>", e.g. "jpmc.fa.oraclecloud.com/CX_1001",
+    read from a careers URL .../hcmUI/CandidateExperience/en/sites/<site>/...
+    The search is limited to the site's own "posted in the last 7 days"
+    bucket, newest first; details need one request per posting."""
+    host, site = token.split("/", 1)
+    # Careers URLs name the site by number ("CX_1001") or by URL name
+    # ("LateralHiring"). The search only honors the number: anything else,
+    # names and unknown numbers alike, searches every site of the tenant,
+    # internal ones included. So the site is looked up first.
+    sites = get_json(f"{_oracle_api(host)}/recruitingCESites?onlyData=true&limit=500").get("items") or []
+    number = next((s.get("SiteNumber") for s in sites if s.get("StatusCode") == "ORA_ACTIVE"
+                   and site in (s.get("SiteNumber"), s.get("SiteURLName"))), None)
+    if not number:
+        raise BoardMissing(f"oracle:{token}")
+    finder = f"findReqs;siteNumber={number},sortBy=POSTING_DATES_DESC,limit={ORACLE_PAGE}"
+    list_url = f"{_oracle_api(host)}/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList.secondaryLocations"
+    out: list[Job] = []
+    for page in range(ORACLE_MAX_PAGES):
+        items = get_json(f"{list_url}&finder={finder},offset={page * ORACLE_PAGE},"
+                         f"selectedPostingDatesFacet={ORACLE_DATE_FACET}").get("items") or [{}]
+        total = items[0].get("TotalJobsCount") or 0
+        reqs = items[0].get("requisitionList") or []
+        for r in reqs:
+            title = r.get("Title") or ""
+            locs = [r.get("PrimaryLocation") or ""] + [s.get("Name") or "" for s in r.get("secondaryLocations") or []]
+            country = r.get("PrimaryLocationCountry") if len(locs) == 1 else None
+            if not (is_swe_title(title) and is_entry_title(title)
+                    and us_location(" / ".join(l for l in locs if l), country)):
+                continue
+            rid = str(r.get("Id"))
+            posting = cached_posting(_oracle_page(host, site, rid), lambda: _oracle_posting(host, number, rid, site))
+            if is_posting(posting):
+                job = build_job(company=display_name(token), **posting)
+                if job:
+                    out.append(job)
+        if not reqs or (page + 1) * ORACLE_PAGE >= total:
+            break
+    return out
+
+
+EIGHTFOLD_PAGE = 10                  # fixed by the API
+EIGHTFOLD_MAX_PAGES = 30
+
+
+def _eightfold_posting(host: str, pid: str) -> dict:
+    url = f"https://{host}/api/pcsx/position_details?position_id={pid}&hl=en"
+    d = get_json(url).get("data") or {}
+    if not d:
+        raise BoardMissing(url)
+    ts = d.get("postedTs")
+    # Some tenants (Qualcomm) post at 00:00:00 UTC every time: a date, not a time.
+    exact = bool(ts) and int(ts) % 86400 != 0
+    posted = float(ts) if exact else _day_start(
+        datetime.fromtimestamp(int(ts), timezone.utc).strftime("%Y-%m-%d")) if ts else None
+    page = d.get("publicUrl") or f"https://{host}/careers/job/{pid}"
+    locs = d.get("locations") or [d.get("location") or ""]
+    return dict(
+        title=d.get("name"),
+        location=" / ".join(l for l in locs if l),
+        country=None,
+        remote=d.get("workLocationOption") == "remote",
+        url=page,
+        source="eightfold",
+        posted_at=posted,
+        posted_exact=exact,
+        description=strip_html(d.get("jobDescription")),
+        apply_url=page,
+        verify_url=url,
+        posted_field="postedTs",
+        posted_raw=ts,
+    )
+
+
+def fetch_eightfold(token: str) -> list[Job]:
+    """token: "<careers host>|<company domain>[|<filter>=<value>...]", e.g.
+    "apply.careers.microsoft.com|microsoft.com|filter_profession=software engineering".
+    Eightfold's public search (robots.txt allows /api/pcsx) returns ten
+    postings a page, newest first when sorted by timestamp."""
+    host, domain, *filters = token.split("|")
+    query = urllib.parse.urlencode([("domain", domain), ("query", ""), ("location", "United States"),
+                                    ("sort_by", "timestamp")] + [tuple(f.split("=", 1)) for f in filters])
+    company = DISPLAY_NAMES.get(token) or domain.split(".")[0].title()
+    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    out: list[Job] = []
+    for page in range(EIGHTFOLD_MAX_PAGES):
+        data = get_json(f"https://{host}/api/pcsx/search?{query}&start={page * EIGHTFOLD_PAGE}").get("data") or {}
+        positions = data.get("positions") or []
+        for p in positions:
+            ts = p.get("postedTs")
+            title = p.get("name") or ""
+            location = " / ".join(p.get("locations") or [])
+            if ((ts and ts < cutoff) or not (is_swe_title(title) and is_entry_title(title))
+                    or not us_location(location, None)):
+                continue
+            pid = str(p.get("id"))
+            posting = cached_posting(f"https://{host}/careers/job/{pid}", lambda: _eightfold_posting(host, pid))
+            if is_posting(posting):
+                job = build_job(company=company, **posting)
+                if job:
+                    out.append(job)
+        last = positions[-1].get("postedTs") if positions else None
+        if (not positions or (page + 1) * EIGHTFOLD_PAGE >= (data.get("count") or 0)
+                or (last and last < cutoff)):
+            break
+    return out
+
+
+AMAZON_SEARCH = "https://www.amazon.jobs/en/search.json"
+AMAZON_PAGE = 100
+AMAZON_MAX_PAGES = 10
+
+
+def _amazon_posting(j: dict) -> dict:
+    jid = j.get("id_icims")
+    raw = j.get("posted_date") or ""
+    try:
+        posted = datetime.strptime(raw, "%B %d, %Y").timestamp()
+    except ValueError:
+        posted = None
+    url = "https://www.amazon.jobs" + (j.get("job_path") or f"/en/jobs/{jid}")
+    return dict(
+        title=j.get("title"),
+        location=j.get("normalized_location") or j.get("location") or "",
+        country=j.get("country_code"),
+        remote=False,
+        url=url,
+        source="amazon",
+        posted_at=posted,
+        posted_exact=False,          # a date, never a time
+        description=_sections(("Description", j.get("description")),
+                              ("Basic Qualifications", j.get("basic_qualifications")),
+                              ("Preferred Qualifications", j.get("preferred_qualifications"))),
+        apply_url=j.get("url_next_step") or url,
+        # Searching by job id returns just that posting, posted_date included.
+        verify_url=f"{AMAZON_SEARCH}?base_query={jid}&result_limit=10",
+        posted_field="posted_date",
+        posted_raw=raw,
+    )
+
+
+def fetch_amazon(category: str) -> list[Job]:
+    """token: an amazon.jobs job category slug, e.g. "software-development".
+    The search JSON behind amazon.jobs carries full descriptions, so one
+    request covers a hundred postings."""
+    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    out: list[Job] = []
+    for page in range(AMAZON_MAX_PAGES):
+        query = urllib.parse.urlencode({"category[]": category, "country": "USA", "sort": "recent",
+                                        "result_limit": AMAZON_PAGE, "offset": page * AMAZON_PAGE})
+        data = get_json(f"{AMAZON_SEARCH}?{query}")
+        jobs = data.get("jobs") or []
+        if page == 0 and not data.get("hits"):
+            raise BoardMissing(f"amazon:{category}")
+        last = None
+        for j in jobs:
+            posting = _amazon_posting(j)
+            last = posting["posted_at"]
+            if last is not None and last < cutoff - 86400:
+                continue
+            job = build_job(company="Amazon", **posting)
+            if job:
+                out.append(job)
+        if not jobs or (page + 1) * AMAZON_PAGE >= (data.get("hits") or 0) or (last and last < cutoff - 86400):
+            break
+    return out
+
+
+def _amazon_by_id(jid: str) -> dict:
+    data = get_json(f"{AMAZON_SEARCH}?base_query={jid}&result_limit=10")
+    for j in data.get("jobs") or []:
+        if str(j.get("id_icims")) == jid:
+            return _amazon_posting(j)
+    raise BoardMissing(f"amazon job {jid}")
+
+
+JIBE_PAGE = 100
+JIBE_MAX_PAGES = 10
+SITEMAP_URL = re.compile(r"<loc>\s*([^<]+?)\s*</loc>(?:\s*<lastmod>\s*([^<]+?)\s*</lastmod>)?")
+ICIMS_JOB = re.compile(r"https?://[^/]+/jobs/(\d+)/([^/?#]+)/job")
+
+
+def _jibe_posting(host: str, d: dict) -> dict:
+    raw = d.get("posted_date") or ""
+    posted, exact = _dated(raw)
+    slug = d.get("slug") or d.get("req_id")
+    page = f"https://{host}/jobs/{slug}?lang=en-us"
+    multiple = str(d.get("multipleLocations")).lower() == "true"
+    return dict(
+        title=d.get("title"),
+        location=d.get("full_location") or d.get("location_name") or "",
+        country=None if multiple else d.get("country_code"),
+        remote=bool(REMOTE.search(d.get("location_type") or "")),
+        url=page,
+        source="icims",
+        posted_at=posted,
+        posted_exact=exact,
+        description=_sections(("", d.get("description")), ("Responsibilities", d.get("responsibilities")),
+                              ("Qualifications", d.get("qualifications"))),
+        apply_url=d.get("apply_url") or page,
+        # The job page embeds the same date as schema.org JobPosting.datePosted.
+        verify_url=page,
+        posted_field="posted_date",
+        posted_raw=raw,
+    )
+
+
+def _fetch_jibe(host: str) -> list[Job]:
+    """iCIMS career sites on a company domain (careers.amd.com) run on
+    iCIMS's Jibe front end, whose public /api/jobs returns full postings."""
+    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    out: list[Job] = []
+    for page in range(1, JIBE_MAX_PAGES + 1):
+        query = urllib.parse.urlencode({"page": page, "limit": JIBE_PAGE, "sortBy": "posted_date",
+                                        "descending": "true", "internal": "false", "country": "United States"})
+        data = get_json(f"https://{host}/api/jobs?{query}")
+        jobs = [item.get("data") or {} for item in data.get("jobs") or []]
+        last = None
+        for d in jobs:
+            posting = _jibe_posting(host, d)
+            last = posting["posted_at"]
+            if last is not None and last < cutoff - 86400:
+                continue
+            job = build_job(company=display_name(host), **posting)
+            if job:
+                out.append(job)
+        if not jobs or page * JIBE_PAGE >= (data.get("totalCount") or 0) or (last and last < cutoff - 86400):
+            break
+    return out
+
+
+def _fetch_icims_portal(host: str) -> list[Job]:
+    """careers-<company>.icims.com portals have no JSON API. Their sitemap
+    (linked from robots.txt) lists every posting with a slug title and a
+    last-modified time; postings modified within the window whose slug passes
+    the title filters are read once each for their schema.org JobPosting."""
+    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    out: list[Job] = []
+    for loc, lastmod in SITEMAP_URL.findall(get_text(f"https://{host}/sitemap.xml")):
+        m = ICIMS_JOB.match(html.unescape(loc))
+        modified = parse_iso(lastmod)
+        if not m or (modified and modified < cutoff):
+            continue
+        slug_title = urllib.parse.unquote(m.group(2)).replace("-", " ")
+        if not (is_swe_title(slug_title) and is_entry_title(slug_title)):
+            continue
+        page = html.unescape(loc)
+        posting = cached_posting(page, lambda: jsonld_posting(f"{page}?in_iframe=1", "icims", page))
+        if is_posting(posting):
+            job = build_job(company=display_name(host), **posting)
+            if job:
+                out.append(job)
+    return out
+
+
+def fetch_icims(host: str) -> list[Job]:
+    """token: the careers host, "careers-gdms.icims.com" or "careers.amd.com"."""
+    return _fetch_icims_portal(host) if host.endswith(".icims.com") else _fetch_jibe(host)
+
+
+LD_JSON = re.compile(r"<script[^>]*application/ld\+json[^>]*>(.*?)</script>", re.S | re.I)
+
+
+def _ld_items(data) -> list[dict]:
+    if isinstance(data, list):
+        return [x for d in data for x in _ld_items(d)]
+    if isinstance(data, dict):
+        return [data] + _ld_items(data.get("@graph") or [])
+    return []
+
+
+def _ld_text(v) -> str:
+    if isinstance(v, dict):
+        return v.get("name") or ""
+    return str(v or "")
+
+
+def jsonld_posting(url: str, source: str = "careerpage", page_url: str | None = None) -> dict | None:
+    """A posting from the schema.org JobPosting most career pages embed for
+    search engines. None when the page has none."""
+    page = get_text(url)
+    for m in LD_JSON.finditer(page):
+        try:
+            data = json.loads(m.group(1).strip())
+        except ValueError:
+            continue
+        for item in _ld_items(data):
+            types = item.get("@type")
+            if "JobPosting" in (types if isinstance(types, list) else [types]):
+                return _jsonld_job(item, page_url or url, source)
+    return None
+
+
+def _jsonld_job(item: dict, url: str, source: str) -> dict:
+    places = item.get("jobLocation") or []
+    places = places if isinstance(places, list) else [places]
+    locs, countries = [], []
+    for place in places:
+        addr = (place or {}).get("address") or {}
+        if isinstance(addr, str):
+            locs.append(addr)
+            continue
+        country = _ld_text(addr.get("addressCountry"))
+        countries.append(country)
+        locs.append(", ".join(p for p in (_ld_text(addr.get("addressLocality")),
+                                          _ld_text(addr.get("addressRegion")), country)
+                              if p and p != "UNAVAILABLE"))
+    raw = item.get("datePosted") or ""
+    posted, exact = _dated(raw)
+    remote = "TELECOMMUTE" in str(item.get("jobLocationType") or "").upper()
+    return dict(
+        title=html.unescape(item.get("title") or ""),
+        location=" / ".join(l for l in locs if l) or ("Remote" if remote else ""),
+        country=countries[0] if len(countries) == 1 else None,
+        remote=remote,
+        url=url,
+        source=source,
+        posted_at=posted,
+        posted_exact=exact,
+        description=_sections(("", item.get("description")), ("Responsibilities", item.get("responsibilities")),
+                              ("Qualifications", item.get("qualifications"))),
+        apply_url=url,
+        verify_url=url,
+        posted_field="datePosted",
+        posted_raw=raw,
+    )
+
+
+# Listing URLs (as SimplifyJobs records them) that point at a system with a
+# per-posting record. Anything else is read for its schema.org JobPosting.
+POSTING_URLS: list[tuple[re.Pattern, Callable[[re.Match], dict | None]]] = [
+    (re.compile(r"https?://(?:job-)?boards(?:\.eu)?\.greenhouse\.io/(?!embed/)(?P<token>[\w-]+)/jobs/(?P<id>\d+)"),
+     lambda m: _greenhouse_posting(m["token"], get_json(
+         f"https://boards-api.greenhouse.io/v1/boards/{m['token']}/jobs/{m['id']}"))),
+    (re.compile(r"https?://(?:job-)?boards(?:\.eu)?\.greenhouse\.io/embed/job_app\?"
+                r"(?=.*\bfor=(?P<token>[\w-]+))(?=.*\btoken=(?P<id>\d+))"),
+     lambda m: _greenhouse_posting(m["token"], get_json(
+         f"https://boards-api.greenhouse.io/v1/boards/{m['token']}/jobs/{m['id']}"))),
+    (re.compile(r"https?://jobs\.(?P<eu>eu\.)?lever\.co/(?P<token>[^/?#]+)/(?P<id>[0-9a-f-]{36})"),
+     lambda m: _lever_posting(m["token"], get_json(
+         f"https://api.{m['eu'] or ''}lever.co/v0/postings/{m['token']}/{m['id']}"),
+         f"https://api.{m['eu'] or ''}lever.co")),
+    (re.compile(r"https?://jobs\.ashbyhq\.com/(?P<token>[^/?#]+)/(?P<id>[0-9a-f-]{36})"),
+     lambda m: _ashby_by_id(urllib.parse.unquote(m["token"]), m["id"])),
+    (re.compile(r"https?://(?P<tenant>[\w-]+)\.(?P<wd>wd\d+)\.myworkdayjobs\.com/(?:[a-z]{2}-[A-Z]{2}/)?"
+                r"(?P<site>[^/?#]+)(?P<path>/job/[^?#]+)"),
+     lambda m: _workday_posting(f"https://{m['tenant']}.{m['wd']}.myworkdayjobs.com",
+                                f"https://{m['tenant']}.{m['wd']}.myworkdayjobs.com/wday/cxs/{m['tenant']}/{m['site']}",
+                                m["site"], _workday_path(m["path"]))),
+    (re.compile(r"https?://(?P<wd>wd\d+)\.myworkdaysite\.com/(?:[a-z]{2}-[A-Z]{2}/)?recruiting/(?P<tenant>[\w-]+)/"
+                r"(?P<site>[^/?#]+)(?P<path>/job/[^?#]+)"),
+     lambda m: _workday_posting(f"https://{m['wd']}.myworkdaysite.com/recruiting/{m['tenant']}",
+                                f"https://{m['wd']}.myworkdaysite.com/wday/cxs/{m['tenant']}/{m['site']}",
+                                m["site"], _workday_path(m["path"]))),
+    (re.compile(r"https?://jobs\.smartrecruiters\.com/(?P<company>[^/?#]+)/(?P<id>\d+)"),
+     lambda m: _smartrecruiters_posting(m["company"], get_json(f"{SR_API}/{m['company']}/postings/{m['id']}"))),
+    (re.compile(r"https?://(?P<host>[\w.-]+\.oraclecloud\.com)/hcmUI/CandidateExperience/[\w-]+/sites/"
+                r"(?P<site>[\w-]+)/job/(?P<id>\d+)"),
+     lambda m: _oracle_posting(m["host"], m["site"], m["id"])),
+    (re.compile(r"https?://(?P<host>[\w-]+\.eightfold\.ai|apply\.careers\.microsoft\.com)/careers/job/(?P<id>\d+)"),
+     lambda m: _eightfold_posting(m["host"], m["id"])),
+    (re.compile(r"https?://(?:www\.)?amazon\.jobs/(?:[\w-]+/)?jobs/(?P<id>\d+)"),
+     lambda m: _amazon_by_id(m["id"])),
+    (re.compile(r"https?://(?P<host>[\w-]+\.icims\.com)/jobs/(?P<id>\d+)"),
+     lambda m: jsonld_posting(f"https://{m['host']}/jobs/{m['id']}/job?in_iframe=1", "icims", m.string)),
+    (re.compile(r"https?://[^/]+/jobs/\d+\?(?:.*&)?icims=1"),     # Jibe pages on company domains
+     lambda m: jsonld_posting(m.string, "icims")),
+]
+
+
+def _workday_path(path: str) -> str:
+    return re.sub(r"/apply(?:/.*)?$", "", path.rstrip("/"))
+
+
+def _ashby_by_id(token: str, pid: str) -> dict:
+    for j in get_json_once(f"https://api.ashbyhq.com/posting-api/job-board/{token}").get("jobs", []):
+        if j.get("id") == pid:
+            return _ashby_posting(token, j)
+    raise BoardMissing(f"ashby:{token}/{pid}")
+
+
+def posting_loader(url: str) -> Callable[[], dict | None] | None:
+    parts = urllib.parse.urlsplit(url or "")
+    host = parts.hostname or ""
+    if parts.scheme not in ("http", "https") or any(
+            host == h or host.endswith("." + h) for h in NO_AUTOMATED_ACCESS):
+        return None
+    for rx, load in POSTING_URLS:
+        m = rx.match(url)
+        if m:
+            return lambda: load(m)
+    return lambda: jsonld_posting(url)
+
+
 SIMPLIFY_SPONSOR = {
     "Does Not Offer Sponsorship": ("no", "Listing says no sponsorship"),
     "U.S. Citizenship is Required": ("no", "Listing says U.S. citizenship required"),
     "Offers Sponsorship": ("yes", "Listing says sponsorship offered"),
 }
+SIMPLIFY_WORKERS = 8
 
 
 def fetch_simplify(_: str = "") -> list[Job]:
+    """SimplifyJobs' New-Grad list catches companies no board here covers. A
+    listing that passes the filters is replaced by the posting it links to
+    whenever that posting has a readable record (ATS API or schema.org data),
+    so it gets the real description, date and evidence; the rest stay as
+    listings without descriptions."""
     data = get_json(SIMPLIFY_URL)
     cutoff = time.time() - DASHBOARD_DAYS * 86400
-    out = []
-    for j in data:
-        if not j.get("active") or not j.get("is_visible", True):
-            continue
-        posted = j.get("date_posted")
-        if not posted or posted < cutoff:
-            continue
-        locs = j.get("locations") or []
-        job = build_job(
-            company=j.get("company_name", ""),
-            title=j.get("title"),
-            location=" / ".join(locs),
-            country=None,
-            remote=any(REMOTE.search(l) for l in locs),
-            url=j.get("url"),
-            source="simplify",
-            posted_at=float(posted),
-            posted_exact=True,
-            description="",
-            apply_url=j.get("url"),
-            verify_url=SIMPLIFY_VERIFY_URL,
-            posted_field="date_posted",
-            posted_raw=posted,
-            sponsor_hint=SIMPLIFY_SPONSOR.get(j.get("sponsorship", "")),
-        )
-        if job:
-            out.append(job)
-    return out
+    listings = [j for j in data
+                if j.get("active") and j.get("is_visible", True) and (j.get("date_posted") or 0) >= cutoff
+                and is_swe_title(j.get("title") or "") and is_entry_title(j.get("title") or "")
+                and us_location(" / ".join(j.get("locations") or []), None)]
+    with ThreadPoolExecutor(max_workers=SIMPLIFY_WORKERS) as pool:
+        results = list(pool.map(_simplify_job, listings))
+    tally: dict[str, int] = {}
+    for _, status in results:
+        tally[status] = tally.get(status, 0) + 1
+    log(f"simplify: {len(listings)} listings; "
+        + ", ".join(f"{n} {s}" for s, n in sorted(tally.items(), key=lambda kv: -kv[1])))
+    return [job for job, _ in results if job]
+
+
+def _simplify_job(j: dict) -> tuple[Job | None, str]:
+    locs = j.get("locations") or []
+    url = j.get("url") or ""
+    listing = dict(
+        title=j.get("title"),
+        location=" / ".join(locs),
+        country=None,
+        remote=any(REMOTE.search(l) for l in locs),
+        url=url,
+        source="simplify",
+        posted_at=float(j["date_posted"]),
+        posted_exact=True,
+        description="",
+        apply_url=url,
+        verify_url=SIMPLIFY_VERIFY_URL,
+        posted_field="date_posted",
+        posted_raw=j["date_posted"],
+    )
+    listing_key = ""
+    load = posting_loader(url)
+    status = "listing only (no readable source)"
+    if load:
+        try:
+            posting = cached_posting(url, load)
+        except Disallowed:
+            posting, status = None, "listing only (robots.txt disallows)"
+        except Exception as e:
+            posting, status = None, f"listing only ({type(e).__name__})"
+        if posting and posting.get("gone"):
+            return None, "closed at the source"
+        if is_posting(posting):
+            listing_key = norm_key(j.get("company_name", ""), (listing["title"] or "").strip(),
+                                   listing["location"].strip())
+            listing = {**posting, "location": posting["location"] or listing["location"]}
+            status = "with source posting"
+    job = build_job(company=j.get("company_name", ""), **listing,
+                    sponsor_hint=SIMPLIFY_SPONSOR.get(j.get("sponsorship", "")))
+    if job and status == "with source posting" and listing_key != job.key:
+        job.listing_key = listing_key
+    return job, status
 
 
 DISPLAY_NAMES: dict[str, str] = {}
@@ -670,16 +1548,24 @@ def display_name(token: str) -> str:
 
 
 FETCHERS = {"greenhouse": fetch_greenhouse, "lever": fetch_lever, "ashby": fetch_ashby,
-            "workday": fetch_workday}
+            "workday": fetch_workday, "smartrecruiters": fetch_smartrecruiters, "oracle": fetch_oracle,
+            "eightfold": fetch_eightfold, "amazon": fetch_amazon, "icims": fetch_icims}
 
 
-def fetch_all(companies: dict[str, list[str]]) -> tuple[list[Job], list[str], list[str]]:
+@dataclass
+class FetchResult:
+    jobs: list[Job]
+    missing: list[str]          # boards that 404: the token is wrong or the company left that ATS
+    failed: list[str]           # boards that errored, with the reason
+    throttled: list[str]        # boards whose host kept answering 429 (also in failed)
+    attempted: list[str]
+
+
+def fetch_all(companies: dict[str, list[str]], skip: set[str] = frozenset()) -> FetchResult:
     tasks = [(src, tok) for src, toks in companies.items() if src in FETCHERS
-             for tok in dict.fromkeys(toks)]
+             for tok in dict.fromkeys(toks) if f"{src}:{tok}" not in skip]
     tasks.append(("simplify", ""))
-    jobs: list[Job] = []
-    missing: list[str] = []
-    failed: list[str] = []
+    res = FetchResult([], [], [], [], [f"{src}:{tok}" for src, tok in tasks])
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         futures = {
             pool.submit(fetch_simplify if src == "simplify" else FETCHERS[src], tok): (src, tok)
@@ -688,12 +1574,16 @@ def fetch_all(companies: dict[str, list[str]]) -> tuple[list[Job], list[str], li
         for fut in as_completed(futures):
             src, tok = futures[fut]
             try:
-                jobs.extend(fut.result())
+                res.jobs.extend(fut.result())
             except BoardMissing:
-                missing.append(f"{src}:{tok}")
+                res.missing.append(f"{src}:{tok}")
             except Exception as e:  # one bad board must not sink the run
-                failed.append(f"{src}:{tok} ({type(e).__name__}: {e})")
-    return jobs, sorted(missing), sorted(failed)
+                if isinstance(e, Throttled):
+                    res.throttled.append(f"{src}:{tok}")
+                res.failed.append(f"{src}:{tok} ({type(e).__name__}: {e})")
+    res.missing.sort()
+    res.failed.sort()
+    return res
 
 
 def dedupe(jobs: list[Job]) -> list[Job]:
@@ -709,6 +1599,7 @@ def dedupe(jobs: list[Job]) -> list[Job]:
         primary, other = (job, cur) if cur.source == "simplify" else (cur, job)
         if primary.sponsorship == "unknown" and other.sponsorship != "unknown":
             primary.sponsorship, primary.sponsor_note = other.sponsorship, other.sponsor_note
+        primary.listing_key = primary.listing_key or other.listing_key
         by_key[job.key] = primary
     return list(by_key.values())
 
@@ -748,6 +1639,31 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 """
 
+# Run-to-run state besides the jobs themselves: posting details fetched once
+# (cached_posting), robots.txt files (robots_for), and boards sitting out a
+# cooldown after their host throttled them.
+STATE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS details (
+    url     TEXT PRIMARY KEY,
+    fetched REAL NOT NULL,
+    posting TEXT NOT NULL           -- build_job() arguments as JSON, or {"gone": true} / {"unavailable": true}
+);
+CREATE INDEX IF NOT EXISTS details_fetched ON details(fetched);
+CREATE TABLE IF NOT EXISTS robots (
+    host    TEXT PRIMARY KEY,
+    fetched REAL NOT NULL,
+    body    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS board_state (
+    board      TEXT PRIMARY KEY,    -- "<source>:<token>"
+    strikes    INTEGER NOT NULL,    -- throttled runs in a row
+    skip_until REAL NOT NULL,
+    last_error TEXT NOT NULL
+);
+"""
+COOLDOWN_BASE = 3600        # a throttled board sits out an hour, doubling per strike
+COOLDOWN_MAX = 86400
+
 # Columns added after the first release; created on demand so existing
 # databases keep their history.
 MIGRATIONS = {
@@ -758,6 +1674,10 @@ MIGRATIONS = {
     "skills": "TEXT NOT NULL DEFAULT '{}'",
     "description": "TEXT NOT NULL DEFAULT ''",
     "no_opt": "INTEGER NOT NULL DEFAULT 0",
+    # The dashboard's keyword checklist and degree requirement (JSON), saved so
+    # server.py can score jobs exactly as the dashboard does.
+    "kw": "TEXT NOT NULL DEFAULT ''",
+    "degree": "TEXT NOT NULL DEFAULT ''",
 }
 
 
@@ -769,12 +1689,40 @@ def migrate(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {decl}")
     # server.py finds the posting behind an application form by its apply_url.
     conn.execute("CREATE INDEX IF NOT EXISTS jobs_apply_url ON jobs(apply_url)")
+    conn.execute("CREATE TABLE IF NOT EXISTS corpus (id INTEGER PRIMARY KEY CHECK (id = 1), "
+                 "updated REAL NOT NULL, skill_w TEXT NOT NULL, term_w TEXT NOT NULL)")
+    had_details = conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'details'").fetchone()
+    conn.executescript(STATE_SCHEMA)
+    if not had_details:
+        # Workday details fetched before the cache existed live in jobs rows;
+        # seeding from them spares refetching every one.
+        conn.execute(
+            """INSERT OR IGNORE INTO details (url, fetched, posting)
+               SELECT url, last_seen, json_object(
+                   'title', title, 'location', location, 'country', NULL,
+                   'remote', json(CASE WHEN remote THEN 'true' ELSE 'false' END), 'url', url,
+                   'source', source, 'posted_at', posted_at, 'posted_exact', json('false'),
+                   'description', description, 'apply_url', apply_url, 'verify_url', verify_url,
+                   'posted_field', posted_field, 'posted_raw', posted_raw)
+               FROM jobs WHERE source = 'workday' AND instr(description, char(10)) > 0""")
 
 
 def store(conn: sqlite3.Connection, jobs: list[Job], now: float) -> int:
     existing = {row[0] for row in conn.execute(
         "SELECT key FROM jobs WHERE key IN (SELECT value FROM json_each(?))",
-        (json.dumps([j.key for j in jobs]),))}
+        (json.dumps([j.key for j in jobs] + [j.listing_key for j in jobs if j.listing_key]),))}
+    # A job first stored as a bare Simplify listing moves to its posting's key
+    # once that posting is read, keeping its row and first_seen; if the posting
+    # is already stored (from its own board), the listing row folds into it.
+    for j in jobs:
+        if not j.listing_key:
+            continue
+        conn.execute("UPDATE OR IGNORE jobs SET key = ?, company = ?, title = ?, location = ?, remote = ? "
+                     "WHERE key = ?", (j.key, j.company, j.title, j.location, j.remote, j.listing_key))
+        conn.execute("UPDATE jobs SET first_seen = MIN(first_seen, (SELECT first_seen FROM jobs WHERE key = ?)) "
+                     "WHERE key = ? AND EXISTS (SELECT 1 FROM jobs WHERE key = ?)",
+                     (j.listing_key, j.key, j.listing_key))
+        conn.execute("DELETE FROM jobs WHERE key = ?", (j.listing_key,))
     # posted_at and its evidence always mirror what the source says right now,
     # so the dashboard never shows a timestamp the Verify link can't back up.
     # first_seen is never overwritten: it is the radar's own independent record.
@@ -800,7 +1748,7 @@ def store(conn: sqlite3.Connection, jobs: list[Job], now: float) -> int:
         [{**asdict(j), "now": now} for j in jobs],
     )
     conn.execute("DELETE FROM jobs WHERE last_seen < ?", (now - PURGE_AFTER_DAYS * 86400,))
-    return len({j.key for j in jobs} - existing)
+    return len({j.key for j in jobs if j.key not in existing and j.listing_key not in existing})
 
 
 DASHBOARD_COLS = [
@@ -912,6 +1860,17 @@ def load_for_dashboard(conn: sqlite3.Connection, now: float, prev_run: float | N
         d["degree"] = reqparse.degree(desc) if d["has_jd"] else None
         out.append(d)
     return out
+
+
+def save_scoring(conn: sqlite3.Connection, rows: list[dict], stats: dict, now: float) -> None:
+    """Checklists and keyword weights as the dashboard got them, for the
+    helper's preparation queue (server.py scores with match.py)."""
+    with conn:
+        conn.executemany("UPDATE jobs SET kw = ?, degree = ? WHERE key = ?",
+                         [(json.dumps(r["kw"]), json.dumps(r["degree"]) if r["degree"] else "", r["key"])
+                          for r in rows])
+        conn.execute("INSERT OR REPLACE INTO corpus (id, updated, skill_w, term_w) VALUES (1, ?, ?, ?)",
+                     (now, json.dumps(stats["skill_w"]), json.dumps(stats["term_w"])))
 
 
 # --------------------------------------------------------------------------
@@ -1061,22 +2020,40 @@ def log(msg: str) -> None:
         f.write(line + "\n")
 
 
-def load_workday_known() -> None:
-    """Workday detail records cost one request each; reuse what's stored."""
-    if not DB_PATH.exists():
-        return
+def load_state(now: float) -> dict[str, tuple[float, str]]:
+    """Fills the detail and robots.txt caches from the db. Returns the boards
+    still cooling down after a throttle: board -> (skip until, last error)."""
     conn = sqlite3.connect(DB_PATH)
     try:
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
-        if "description" not in cols:
-            return
-        for url, location, desc, raw in conn.execute(
-                "SELECT url, location, description, posted_raw FROM jobs "
-                # Descriptions stored before line structure was kept are re-fetched once.
-                "WHERE source = 'workday' AND instr(description, char(10)) > 0"):
-            WORKDAY_KNOWN[url] = {"location": location, "description": desc, "posted_raw": raw}
+        with conn:
+            migrate(conn)
+        DETAILS.update((url, json.loads(p)) for url, p in conn.execute("SELECT url, posting FROM details"))
+        ROBOTS.update((host, (fetched, body)) for host, fetched, body in
+                      conn.execute("SELECT host, fetched, body FROM robots"))
+        return {board: (until, err) for board, until, err in conn.execute(
+            "SELECT board, skip_until, last_error FROM board_state WHERE skip_until > ?", (now,))}
     finally:
         conn.close()
+
+
+def save_state(conn: sqlite3.Connection, res: FetchResult, now: float) -> None:
+    conn.executemany("INSERT OR REPLACE INTO details (url, fetched, posting) VALUES (?, ?, ?)",
+                     [(url, now, json.dumps(p, separators=(",", ":"))) for url, p in NEW_DETAILS.items()])
+    conn.execute("DELETE FROM details WHERE fetched < ?", (now - PURGE_AFTER_DAYS * 86400,))
+    conn.executemany("INSERT OR REPLACE INTO robots (host, fetched, body) VALUES (?, ?, ?)",
+                     [(host, *ROBOTS[host]) for host in ROBOTS_FETCHED])
+    conn.execute("DELETE FROM robots WHERE fetched < ?", (now - 7 * 86400,))
+    # A board whose host keeps throttling is left alone for a while instead of
+    # being asked again every run; any run without a throttle clears it.
+    strikes = dict(conn.execute("SELECT board, strikes FROM board_state"))
+    for board in res.throttled:
+        reason = next((f for f in res.failed if f.startswith(board + " (")), "")
+        n = strikes.get(board, 0) + 1
+        conn.execute("INSERT OR REPLACE INTO board_state (board, strikes, skip_until, last_error) "
+                     "VALUES (?, ?, ?, ?)",
+                     (board, n, now + min(COOLDOWN_MAX, COOLDOWN_BASE * 2 ** (n - 1)), reason))
+    conn.executemany("DELETE FROM board_state WHERE board = ?",
+                     [(b,) for b in res.attempted if b not in res.throttled])
 
 
 def main() -> int:
@@ -1094,12 +2071,21 @@ def main() -> int:
     companies = json.loads(COMPANIES_PATH.read_text(encoding="utf-8"))
     DISPLAY_NAMES.update(companies.pop("display_names", {}))
     h1b_aliases = companies.pop("h1b_aliases", {})
-    load_workday_known()
     started = time.time()
-    jobs, missing, failed = fetch_all(companies)
-    jobs = dedupe(jobs)
+    cooling = load_state(started)
+    if args.check:
+        cooling = {}        # --check tries every board, cooling down or not
+    res = fetch_all(companies, set(cooling))
+    jobs = dedupe(res.jobs)
+    missing, failed = res.missing, res.failed
 
     if args.check:
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            with conn:
+                save_state(conn, res, time.time())
+        finally:
+            conn.close()
         print(f"{len(missing)} missing boards:")
         for m in missing:
             print("  ", m)
@@ -1116,6 +2102,7 @@ def main() -> int:
         prev, first_run = conn.execute("SELECT MAX(finished), MIN(started) FROM runs").fetchone()
         with conn:
             new = store(conn, jobs, started)
+            save_state(conn, res, started)
             finished = time.time()
             boards = sum(len(set(v)) for k, v in companies.items() if k in FETCHERS) + 1
             conn.execute(
@@ -1124,6 +2111,7 @@ def main() -> int:
             )
         stats = corpus_stats(conn)
         rows = load_for_dashboard(conn, started, prev, h1b, stats)
+        save_scoring(conn, rows, stats, finished)
     finally:
         conn.close()
 
@@ -1144,6 +2132,10 @@ def main() -> int:
         f"{len(missing)} missing boards, {finished - started:.1f}s")
     for f in failed:
         log(f"  failed {f}")
+    for m in missing:
+        log(f"  missing {m}")
+    for board, (until, err) in sorted(cooling.items()):
+        log(f"  skipped {board} until {datetime.fromtimestamp(until):%m-%d %H:%M}, last: {err}")
     return 0
 
 

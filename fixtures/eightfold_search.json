@@ -1,0 +1,129 @@
+{
+ "status": 200,
+ "error": {
+  "message": "",
+  "body": ""
+ },
+ "data": {
+  "positions": [
+   {
+    "id": 1970393557040432,
+    "displayJobId": "200061737",
+    "name": "Principal Data Engineering Architect",
+    "locations": [
+     "United States, Washington, Redmond"
+    ],
+    "standardizedLocations": [
+     "Redmond, WA, US"
+    ],
+    "postedTs": 1792549392,
+    "solrScore": null,
+    "stars": 0,
+    "department": "Data Engineering",
+    "creationTs": 1791922495,
+    "isHot": 0,
+    "workLocationOption": "onsite",
+    "locationFlexibility": null,
+    "atsJobId": "200061737",
+    "positionUrl": "/careers/job/1970393557040432"
+   },
+   {
+    "id": 1970393556982470,
+    "displayJobId": "200052204",
+    "name": "Software Solution Engineer",
+    "locations": [
+     "United States, California, San Francisco",
+     "United States, California, San Jose",
+     "United States, California, Mountain View"
+    ],
+    "standardizedLocations": [
+     "San Francisco, CA, US",
+     "San Jose, CA, US",
+     "Mountain View, CA, US"
+    ],
+    "postedTs": 1792545812,
+    "solrScore": null,
+    "stars": 0,
+    "department": "Solution Engineering",
+    "creationTs": 1787846492,
+    "isHot": 0,
+    "workLocationOption": "onsite",
+    "locationFlexibility": null,
+    "atsJobId": "200052204",
+    "positionUrl": "/careers/job/1970393556982470"
+   },
+   {
+    "id": 1970393557006817,
+    "displayJobId": "200057543",
+    "name": "Director, Channel Partner Marketing - Americas",
+    "locations": [
+     "United States, Multiple Locations, Multiple Locations",
+     "United States, Washington, Redmond"
+    ],
+    "standardizedLocations": [
+     "US",
+     "Redmond, WA, US"
+    ],
+    "postedTs": 1792545809,
+    "solrScore": null,
+    "stars": 0,
+    "department": "Partner Marketing",
+    "creationTs": 1790106359,
+    "isHot": 0,
+    "workLocationOption": "onsite",
+    "locationFlexibility": null,
+    "atsJobId": "200057543",
+    "positionUrl": "/careers/job/1970393557006817"
+   },
+   {
+    "id": 1970393557041742,
+    "displayJobId": "200062283",
+    "name": "Global Datacenter Engineering Senior Director, Operations Engineering",
+    "locations": [
+     "United States, Washington, Redmond",
+     "United States, Georgia, Atlanta",
+     "United States, Arizona, Phoenix",
+     "United States, Texas, San Antonio",
+     "United States, District of Columbia, Washington D.C."
+    ],
+    "standardizedLocations": [
+     "Redmond, WA, US",
+     "Atlanta, GA, US",
+     "Phoenix, AZ, US",
+     "San Antonio, TX, US",
+     "Washington, DC, US"
+    ],
+    "postedTs": 1792543905,
+    "solrScore": null,
+    "stars": 0,
+    "department": "Technical Program Management",
+    "creationTs": 1792107972,
+    "isHot": 0,
+    "workLocationOption": "onsite",
+    "locationFlexibility": null,
+    "atsJobId": "200062283",
+    "positionUrl": "/careers/job/1970393557041742"
+   }
+  ],
+  "filterDef": {},
+  "count": 804,
+  "sortBy": "timestamp",
+  "appliedFilters": {
+   "includeRemote": [
+    "1"
+   ],
+   "includeRelocation": [
+    "0"
+   ]
+  },
+  "debug": {},
+  "savedSearchMetadata": {
+   "savedSearchParamsHash": null,
+   "isSavedSearchActive": false
+  },
+  "resultsMetaData": {
+   "usedFuzzSearch": false
+  }
+ },
+ "metadata": null
+}
