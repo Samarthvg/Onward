@@ -63,7 +63,8 @@ SIMPLIFY_URL = (
 )
 SIMPLIFY_VERIFY_URL = "https://github.com/SimplifyJobs/New-Grad-Positions/blob/dev/.github/scripts/listings.json"
 
-DASHBOARD_DAYS = 365        # postings older than this are not shown
+DASHBOARD_DAYS = 30         # postings older than this are not shown
+PROGRAM_DAYS = 60           # nor new-grad and entry-level programs older than this
 FETCH_DAYS = 7              # how far back paged sources (Workday, Oracle, the feed) read
 STALE_AFTER_DAYS = 2        # unseen for this long means the posting was closed
 PURGE_AFTER_DAYS = 45       # rows older than this are deleted
@@ -117,7 +118,7 @@ SETTINGS: dict = config.defaults()
 
 
 def configure(store: config.Store) -> None:
-    global DB_PATH, DASHBOARD_PATH, LOG_PATH, H1B_DIR, DASHBOARD_DAYS, FETCH_DAYS, STALE_AFTER_DAYS, PURGE_AFTER_DAYS
+    global DB_PATH, DASHBOARD_PATH, LOG_PATH, H1B_DIR, DASHBOARD_DAYS, PROGRAM_DAYS, FETCH_DAYS, STALE_AFTER_DAYS, PURGE_AFTER_DAYS
     global WORKERS, TIMEOUT, ORACLE_DATE_FACET, SEARCH, SETTINGS
     s = SETTINGS = store.load()
     DB_PATH = store.path_for("db")
@@ -126,6 +127,7 @@ def configure(store: config.Store) -> None:
     H1B_DIR = store.path_for("data_dir")
     r = s["radar"]
     DASHBOARD_DAYS, STALE_AFTER_DAYS, PURGE_AFTER_DAYS = r["dashboard_days"], r["stale_after_days"], r["purge_after_days"]
+    PROGRAM_DAYS = r["program_days"]
     FETCH_DAYS = r["fetch_days"]
     WORKERS, TIMEOUT = r["workers"], r["timeout"]
     ORACLE_DATE_FACET = 7 if FETCH_DAYS <= 7 else 30
@@ -1775,6 +1777,11 @@ MIGRATIONS = {
     "pay_min": "REAL",
     "pay_max": "REAL",
     "roles": "TEXT NOT NULL DEFAULT '[]'",
+    # Reposts: a role at one company and place keeps its row (its key), so a
+    # posting taken down and put up again shows as its date moving forward.
+    # first_posted is the earliest date seen, reposts how often it moved.
+    "first_posted": "REAL",
+    "reposts": "INTEGER NOT NULL DEFAULT 0",
 }
 
 
@@ -1831,12 +1838,19 @@ def store(conn: sqlite3.Connection, jobs: list[Job], now: float) -> int:
         """INSERT INTO jobs (key, company, title, location, remote, url, source, posted_at,
                              posted_exact, sponsorship, sponsor_note, min_yoe, entry_hint,
                              first_seen, last_seen, apply_url, verify_url, posted_field,
-                             posted_raw, skills, description, no_opt, country, pay_min, pay_max, roles)
+                             posted_raw, skills, description, no_opt, country, pay_min, pay_max, roles,
+                             first_posted)
            VALUES (:key, :company, :title, :location, :remote, :url, :source, :posted_at,
                    :posted_exact, :sponsorship, :sponsor_note, :min_yoe, :entry_hint,
                    :now, :now, :apply_url, :verify_url, :posted_field, :posted_raw, :skills,
-                   :description, :no_opt, :country, :pay_min, :pay_max, :roles)
+                   :description, :no_opt, :country, :pay_min, :pay_max, :roles, :posted_at)
            ON CONFLICT(key) DO UPDATE SET
+               -- A source's own posting date (not an update time) a day or more
+               -- later than before: the role was posted again.
+               reposts = jobs.reposts + (excluded.posted_exact AND jobs.posted_at IS NOT NULL
+                                         AND excluded.posted_at > jobs.posted_at + 86400),
+               first_posted = MIN(COALESCE(jobs.first_posted, jobs.posted_at, jobs.first_seen),
+                                  COALESCE(excluded.posted_at, jobs.first_seen)),
                url = excluded.url, source = excluded.source,
                posted_at = excluded.posted_at, posted_exact = excluded.posted_exact,
                posted_field = excluded.posted_field, posted_raw = excluded.posted_raw,
@@ -1858,6 +1872,7 @@ DASHBOARD_COLS = [
     "key", "company", "title", "location", "remote", "url", "source", "posted_at", "posted_exact",
     "sponsorship", "sponsor_note", "no_opt", "min_yoe", "entry_hint", "first_seen", "apply_url",
     "verify_url", "posted_field", "posted_raw", "skills", "country", "pay_min", "pay_max",
+    "first_posted", "reposts",
 ]
 
 
@@ -1939,6 +1954,26 @@ def term_patterns(term_w: dict[str, float]) -> dict[str, re.Pattern]:
     return {t: re.compile(r"(?<![A-Za-z0-9])" + re.escape(t) + r"(?![A-Za-z0-9])") for t in term_w}
 
 
+def shown_days(title: str) -> int:
+    """How long a posting stays on the dashboard: longer for hiring programs."""
+    return max(DASHBOARD_DAYS, PROGRAM_DAYS) if filters.is_program(title) else DASHBOARD_DAYS
+
+
+def closed_postings(conn: sqlite3.Connection, now: float) -> dict[str, list[float]]:
+    """When each closed posting still stored (until it is purged) went up,
+    by its identity, oldest first. An open posting with the identity of a
+    closed one is that role taken down and put up again. Two open postings
+    with one title are left alone: they're often two teams hiring."""
+    by: dict[str, list[float]] = {}
+    for company, title, location, posted in conn.execute(
+            "SELECT company, title, location, COALESCE(posted_at, first_seen) FROM jobs WHERE last_seen < ?",
+            (now - STALE_AFTER_DAYS * 86400,)):
+        by.setdefault(filters.posting_identity(company, title, location), []).append(posted)
+    for xs in by.values():
+        xs.sort()
+    return by
+
+
 def load_for_dashboard(conn: sqlite3.Connection, now: float, prev_run: float | None,
                        h1b: "H1BIndex", stats: dict | None = None) -> list[dict]:
     rows = conn.execute(
@@ -1946,12 +1981,25 @@ def load_for_dashboard(conn: sqlite3.Connection, now: float, prev_run: float | N
            FROM jobs
            WHERE last_seen >= ? AND COALESCE(posted_at, first_seen) >= ?
            ORDER BY COALESCE(posted_at, first_seen) DESC""",
-        (now - STALE_AFTER_DAYS * 86400, now - DASHBOARD_DAYS * 86400),
+        (now - STALE_AFTER_DAYS * 86400, now - max(DASHBOARD_DAYS, PROGRAM_DAYS) * 86400),
     ).fetchall()
     term_rx = term_patterns(stats["term_w"]) if stats else {}
+    closed = closed_postings(conn, now)
     out = []
     for r in rows:
         d = dict(zip(DASHBOARD_COLS + ["has_jd", "_desc"], r))
+        posted = d["posted_at"] or d["first_seen"]
+        if now - posted > shown_days(d["title"]) * 86400:
+            continue
+        # Reposted: the same row's date moved forward, or a closed posting
+        # of this role went up earlier under another ID.
+        earlier = [p for p in closed.get(filters.posting_identity(d["company"], d["title"], d["location"]), [])
+                   if p < posted]
+        first, times = d.pop("first_posted"), d.pop("reposts") or 0
+        if earlier:
+            first, times = min(earlier[0], first or posted), times + len(earlier)
+        d["program"] = filters.is_program(d["title"])
+        d["repost"] = {"first": first, "times": times} if times and first and first < posted - 86400 else None
         desc = d.pop("_desc") or ""
         d["has_jd"] = bool(d["has_jd"])
         d["skills"] = json.loads(d["skills"] or "{}")
@@ -2134,7 +2182,7 @@ def public_settings(s: dict) -> dict:
     No paths or notification topics."""
     return {"roles": s["roles"], "active_role": s["active_role"], "scoring": s["scoring"],
             "tailoring": {k: s["tailoring"][k] for k in ("backend", "draft_backend")}, "notices": s["notices"],
-            "setup": s["setup"]}
+            "setup": s["setup"], "window": {"days": s["radar"]["dashboard_days"], "program_days": s["radar"]["program_days"]}}
 
 
 def needs_visa_data(s: dict) -> bool:

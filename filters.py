@@ -151,6 +151,11 @@ ENTRY_HINT = re.compile(
     re.I,
 )
 ENTRY_PHRASE = re.compile(r"new grad|entry|junior|early career|university", re.I)
+# Hiring programs that stay open for a season ("Software Engineer, New Grad
+# 2027", "Entry Level - University Graduate"): the dashboard shows them longer.
+PROGRAM = re.compile(
+    r"\b(20[2-3][0-9]|new[- ]?grad\w*|new college|(?:university|college|recent) grad\w*|"
+    r"early[- ]career|entry[- ]level|campus|class of)\b", re.I)
 # The words NOT_ENTRY rejects, so entry-level filtering stays as it was.
 INTERN = re.compile(r"\b(intern|internship|internships|co-?op|apprentice)\b", re.I)
 SENIOR = re.compile(
@@ -434,6 +439,22 @@ def _words_rx(words: Iterable[str]) -> re.Pattern | None:
 
 def norm_company(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip()
+
+
+def is_program(title: str) -> bool:
+    return bool(PROGRAM.search(title or ""))
+
+
+# Requisition numbers in titles ("Software Engineer (R123456)", "- 2024-18732"):
+# a repost usually gets a new one.
+REQ_ID = re.compile(r"[(\[]?\b(?:req(?:uisition)?\s*#?\s*)?[A-Z]{0,4}[-_]?\d{5,}(?:[-_]\d+)?\b[)\]]?", re.I)
+
+
+def posting_identity(company: str, title: str, location: str) -> str:
+    """The same role at the same company and place, whatever its posting ID:
+    a posting taken down and put up again keeps this."""
+    place = re.split(r"[;,|/]", location or "", maxsplit=1)[0]
+    return "|".join((norm_company(company), norm_company(REQ_ID.sub(" ", title or "")), norm_company(place)))
 
 
 @dataclass

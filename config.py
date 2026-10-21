@@ -40,7 +40,7 @@ import voice
 
 CODE_DIR = Path(__file__).resolve().parent
 SETTINGS_FILE = "settings.json"
-VERSION = 5
+VERSION = 6
 
 
 def platform_data_dir() -> Path:
@@ -299,6 +299,7 @@ QUEUE = Obj({
     "locations": List(WORD, [], 30),            # substrings of the job location; empty means anywhere
     "remote_ok": Bool(True),                    # remote jobs pass the location filter
     "lookback_hours": Int(48, 1, 24 * 14),      # how far back "newly seen" reaches
+    "max_age_days": Int(7, 1, 60),              # only postings this recent are prepared, however new to the radar
     "draft_answers": Bool(True),
     "notify_desktop": Bool(True),
     "ntfy_server": Str("https://ntfy.sh", pattern=r"https?://[A-Za-z0-9.:-]+/?"),
@@ -319,9 +320,12 @@ SCHEMA = Obj({
     }),
     "radar": Obj({
         # How old a posting may be and still be shown. Separate from fetch_days:
-        # boards like Greenhouse return every open job anyway, and older open
-        # jobs (an entry-level role posted 6 weeks ago) are still worth seeing.
-        "dashboard_days": Int(365, 1, 3650),
+        # boards like Greenhouse return every open job, however long it has
+        # been up, and a role up for months has most likely been filled.
+        "dashboard_days": Int(30, 1, 3650),
+        # Hiring programs ("New Grad 2027", "Entry Level - University Grad")
+        # take applications for a whole season, so they're shown longer.
+        "program_days": Int(60, 1, 3650),
         # How far back paged sources (Workday, Oracle, the SimplifyJobs feed)
         # read each run. Deeper means many more requests per run.
         "fetch_days": Int(7, 1, 60),
@@ -494,7 +498,17 @@ def _v5(data: dict, home: Path) -> dict:
     return data
 
 
-MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3, 4: _v4, 5: _v5}
+def _v6(data: dict, home: Path) -> dict:
+    """A year of open postings was mostly roles filled long ago: the default
+    is 30 days now, with 60 for new-grad and entry-level programs
+    (program_days). A value the user chose themselves is kept."""
+    r = data.get("radar")
+    if isinstance(r, dict) and r.get("dashboard_days") == 365:
+        r["dashboard_days"] = 30
+    return data
+
+
+MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3, 4: _v4, 5: _v5, 6: _v6}
 
 
 def migrate(data: dict, home: Path) -> tuple[dict, bool]:

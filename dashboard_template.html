@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Onward</title>
+<script>try { const t = JSON.parse(localStorage.getItem("jr:theme")); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <style>
   :root {
     --bg: #f6f5f1; --surface: #ffffff; --surface-2: #faf9f6; --text: #1d1d1b; --muted: #6b6a64;
@@ -39,7 +40,62 @@
     margin: 0; background: var(--bg); color: var(--text);
     font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 24px 64px; }
+  .wrap { max-width: 1520px; margin: 0 auto; padding: 24px 24px 64px; }
+  /* Three columns on a wide screen: filters, the list, the resume and what's
+     ready. Below 1200px the rails stack above the list as before. */
+  .layout { display: grid; gap: 20px; align-items: start;
+    grid-template-columns: 232px minmax(0, 1fr) 300px; grid-template-areas: "left main right"; }
+  .rail-l { grid-area: left; } main { grid-area: main; min-width: 0; } .rail-r { grid-area: right; }
+  .rail { display: grid; gap: 12px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 12px; }
+  .panel-h { font-size: 13px; font-weight: 600; margin: 0; color: var(--text); }
+  .panel .note { margin: 0; }
+  body.view-settings .layout, body.in-setup .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main"; }
+  body.view-settings .rail, body.in-setup .rail { display: none; }
+  body.view-settings main { width: 100%; max-width: 1120px; margin: 0 auto; }
+  body:not(.view-queue) #qhead, body.view-queue #filters, body:not(.view-jobs) .rail-r #nextUp { display: none; }
+  .status-r { margin: 0; font-size: 13px; color: var(--muted); }
+  .status-r b { color: var(--text); font-weight: 600; }
+  .searchbar { display: flex; gap: 8px; margin-bottom: 10px; }
+  .searchbar input { flex: 1 1 auto; min-height: 36px; }
+  .filter-group { display: grid; gap: 6px; }
+  .filter-label { font-size: 12px; color: var(--muted); }
+  .checks-v { gap: 8px; }
+  .checks-v:not(:has(label:not([hidden]))) { display: none; }
+  /* In the rail the filters have room, so they show in simple view too. */
+  @media (min-width: 1200px) {
+    body.simple .rail-l .adv-only:not([hidden]) { display: inline-flex !important; }
+    body.simple .rail-l select.adv-only:not([hidden]), body.simple .rail-l .filter-label.adv-only { display: block !important; }
+    .rail-l .seg { display: grid; grid-template-columns: 1fr; background: transparent; padding: 0; }
+    .rail-l .seg button { justify-content: space-between; min-height: 32px; }
+    .rail-l .seg button[aria-pressed="true"] { background: var(--chip); border-color: transparent; }
+    .rail-l .wn { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 400; }
+    .rail-l .ws { display: none; }
+    #status { display: none; }
+  }
+  @media (max-width: 1199px) {
+    .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "right" "left" "main"; gap: 12px; }
+    .rail { position: static; max-height: none; overflow: visible; }
+    .rail-r #nextUp, .rail-r #radarPanel { display: none; }
+    .wn, .seg .ws + .wl { display: none; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .controls .panel-h, .controls .filter-label { display: none; }
+    .filter-group, .checks-v { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  }
+  /* The queue's ready list in the right rail. */
+  .nu-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+  .nu-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 10px 0; border-top: 1px solid var(--rule); }
+  .nu-list li:first-child { border-top: 0; padding-top: 0; }
+  .nu-list .t { font-size: 13px; font-weight: 600; color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+  .nu-list .t:hover { text-decoration: underline; }
+  .nu-list .c { font-size: 12px; color: var(--muted); grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nu-list .p { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .nu-list .p.hi { color: var(--hi); } .nu-list .p.mid { color: var(--mid); } .nu-list .p.lo { color: var(--lo); }
+  .nu-foot { display: flex; gap: 8px; flex-wrap: wrap; }
+  /* The resume in the rail: what it is on top, its buttons under it. */
+  .rail-r .resume-bar > span:not(.spacer), .rail-r .resume-bar > .note { flex-basis: 100%; }
+  .rail-r .resume-bar .spacer { display: none; }
+  #themeBtn svg { flex: none; }
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 6px; }
   .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
   .brand svg { flex: none; }
@@ -64,7 +120,7 @@
 
   .resume-bar {
     display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
-    padding: 12px 16px; margin-bottom: 12px; border-radius: 8px;
+    padding: 12px 16px; border-radius: 8px;
     background: var(--surface); border: 1px dashed var(--control); font-size: 13px; color: var(--muted);
   }
   .resume-bar.drag { border-color: var(--accent); background: var(--accent-soft); }
@@ -72,11 +128,6 @@
   .resume-bar b { color: var(--text); }
   .resume-bar .spacer { flex: 1; }
 
-  .controls {
-    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
-    padding: 10px 12px; background: var(--surface); border: 1px solid var(--line);
-    border-radius: 8px; margin-bottom: 12px; position: sticky; top: 8px; z-index: 2;
-  }
   .seg { display: inline-flex; background: var(--chip); border-radius: 8px; padding: 2px; gap: 2px; }
   .seg button { border: 1px solid transparent; background: transparent; color: var(--muted); padding: 4px 11px; border-radius: 6px; min-height: 30px; }
   .seg button { white-space: nowrap; }
@@ -230,8 +281,8 @@
   .viewtabs button:hover { color: var(--text); background: transparent; border-color: transparent; }
   .viewtabs button[aria-current="page"] { background: var(--surface); border-color: var(--control); color: var(--text); font-weight: 600; }
   .qcount { font-size: 12px; font-weight: 600; padding: 0 7px; border-radius: 999px; background: var(--accent-soft); color: var(--ok); font-variant-numeric: tabular-nums; }
-  .qhead { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 16px; margin-bottom: 12px;
-    background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-size: 13px; color: var(--muted); }
+  .qhead { display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
+  .qhead > button { justify-self: start; }
   .qhead b { color: var(--text); }
   .qhead .spacer { flex: 1; }
   .qline { grid-column: 1 / -1; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
@@ -288,7 +339,7 @@
   .adv[hidden] { display: none; }
   .okline { color: var(--ok); font-size: 13px; }
   /* First-run setup */
-  body.in-setup #viewTabs, body.in-setup #openKit, body.in-setup #roleSel, body.in-setup #resumeBar,
+  body.in-setup #viewTabs, body.in-setup #openKit, body.in-setup #roleSel, body.in-setup #resumeBar, body.in-setup #themeBtn,
   body.in-setup #status, body.in-setup #notices { display: none !important; }
   .setup { max-width: 720px; margin: 8px auto 0; background: var(--surface); border: 1px solid var(--line);
     border-radius: 12px; padding: 20px 22px; display: grid; gap: 16px; }
@@ -355,7 +406,7 @@
     *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   }
   /* Short windows (or text zoomed to 200%) would lose most of the page to a sticky bar. */
-  @media (max-height: 620px) { .controls { position: static; } }
+  @media (max-height: 620px) { .rail { position: static; max-height: none; } }
 
   @media (max-width: 760px) {
     .wrap { padding: 16px 16px 48px; }
@@ -373,9 +424,10 @@
     .fields { grid-template-columns: 1fr; }
     .prefs { grid-template-columns: 1fr; }
     .prefs .note { grid-column: 1; }
-    .controls { position: static; }
     .controls .seg { overflow-x: auto; max-width: 100%; }
-    .controls select { flex: 1 1 140px; }
+    .controls .filter-group { flex: 1 1 100%; flex-wrap: nowrap; }
+    .controls .filter-group select { flex: 1 1 0; min-width: 0; }
+    .controls .checks-v { flex-wrap: wrap; gap: 6px 14px; }
     .actions { margin-left: 0; }
     .kit { grid-template-columns: 1fr auto; }
     .kit label { grid-column: 1 / -1; margin-top: 4px; }
@@ -400,54 +452,75 @@
         <button type="button" data-view="settings">Settings</button>
       </nav>
       <button type="button" id="openKit">Apply kit</button>
+      <button type="button" id="themeBtn" aria-label="Theme"></button>
       <label class="switch" id="advLbl" title="Show every badge, filter and score detail"><input type="checkbox" id="advMode" role="switch"> Advanced</label>
     </div>
   </header>
   <p class="status" id="status"></p>
 
+  <div class="layout">
+  <aside class="rail rail-l" aria-label="Filters">
+    <section class="panel controls" id="filters" aria-labelledby="filtersH">
+      <h2 class="panel-h" id="filtersH">Posted within</h2>
+      <div class="seg" id="window" role="group" aria-labelledby="filtersH">
+        <button type="button" data-h="1"><span class="ws">1h</span><span class="wl">Last hour</span><span class="wn" data-n="1"></span></button>
+        <button type="button" data-h="6"><span class="ws">6h</span><span class="wl">Last 6 hours</span><span class="wn" data-n="6"></span></button>
+        <button type="button" data-h="24"><span class="ws">24h</span><span class="wl">Last 24 hours</span><span class="wn" data-n="24"></span></button>
+        <button type="button" data-h="72"><span class="ws">3d</span><span class="wl">Last 3 days</span><span class="wn" data-n="72"></span></button>
+        <button type="button" data-h="168"><span class="ws">7d</span><span class="wl">Last 7 days</span><span class="wn" data-n="168"></span></button>
+        <button type="button" data-h="720"><span class="ws">30d</span><span class="wl">Last 30 days</span><span class="wn" data-n="720"></span></button>
+        <button type="button" data-h="0" id="allOpen"><span class="wl">All open</span><span class="wn" data-n="0"></span></button>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label" for="sort">Order</label>
+        <select id="sort">
+          <option value="new">Newest first</option>
+          <option value="match">Best match first</option>
+        </select>
+        <label class="filter-label adv-only" for="minMatch">Match</label>
+        <select id="minMatch" class="adv-only">
+          <option value="0">Any match</option>
+          <option value="50">50%+ match</option>
+          <option value="65">65%+ match</option>
+          <option value="80">80%+ match</option>
+        </select>
+      </div>
+      <div class="filter-group checks-v">
+        <label class="toggle adv-only" id="h1bOnlyLbl"><input type="checkbox" id="h1bOnly"> H-1B sponsors only</label>
+        <label class="toggle adv-only" id="nospLbl"><input type="checkbox" id="nosp"> <span id="nospText">Hide no sponsorship / no OPT</span></label>
+        <label class="toggle adv-only"><input type="checkbox" id="remote"> Remote only</label>
+        <label class="toggle adv-only"><input type="checkbox" id="hidedone"> Hide applied/dismissed</label>
+      </div>
+    </section>
+    <section class="panel qhead" id="qhead" aria-label="Queue"></section>
+  </aside>
+
   <main id="main" tabindex="-1">
   <div id="notices" role="status"></div>
-  <div class="resume-bar" id="resumeBar"></div>
   <section id="queueView" hidden>
-    <div class="qhead" id="qhead"></div>
     <ul class="list" id="qlist"></ul>
   </section>
   <section id="settingsView" hidden aria-labelledby="settingsTitle"></section>
   <section id="setupView" hidden aria-labelledby="setupTitle"></section>
   <div id="jobsView">
-
-  <div class="controls">
-    <div class="seg" id="window" role="group" aria-label="Posted within">
-      <button type="button" data-h="1">1h</button>
-      <button type="button" data-h="6">6h</button>
-      <button type="button" data-h="24">24h</button>
-      <button type="button" data-h="72">3d</button>
-      <button type="button" data-h="168">7d</button>
-      <button type="button" data-h="720">30d</button>
-      <button type="button" data-h="0" title="Every posting that's still open, however long ago it went up">All open</button>
-    </div>
+  <div class="searchbar">
     <input type="search" id="q" placeholder="Filter by company, title, city, skill" aria-label="Filter">
-    <select id="sort" aria-label="Sort">
-      <option value="new">Newest first</option>
-      <option value="match">Best match first</option>
-    </select>
-    <select id="minMatch" class="adv-only" aria-label="Minimum match">
-      <option value="0">Any match</option>
-      <option value="50">50%+ match</option>
-      <option value="65">65%+ match</option>
-      <option value="80">80%+ match</option>
-    </select>
-    <label class="toggle adv-only" id="h1bOnlyLbl"><input type="checkbox" id="h1bOnly"> H-1B sponsors only</label>
-    <label class="toggle adv-only" id="nospLbl"><input type="checkbox" id="nosp"> <span id="nospText">Hide no sponsorship / no OPT</span></label>
-    <label class="toggle adv-only"><input type="checkbox" id="remote"> Remote only</label>
-    <label class="toggle adv-only"><input type="checkbox" id="hidedone"> Hide applied/dismissed</label>
   </div>
-
   <div class="count" id="count" role="status"></div>
   <div class="hidden-note" id="hiddenNote" hidden></div>
   <ul class="list" id="list" aria-label="Jobs" tabindex="-1"></ul>
   </div>
   </main>
+
+  <aside class="rail rail-r" aria-label="Your resume and next applications">
+    <div class="resume-bar" id="resumeBar"></div>
+    <section class="panel" id="nextUp" aria-labelledby="nextUpH" hidden></section>
+    <section class="panel" id="radarPanel" aria-labelledby="radarPanelH">
+      <h2 class="panel-h" id="radarPanelH">Last search</h2>
+      <p class="status-r" id="statusR"></p>
+    </section>
+  </aside>
+  </div>
 </div>
 
 <dialog id="kit" aria-labelledby="kitTitle">
@@ -1496,6 +1569,7 @@ function jobCard(j, now, V, hasResume) {
   const meta = el("div", { class: "meta" }, el("span", { class: "company", text: j.company }), el("span", { text: j.location }));
   const head = el("div", { class: "head" },
     el("a", { class: "title", href: j.url, target: "_blank", rel: "noopener", text: j.title, "data-fk": fk("title") }), meta);
+  meta.append(...ageBadges(j, now));
   const reason = hasResume ? scoreReason(sc, j) : null;
   const li = el("li", { class: "job" + (mark ? " done" : "") }, head, right, side, reason);
 
@@ -1554,10 +1628,28 @@ function jobCard(j, now, V, hasResume) {
   return li;
 }
 
+// How long it has been up, once that's long enough to matter, and whether
+// it was taken down and put up again.
+function ageBadges(j, now) {
+  const out = [];
+  const weeks = Math.floor((now - when(j)) / (7 * 86400));
+  if (weeks >= 3) {
+    out.push(el("span", { class: "badge", text: `Up ${weeks} weeks`, title: `Posted ${fmt(when(j))}. ` + (j.program
+      ? "A hiring program like this takes applications for a season, but the longer it has been up, the more of its places are filled."
+      : "A role up this long has often been filled already.") }));
+  }
+  if (j.repost) {
+    out.push(el("span", { class: "badge", text: "Reposted", title: `Taken down and put up again. First posted ${fmt(j.repost.first)}` +
+      (j.repost.times > 1 ? `; it has gone up ${j.repost.times + 1} times.` : ".") +
+      " A role that keeps coming back is often one they hire for all year." }));
+  }
+  return out;
+}
+
 // Why a job isn't in the list: the first filter that leaves it out.
 // The role and the search box aren't counted; those are what the user asked to see.
-function hiddenBy(j, now, V, hasResume) {
-  if (state.hours && now - when(j) > state.hours * 3600) return "window";
+function hiddenBy(j, now, V, hasResume, hours = state.hours) {
+  if (hours && now - when(j) > hours * 3600) return "window";
   if (state.remote && !j.remote) return "remote";
   if (V.sponsor && state.nosp && (j.sponsorship === "no" || (V.opt && j.no_opt))) return "nosp";
   if (V.sponsor && state.h1bOnly && !isSponsor(j)) return "h1bOnly";
@@ -1600,7 +1692,7 @@ function render() {
   const V = visa();
   document.body.classList.toggle("simple", !state.advanced);
 
-  const hidden = {}, older = [];
+  const hidden = {}, older = [], ages = [];
   let jobs = DATA.jobs.filter((j) => {
     if (j.roles && (state.search === ALL_ROLES ? !j.roles.length : !j.roles.includes(state.search))) return false;
     if (q) {
@@ -1610,6 +1702,8 @@ function render() {
     }
     // 0 = "All open": no age limit beyond what the radar keeps on the dashboard.
     const why = hiddenBy(j, now, V, hasResume);
+    // Its age, for the counts beside each time range, when only the range hides it.
+    if ((why === "window" ? hiddenBy(j, now, V, hasResume, 0) : why) === null) ages.push(now - when(j));
     if (why === "window") older.push(j);
     else if (why) hidden[why] = (hidden[why] || 0) + 1;
     return !why;
@@ -1657,11 +1751,17 @@ function render() {
   if (nHidden && jobs.length) keepFocus(() => note.replaceChildren(el("span", { text: hiddenText }), showBtn()));
 
   const m = DATA.meta;
-  if (!m.generated) $("status").replaceChildren("No jobs fetched yet. The first search starts once setup is done.");
-  else $("status").replaceChildren(
-    "Updated ", el("b", { text: ago(m.generated) }), ` (${fmt(m.generated)}) · ${m.boards} boards`,
+  // One status, shown under the title or (on a wide screen) in the right rail.
+  const status = () => !m.generated ? ["No jobs fetched yet. The first search starts once setup is done."] : [
+    "Updated ", el("b", { text: ago(m.generated) }), ` (${fmt(m.generated)}) · ${(m.boards || 0).toLocaleString()} boards`,
     m.new ? ` · ${m.new} new since last run` : "",
-    m.failed ? ` · ${m.failed} boards unreachable` : "");
+    m.failed ? ` · ${m.failed} boards unreachable` : ""];
+  $("status").replaceChildren(...status());
+  $("statusR").replaceChildren(...status());
+  for (const n of $("window").querySelectorAll(".wn")) {
+    const h = +n.dataset.n;
+    n.textContent = ages.filter((a) => !h || a <= h * 3600).length.toLocaleString();
+  }
 
   renderResumeBar();
   renderSearchControls();
@@ -2293,6 +2393,7 @@ function showView(v) {
   $("jobsView").hidden = state.view !== "jobs";
   $("setupView").hidden = state.view !== "setup";
   document.body.classList.toggle("in-setup", state.view === "setup");
+  for (const v of ["jobs", "queue", "settings"]) document.body.classList.toggle("view-" + v, state.view === v);
   if (state.view === "settings") openSettings();
   if (state.view === "setup") openSetup();
   for (const b of $("viewTabs").querySelectorAll("button")) {
@@ -2434,6 +2535,7 @@ function renderQueue() {
   const ready = d ? d.items.filter((i) => i.state === "ready").length : 0;
   $("qcount").hidden = !ready;
   $("qcount").textContent = String(ready);
+  renderNextUp();
   if (state.view !== "queue") return;
   const head = $("qhead"), list = $("qlist");
   if (!d) {
@@ -2451,8 +2553,7 @@ function renderQueue() {
     el("span", { text: `Prepares new jobs at ${s.threshold}%+ match` + (s.enabled ? "" : " (off)") }),
     d.status ? el("span", { class: "warnline", style: "color:var(--warn)", text: d.status }) : null,
     !d.scoring && state.resume ? el("span", { class: "note", text: "Syncing your resume to the helper…" }) : null,
-    el("span", { class: "spacer" }),
-    el("button", { type: "button", text: "Settings", onclick: openPrefs }),
+    el("button", { type: "button", text: "Queue settings", onclick: openPrefs }),
   ].filter(Boolean));
   const items = d.items;
   keepFocus(() => list.replaceChildren(...(items.length ? items.map(queueItem) : [el("li", { class: "empty", text: !s.enabled
@@ -2461,6 +2562,29 @@ function renderQueue() {
       ? `Nothing to apply to yet. New postings at ${s.threshold}%+ match are prepared here after each search.`
         + (state.resume ? "" : " Upload your resume on All jobs first: the queue only takes jobs it can score.")
       : "The queue starts after the next search." })])));
+}
+
+// The right rail on All jobs: the best prepared jobs, one click from their forms.
+function renderNextUp() {
+  const box = $("nextUp"), d = queue.data;
+  box.hidden = !HELPER || !d;
+  if (box.hidden) return;
+  const ready = d.items.filter((i) => i.state === "ready");
+  const top = ready.slice().sort((a, b) => b.score - a.score).slice(0, 4);
+  const cls = (p) => (p >= 70 ? "hi" : p >= 50 ? "mid" : "lo");
+  keepFocus(() => box.replaceChildren(...[
+    el("h2", { class: "panel-h", id: "nextUpH", text: "Ready to apply" }),
+    top.length ? el("ul", { class: "nu-list" }, ...top.map((it) => el("li", {},
+      el("a", { class: "t", href: it.apply_url, target: "_blank", rel: "noopener", text: it.title, title: `${it.title} at ${it.company}`,
+        "data-fk": `nu:${it.key}`, "aria-label": `Open application: ${it.title} at ${it.company} (new tab)` }),
+      el("span", { class: "p " + cls(it.score), text: it.score + "%" }),
+      el("span", { class: "c", text: it.company + (it.choice === "tailored" ? " · tailored resume" : "") }))))
+      : el("p", { class: "note", text: d.settings.enabled
+        ? `Nothing ready yet. Postings at ${d.settings.threshold}%+ match from the last ${d.settings.max_age_days} days are prepared here after each search.`
+        : "Preparing jobs is off. Turn it on in the Apply queue's settings." }),
+    el("div", { class: "nu-foot" }, el("button", { type: "button", "data-fk": "nu:all",
+      text: ready.length > top.length ? `See all ${ready.length} in the queue` : "Open the queue", onclick: () => showView("queue") })),
+  ]));
 }
 
 function openPrefs() {
@@ -2478,6 +2602,7 @@ function openPrefs() {
   const grid = el("div", { class: "prefs" }, ...[
     row("enabled", "Prepare jobs", chk("enabled")),
     row("threshold", "Minimum match", num("threshold", 0, 100), "New postings at or above this score are prepared."),
+    row("max_age_days", "Posted within (days)", num("max_age_days", 1, 60), "Older postings aren't prepared, even when the radar has only just found them."),
     row("backend", "Prepare with", select(["chatgpt", "claude-code", "openai-api", "claude-api"].map((b) => [b, LABELS.backends[b] || b]), s.backend),
       "API keys are billed per use and stop at their monthly budget."),
     row("daily_cap", "Model runs a day", num("daily_cap", 0, 200), "Tailoring and drafting each count one. Keeps the queue inside your plan's limits."),
@@ -3159,18 +3284,21 @@ function scoringCard() {
 
 function radarCard() {
   const r = cfg.data.settings.radar;
-  const days = number(r.dashboard_days, 1, 60, 1), stale = number(r.stale_after_days, 1, 30, 1), purge = number(r.purge_after_days, 7, 3650, 1);
+  const days = number(r.dashboard_days, 1, 3650, 1), programDays = number(r.program_days, 1, 3650, 1), stale = number(r.stale_after_days, 1, 30, 1), purge = number(r.purge_after_days, 7, 3650, 1);
   const workers = number(r.workers, 1, 64, 1), timeout = number(r.timeout, 5, 120, 1);
   const simplify = el("input", { type: "checkbox" });
   simplify.checked = r.simplify_feed;
   return el("section", { class: "card", "aria-labelledby": "radarH" },
     el("h3", { id: "radarH", text: "Radar" }),
     el("div", { class: "fields" },
-      field("Show postings up to (days old)", days), field("Closed when unseen for (days)", stale),
+      field("Show postings up to (days old)", days),
+      field("New-grad and entry-level programs up to (days old)", programDays,
+        "Titles like “New Grad 2027” or “Entry Level - University Graduate”. These take applications for a whole season."),
+      field("Closed when unseen for (days)", stale),
       field("Forget postings after (days)", purge), field("Boards read at once", workers), field("Request timeout (seconds)", timeout),
       el("div", { class: "field" }, el("label", { class: "toggle" }, simplify, "Read the SimplifyJobs New-Grad list"),
         el("p", { class: "note", text: "Catches companies no board here covers." }))),
-    saveBar("Save radar settings", () => postSettings({ radar: { dashboard_days: +days.value, stale_after_days: +stale.value,
+    saveBar("Save radar settings", () => postSettings({ radar: { dashboard_days: +days.value, program_days: +programDays.value, stale_after_days: +stale.value,
       purge_after_days: +purge.value, workers: +workers.value, timeout: +timeout.value, simplify_feed: simplify.checked } }, "the radar settings"),
       "Saved the radar settings. They're used from the next search.", "the radar settings"));
 }
@@ -3710,9 +3838,38 @@ for (const ev of ["dragleave", "drop"]) bar.addEventListener(ev, () => bar.class
 bar.addEventListener("drop", (e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); });
 
 $("window").addEventListener("click", (e) => {
-  const h = e.target.dataset && e.target.dataset.h;
-  if (!h) return;
-  setHours(+h);
+  const b = e.target.closest("button[data-h]");
+  if (b) setHours(+b.dataset.h);
+});
+{
+  const w = SETTINGS.window;
+  if (w) $("allOpen").title = `Every posting still listed, up to ${w.days} days old` +
+    (w.program_days > w.days ? ` (${w.program_days} for new-grad and entry-level programs)` : "");
+}
+
+// Theme: the system's, or light or dark, kept in this browser.
+const THEMES = { system: "Theme: system", light: "Theme: light", dark: "Theme: dark" };
+function applyTheme(t) {
+  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  else delete document.documentElement.dataset.theme;
+  const next = t === "system" ? "light" : t === "light" ? "dark" : "system";
+  const btn = $("themeBtn");
+  const icon = {
+    system: '<circle cx="8" cy="8" r="5.5"/><path d="M8 2.5v11a5.5 5.5 0 0 0 0-11z" fill="currentColor"/>',
+    light: '<circle cx="8" cy="8" r="3"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6 13 13M3 13l1.4-1.4M11.6 4.4 13 3"/>',
+    dark: '<path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7z"/>',
+  }[t];
+  btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">${icon}</svg>`;
+  btn.append({ system: "Auto", light: "Light", dark: "Dark" }[t]);
+  btn.title = `${THEMES[t]}. Click for ${next}.`;
+  btn.setAttribute("aria-label", `${THEMES[t]}. Switch to ${next}`);
+  btn.dataset.next = next;
+}
+applyTheme(store.get("theme", "system"));
+$("themeBtn").addEventListener("click", () => {
+  const t = $("themeBtn").dataset.next;
+  store.set("theme", t);
+  applyTheme(t);
 });
 $("q").addEventListener("input", (e) => { state.q = e.target.value; render(); });
 $("sort").addEventListener("change", (e) => { state.sort = e.target.value; store.set("sort", state.sort); render(); });

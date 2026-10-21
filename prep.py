@@ -299,6 +299,10 @@ class Preparer:
                              "AND job_key IN (SELECT key FROM jobs WHERE last_seen < ?)", (now, now - STALE_AFTER))
                 conn.execute("UPDATE prep SET state = 'closed', updated = ? WHERE state IN ('queued', 'ready', 'error') "
                              "AND job_key NOT IN (SELECT key FROM jobs)", (now,))
+                # Postings now older than the queue takes: they leave it, prepared or not.
+                conn.execute("UPDATE prep SET state = 'expired', updated = ? WHERE state IN ('queued', 'ready', 'error') "
+                             "AND job_key IN (SELECT key FROM jobs WHERE COALESCE(posted_at, first_seen) < ?)",
+                             (now, now - s["max_age_days"] * 86400))
                 # Rescore what's in the queue (the resume or keyword weights may have changed),
                 # so it always shows the dashboard's number.
                 for row in conn.execute(self._select(conn) + "WHERE key IN (SELECT job_key FROM prep "
@@ -310,10 +314,13 @@ class Preparer:
                         conn.execute("DELETE FROM prep WHERE job_key = ? AND state = 'queued'", (j["key"],))
                 # Only jobs one of the user's roles wants.
                 rows = conn.execute(
+                    # New to the radar and recently posted: a board read for the first
+                    # time lists postings that went up months ago.
                     self._select(conn) + "WHERE kw != '' AND first_seen >= ? AND last_seen >= ? "
+                    "AND COALESCE(posted_at, first_seen) >= ? "
                     + ("AND roles != '[]' " if self._tagged(conn) else "")
                     + "AND key NOT IN (SELECT job_key FROM prep)",
-                    (now - s["lookback_hours"] * 3600, now - STALE_AFTER)).fetchall()
+                    (now - s["lookback_hours"] * 3600, now - STALE_AFTER, now - s["max_age_days"] * 86400)).fetchall()
                 added = 0
                 for row in rows:
                     j = self._job(row)

@@ -510,5 +510,118 @@ class QuestionFilterTests(unittest.TestCase):
         self.assertEqual([q["question"] for q in questions.lever(page)], ["Why us?", "Visa sponsorship needed?"])
 
 
+def set_posted(db_path: Path, company: str, when: float) -> None:
+    conn = sqlite3.connect(db_path)
+    with conn:
+        conn.execute("UPDATE jobs SET posted_at = ? WHERE company = ?", (when, company))
+    conn.close()
+
+
+class QueueAgeTests(Base):
+    """The queue only prepares recent postings, however new they are to the
+    radar: a board read for the first time lists postings from months ago."""
+
+    def test_old_postings_are_not_prepared(self):
+        set_posted(self.db_path, "Coveredco", self.now - 10 * 86400)
+        self.prep.scan(self.now)
+        it = self.items()
+        self.assertNotIn("Coveredco", it)
+        self.assertIn("Tailorco", it)
+
+    def test_queued_and_ready_jobs_leave_once_too_old(self):
+        self.prep.scan(self.now)
+        self.assertIn("Coveredco", self.items())
+        set_posted(self.db_path, "Coveredco", self.now - 8 * 86400)
+        self.prep.scan(self.now)
+        self.assertNotIn("Coveredco", self.items())
+        self.assertEqual([i["company"] for i in self.prep.items(("expired",))], ["Coveredco"])
+
+    def test_limit_is_a_setting(self):
+        set_posted(self.db_path, "Coveredco", self.now - 10 * 86400)
+        self.prep.save_settings({"max_age_days": 14})
+        self.prep.scan(self.now)
+        self.assertIn("Coveredco", self.items())
+
+
+class DashboardAgeTests(unittest.TestCase):
+    """What the dashboard shows: 30 days of postings, 60 for hiring programs,
+    and a role taken down and put up again marked as reposted."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="jr-age-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        config.use(config.Store(self.tmp / "settings.json"))
+        self.addCleanup(config.use, None)
+        self.conn = sqlite3.connect(self.tmp / "jobs.db")
+        self.addCleanup(self.conn.close)
+        radar.migrate(self.conn)
+        self.now = time.time()
+
+    def put(self, title, days_ago, jid, seen_days_ago=0, company="Ageco", location="Boston, MA"):
+        j = job(company, title, location, "Experience with Python and PostgreSQL", jid=jid)
+        self.assertIsNotNone(j, title)
+        j.posted_at = self.now - days_ago * 86400
+        with self.conn:
+            radar.store(self.conn, [j], self.now - seen_days_ago * 86400)
+
+    def shown(self):
+        return {d["title"] + " #" + d["url"].rsplit("/", 1)[-1]: d
+                for d in radar.load_for_dashboard(self.conn, self.now, None, H1BStub())}
+
+    def test_programs_stay_longer(self):
+        self.put("Backend Engineer I", 20, 1)
+        self.put("Backend Engineer I", 40, 2, location="Seattle, WA")
+        self.put("Software Engineer, New Grad 2027", 40, 3)
+        self.put("Software Engineer, Entry Level - University Graduate", 70, 4)
+        got = self.shown()
+        self.assertEqual(set(got), {"Backend Engineer I #1", "Software Engineer, New Grad 2027 #3"})
+        self.assertTrue(got["Software Engineer, New Grad 2027 #3"]["program"])
+        self.assertFalse(got["Backend Engineer I #1"]["program"])
+
+    def test_repost_of_a_closed_posting(self):
+        # Up 25 days ago, gone from the board for the last 5; back yesterday under a new ID.
+        self.put("Backend Engineer I (R100234)", 25, 1, seen_days_ago=5)
+        self.put("Backend Engineer I (R100977)", 1, 2)
+        got = self.shown()
+        self.assertEqual(list(got), ["Backend Engineer I (R100977) #2"])
+        rep = got["Backend Engineer I (R100977) #2"]["repost"]
+        self.assertEqual(rep["times"], 1)
+        self.assertAlmostEqual(rep["first"], self.now - 25 * 86400, delta=1)
+
+    def test_repost_under_the_same_title(self):
+        # One role, one row: put up again, its posting date moves forward.
+        self.put("Backend Engineer I", 30, 1, seen_days_ago=4)
+        self.put("Backend Engineer I", 2, 2)
+        got = self.shown()
+        self.assertEqual(list(got), ["Backend Engineer I #2"])
+        rep = got["Backend Engineer I #2"]["repost"]
+        self.assertEqual(rep["times"], 1)
+        self.assertAlmostEqual(rep["first"], self.now - 30 * 86400, delta=1)
+
+    def test_seen_again_unchanged_is_not_a_repost(self):
+        self.put("Backend Engineer I", 9, 1, seen_days_ago=1)
+        self.put("Backend Engineer I", 9, 1)
+        self.assertIsNone(self.shown()["Backend Engineer I #1"]["repost"])
+
+
+class ProgramTitleTests(unittest.TestCase):
+    def test_program_titles(self):
+        import filters
+        for t in ("Software Engineer, New Grad 2027", "SDE I, 2027 University Graduate", "Backend Engineer - Early Career",
+                  "Software Engineer (Entry Level)", "New College Grad - Software"):
+            self.assertTrue(filters.is_program(t), t)
+        for t in ("Software Engineer", "Backend Engineer I", "Senior Software Engineer"):
+            self.assertFalse(filters.is_program(t), t)
+
+    def test_identity_ignores_requisition_numbers(self):
+        import filters
+        a = filters.posting_identity("DoorDash, Inc.", "Software Engineer (R123456)", "San Francisco, CA; Seattle, WA")
+        b = filters.posting_identity("DoorDash Inc", "Software Engineer - R987654", "San Francisco, CA")
+        self.assertEqual(a, b)
+        self.assertNotEqual(a, filters.posting_identity("DoorDash", "Software Engineer", "Seattle, WA"))
+        # A graduation year is part of the role, not an ID.
+        self.assertNotEqual(filters.posting_identity("X", "New Grad 2026", ""), filters.posting_identity("X", "New Grad 2027", ""))
+
+
 if __name__ == "__main__":
     unittest.main()
