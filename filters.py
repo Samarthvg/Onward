@@ -134,8 +134,10 @@ def is_swe_title(title: str) -> bool:
 # --------------------------------------------------------------------------
 # Seniority
 
+# "manager" marks a management role; "management" usually names a domain
+# ("Secrets Management", "Identity and Access Management"), so it isn't here.
 NOT_ENTRY = re.compile(
-    r"\b(senior|sr\.?|staff|principal|lead|manager|management|director|head|vp|"
+    r"\b(senior|sr\.?|staff|principal|lead|manager|director|head|vp|"
     r"vice president|architect|distinguished|fellow|chief|ii|iii|iv|v|"
     r"[2-6]|l[4-9]|e[4-9]|ic[3-9]|level [2-9]|intern|internship|co-?op|"
     r"apprentice|phd|postdoc|contract(or)?|part[- ]time|tech lead|expert|experienced|"
@@ -152,7 +154,7 @@ ENTRY_PHRASE = re.compile(r"new grad|entry|junior|early career|university", re.I
 # The words NOT_ENTRY rejects, so entry-level filtering stays as it was.
 INTERN = re.compile(r"\b(intern|internship|internships|co-?op|apprentice)\b", re.I)
 SENIOR = re.compile(
-    r"\b(senior|sr\.?|staff|principal|lead|manager|management|director|head|vp|vice president|"
+    r"\b(senior|sr\.?|staff|principal|lead|manager|director|head|vp|vice president|"
     r"architect|distinguished|fellow|chief|iii|iv|l[5-9]|e[5-9]|ic[4-9]|level [3-9]|tech lead|"
     r"expert|smts|lmts|pmts|mts [3-6])\b", re.I)
 NOT_EMPLOYEE = re.compile(r"\b(contract(or)?|part[- ]time)\b", re.I)

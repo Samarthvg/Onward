@@ -76,9 +76,10 @@ class SkillTests(unittest.TestCase):
 
 class TitleTests(unittest.TestCase):
     KEEP = ["Software Engineer", "Software Development Engineer I – AI/ML Network Infrastructure",
-            "Early Careers: Software Development Engineer", "Entry Level Software Engineer (Spring 2027)"]
+            "Early Careers: Software Development Engineer", "Entry Level Software Engineer (Spring 2027)",
+            "Backend Engineer, Secrets Management", "Software Engineer, Identity and Access Management"]
     DROP = ["Software Solution Engineer", "Solutions Engineer", "Sr Software Engineer",
-            "Software Engineer II", "Principal Data Engineering Architect"]
+            "Software Engineer II", "Principal Data Engineering Architect", "Software Engineering Manager"]
 
     def test_titles(self):
         for title in self.KEEP:
