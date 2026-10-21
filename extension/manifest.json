@@ -79,6 +79,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "jobradar-autofill@jobradar.local",
+      "update_url": "https://github.com/Samarthvg/Onward/releases/latest/download/updates.json",
       "strict_min_version": "142.0",
       "data_collection_permissions": { "required": ["none"] }
     }

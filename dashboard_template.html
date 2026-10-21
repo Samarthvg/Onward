@@ -3600,7 +3600,8 @@ const SETUP_RENDER = {
       ? el("p", {}, el("a", { class: "btn primary", href: x.firefox_store, target: "_blank", rel: "noopener", text: "Add to Firefox" }))
       : x.xpi
         ? el("div", {}, el("p", {}, el("a", { class: "btn primary", href: "/api/extension.xpi", text: "Install in Firefox" })),
-            el("p", { class: "note", text: "Open this page in Firefox and press the button. Firefox asks to confirm: press Add." }))
+            el("p", { class: "note", text: "Open this page in Firefox and press the button. Firefox first asks whether this site may install " +
+              "add-ons: press Continue to installation, then Add. It stays installed and updates itself." }))
         : el("ol", { class: "steps" },
             el("li", {}, "In Firefox, open ", el("code", { text: "about:debugging#/runtime/this-firefox" }), " ", copy("about:debugging#/runtime/this-firefox")),
             el("li", { text: "Press Load Temporary Add-on… and choose manifest.json in the folder below." }),

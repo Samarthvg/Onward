@@ -518,6 +518,67 @@ class TexEngineTests(TmpHome):
 # --------------------------------------------------------------------------
 # Settings: setup steps
 
+class ExtensionPackagingTests(unittest.TestCase):
+    """packaging/extension.py: the signed Firefox add-on and its update manifest."""
+
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / "packaging"))
+        self.addCleanup(sys.path.remove, str(ROOT / "packaging"))
+        import extension
+        self.ext = extension
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dist = Path(self.tmp.name)
+        patcher = mock.patch.object(extension, "DIST", self.dist)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_manifest_updates_itself_from_this_repositorys_releases(self):
+        m = self.ext.manifest()
+        gecko = m["browser_specific_settings"]["gecko"]
+        self.assertEqual(gecko["update_url"],
+                         f"https://github.com/{appinfo.GITHUB_REPO}/releases/latest/download/updates.json")
+        self.assertEqual(gecko["id"], "jobradar-autofill@jobradar.local", "changing the id would orphan installed copies")
+
+    def test_an_already_signed_version_is_reused_not_sent_again(self):
+        old = self.dist / "old.xpi"
+        old.write_bytes(b"signed by mozilla")
+        with mock.patch.dict(os.environ, {"REUSE_XPI": str(old), "AMO_JWT_ISSUER": "", "AMO_JWT_SECRET": ""}), \
+                mock.patch.object(self.ext, "web_ext") as web_ext:
+            out = self.ext.sign("1.2.3")
+        web_ext.assert_not_called()
+        self.assertEqual((out.name, out.read_bytes()), ("onward-autofill-1.2.3.xpi", b"signed by mozilla"))
+
+    def test_without_keys_nothing_is_signed(self):
+        with mock.patch.dict(os.environ, {"REUSE_XPI": "", "AMO_JWT_ISSUER": "", "AMO_JWT_SECRET": ""}), \
+                mock.patch.object(self.ext, "web_ext") as web_ext:
+            self.assertIsNone(self.ext.sign("1.2.3"))
+        web_ext.assert_not_called()
+
+    def test_keys_go_through_the_environment_not_the_command_line(self):
+        def fake(*args):
+            Path(args[args.index("--artifacts-dir") + 1], "x.xpi").write_bytes(b"xpi")
+            self.assertNotIn("secret-value", " ".join(args))
+            self.assertEqual(os.environ["WEB_EXT_API_SECRET"], "secret-value")
+        with mock.patch.dict(os.environ, {"REUSE_XPI": "", "AMO_JWT_ISSUER": "issuer", "AMO_JWT_SECRET": "secret-value"}), \
+                mock.patch.object(self.ext, "web_ext", side_effect=fake):
+            out = self.ext.sign("1.2.3")
+        self.assertEqual(out.read_bytes(), b"xpi")
+
+    def test_update_manifest_points_at_this_release(self):
+        xpi = self.dist / "onward-autofill-1.2.3.xpi"
+        xpi.write_bytes(b"xpi bytes")
+        data = json.loads(self.ext.updates_json("1.2.3", xpi, "addon@id", "o/r").read_text())
+        (u,) = data["addons"]["addon@id"]["updates"]
+        self.assertEqual(u["version"], "1.2.3")
+        self.assertEqual(u["update_link"], f"https://github.com/o/r/releases/download/v{appinfo.VERSION}/{xpi.name}")
+        self.assertEqual(u["update_hash"], "sha256:" + hashlib.sha256(b"xpi bytes").hexdigest())
+
+    def test_version_check(self):
+        self.assertIsNone(self.ext.unbumped("HEAD"))
+        self.assertIsNone(self.ext.unbumped("no-such-tag"))
+
+
 class SetupMigrationTests(TmpHome):
     def test_new_install_starts_the_setup_steps(self):
         s = self.store.load()

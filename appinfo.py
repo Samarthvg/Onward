@@ -9,13 +9,14 @@ BUNDLE_ID = "io.github.onward"    # macOS bundle and LaunchAgent label
 
 # "owner/repo" on GitHub. Releases there are what the update check reads and
 # what the installers are uploaded to. Empty turns the update check off.
-GITHUB_REPO = ""
+GITHUB_REPO = "Samarthvg/Onward"
 # The subject name on the Windows code-signing certificate (e.g. "Jane Doe").
 # When set, a downloaded update installs only if Windows says it is signed
 # by exactly this publisher.
 WINDOWS_PUBLISHER = ""
 
 # Store listings of the Autofill extension, once they exist. Until then the
-# setup steps offer the signed .xpi (Firefox) and Load unpacked (Chrome).
+# setup steps offer the signed .xpi shipped with the app (Firefox,
+# packaging/extension.py) and Load unpacked (Chrome).
 FIREFOX_ADDON_URL = ""
 CHROME_STORE_URL = ""

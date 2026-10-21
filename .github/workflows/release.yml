@@ -6,6 +6,7 @@
 #   WINDOWS_CERT_PFX (base64 of the .pfx), WINDOWS_CERT_PASSWORD
 #   MACOS_CERT_P12 (base64 of the .p12), MACOS_CERT_PASSWORD, MACOS_SIGN_IDENTITY,
 #   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD
+#   AMO_JWT_ISSUER, AMO_JWT_SECRET (addons.mozilla.org API keys, for the Firefox add-on)
 name: release
 
 on:
@@ -17,7 +18,47 @@ permissions:
   contents: read
 
 jobs:
+  # The Autofill extension first: its signed .xpi goes inside every installer.
+  extension:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # earlier tags, for the version check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: web-ext
+        working-directory: extension/test
+        run: npm ci
+      - name: Version bumped if the extension changed
+        run: python packaging/extension.py --check "$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)"
+      - name: Signed .xpi from the latest release, when this version was already signed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(python -c "import json; print(json.load(open('extension/manifest.json'))['version'])")
+          if gh release download --repo "$GITHUB_REPOSITORY" --pattern "onward-autofill-$v.xpi" --dir "$RUNNER_TEMP/reuse"; then
+            echo "REUSE_XPI=$RUNNER_TEMP/reuse/onward-autofill-$v.xpi" >> "$GITHUB_ENV"
+          fi
+      - name: Package (and sign) the extension
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: python packaging/extension.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: |
+            dist/onward-autofill-*
+            dist/updates.json
+          if-no-files-found: error
+
   build:
+    needs: extension
     strategy:
       fail-fast: false
       matrix:
@@ -31,6 +72,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Signed extension, bundled with the app
+        uses: actions/download-artifact@v4
+        with:
+          name: extension
+          path: extension/web-ext-artifacts
       - name: Python packages
         run: python -m pip install -r packaging/requirements.txt
       - name: Tests
@@ -85,7 +131,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: build
+    needs: [extension, build]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     permissions:

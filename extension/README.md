@@ -10,13 +10,17 @@ Built for Firefox first (Manifest V3). The same folder loads in Chrome and Edge.
 
 ### Firefox (release)
 
+The easiest way: Onward's setup steps (or Settings, **Run setup again**) have an **Install in Firefox** button
+that installs the signed add-on shipped with the app. Each GitHub release also has it as
+`onward-autofill-<version>.xpi`: drag it into Firefox. A signed copy stays installed and updates itself.
+
 Release Firefox only runs signed extensions permanently. Without signing, you can load it until Firefox restarts:
 
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Press **Load Temporary Add-on…** and choose `extension/manifest.json`.
 3. The options page opens. Fill in your profile and choose your resume.
 
-You have to repeat this after every Firefox restart. To install it permanently, sign it for yourself (self-distribution, not listed on the store):
+You have to repeat this after every Firefox restart. To install a copy you changed permanently, sign it for yourself (self-distribution, not listed on the store). `python packaging/extension.py` does this too, with the keys in `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`:
 
 1. Sign in at <https://addons.mozilla.org/developers/> with your own Firefox account, and create API credentials under **Tools → Manage API Keys**. Do this yourself: it's your account.
 2. From `extension/test`, run, using your own key and secret:

@@ -45,9 +45,21 @@ install folder). Linux needs `appimagetool` on PATH.
    the GitHub release. The app's update check reads exactly that release.
 3. Set `GITHUB_REPO` in `appinfo.py` to `owner/repo` once. Until then the update check is off.
 
+The release also carries the Autofill extension (`packaging/extension.py`, run first by the workflow):
+
+- `onward-autofill-<v>.xpi`: the Firefox add-on, signed by Mozilla for self-distribution. It is bundled inside
+  every installer, so the setup steps' **Install in Firefox** button installs it permanently, with no
+  developer settings. Firefox then keeps it up to date from `updates.json` in the latest release (the
+  `update_url` in `extension/manifest.json`).
+- `onward-autofill-<v>-chrome.zip`: ready to upload to the Chrome Web Store. Chrome only installs extensions
+  from its store, so until a listing exists, Chrome and Edge users use Load unpacked.
+
+Mozilla signs each version number once. Bump `version` in `extension/manifest.json` whenever the extension
+changes; the workflow fails with a clear message if you forget, and reuses the earlier signed file when the
+extension didn't change.
+
 When the extension is listed on addons.mozilla.org or the Chrome Web Store, put the listing URLs in `appinfo.py`
-(`FIREFOX_ADDON_URL`, `CHROME_STORE_URL`) and the setup steps link to them. Until then they offer a signed
-`.xpi` shipped with the app (`extension/web-ext-artifacts/*.xpi`, see `extension/README.md`) or Load unpacked.
+(`FIREFOX_ADDON_URL`, `CHROME_STORE_URL`) and the setup steps link to them instead.
 
 ## Code signing (the owner's steps)
 
@@ -78,6 +90,19 @@ certificates. Nothing in this repository holds or creates one.
    the hardened runtime, notarizes the `.dmg` and staples the ticket.
 3. CI builds: add the secrets `MACOS_CERT_P12` (base64), `MACOS_CERT_PASSWORD`, `MACOS_SIGN_IDENTITY`,
    `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD`.
+
+### Firefox add-on
+
+Mozilla signs add-ons for free, including ones distributed outside its store ("unlisted"):
+
+1. Sign in at <https://addons.mozilla.org/developers/> with your own Firefox account. Under **Tools > Manage API
+   Keys**, create API credentials: a JWT issuer and a JWT secret.
+2. CI builds: add them as repository secrets `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`.
+3. Local builds: set the same two environment variables, run `npm ci` once in `extension/test`, then run
+   `python packaging/extension.py`. Mozilla's automated review usually takes a minute or two.
+
+The first signed version creates the add-on under your account, with the id in `extension/manifest.json`.
+Keep that id: installed copies only update from an add-on with the same id.
 
 ### Linux
 

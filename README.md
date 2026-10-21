@@ -78,7 +78,7 @@ What leaves your computer:
 - Once a day, downloads of a few public new-grad and internship lists on GitHub (SimplifyJobs, vanshb03,
   speedyapply). Only their links are used, to find more company job boards to read (`discover.py`).
 - The USCIS data files.
-- The daily update check, if on.
+- The daily update check, if on. Firefox also checks the same GitHub release for updates to the signed add-on.
 - Tectonic's download, if you chose it.
 - Whatever you send to the AI provider you chose: your resume, your details and the posting.
 - Phone notifications, if you set up an ntfy topic.
