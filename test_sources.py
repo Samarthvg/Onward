@@ -339,6 +339,80 @@ class SimplifyTests(SourceTestCase):
         self.assertEqual(web.calls, [radar.SIMPLIFY_URL])
 
 
+class GreenhouseTests(SourceTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        p = mock.patch.object(radar, "FUNNEL", radar.Funnel())
+        p.start()
+        self.addCleanup(p.stop)
+
+    def listed(self, jid: int, title: str, first: str, location: str = "New York, NY") -> dict:
+        return {"id": jid, "title": title, "absolute_url": f"https://job-boards.greenhouse.io/acme/jobs/{jid}",
+                "location": {"name": location}, "first_published": first, "updated_at": first,
+                "company_name": "Acme"}
+
+    def test_list_without_content_then_details_once(self):
+        board = {"jobs": [self.listed(1, "Software Engineer, New Grad", "2026-10-20T10:00:00-04:00"),
+                          self.listed(2, "Senior Software Engineer", "2026-10-20T10:00:00-04:00"),
+                          self.listed(3, "Software Engineer", "2026-10-19T10:00:00-04:00", "London, UK")]}
+        detail = {**board["jobs"][0], "content": "&lt;p&gt;Requirements&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Go&lt;/li&gt;&lt;/ul&gt;"}
+        web = self.web({"/jobs/1": detail, "/boards/acme/jobs": board})
+        jobs = radar.fetch_greenhouse("acme")
+        self.assertEqual(web.calls[0], "https://boards-api.greenhouse.io/v1/boards/acme/jobs")   # no ?content=true
+        self.assertEqual([j.title for j in jobs], ["Software Engineer, New Grad"])
+        self.assertIn("• Go", jobs[0].description)
+        self.assertEqual(sum("/jobs/" in u for u in web.calls), 1)     # only the posting that passed
+
+        # Next run: the date comes from the live list, the description from the cache.
+        board["jobs"][0]["first_published"] = "2026-10-21T09:00:00-04:00"
+        web.calls.clear()
+        jobs = radar.fetch_greenhouse("acme")
+        self.assertEqual(web.calls, ["https://boards-api.greenhouse.io/v1/boards/acme/jobs"])
+        self.assertEqual(jobs[0].posted_raw, "2026-10-21T09:00:00-04:00")
+        self.assertIn("• Go", jobs[0].description)
+
+
+class FunnelTests(SourceTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        p = mock.patch.object(radar, "FUNNEL", radar.Funnel())
+        p.start()
+        self.addCleanup(p.stop)
+
+    def job(self, **kw):
+        base = dict(company="Acme", title="Software Engineer", location="New York, NY", country=None,
+                    remote=False, url="u", source="lever", posted_at=time.time(), posted_exact=True,
+                    description="", apply_url="u", verify_url="v", posted_field="createdAt", posted_raw="1")
+        return radar.build_job(**{**base, **kw})
+
+    def test_each_posting_counted_where_it_leaves(self):
+        self.assertIsNotNone(self.job())
+        self.assertIsNone(self.job(title="Account Executive"))                       # title
+        self.assertIsNone(self.job(title="Senior Software Engineer"))                # level
+        self.assertIsNone(self.job(location="Berlin, Germany"))                      # location
+        self.assertIsNone(self.job(description="Requirements\n• 5+ years of experience with Go"))   # details
+        self.assertIsNone(self.job(title="Data Analyst", posted_at=time.time() - 30 * 86400))      # old
+        self.assertEqual(radar.FUNNEL.totals(),
+                         {"seen": 6, "title": 2, "level": 1, "location": 1, "details": 1, "kept": 1})
+        self.assertEqual(radar.FUNNEL.totals(fresh=True),
+                         {"seen": 5, "title": 1, "level": 1, "location": 1, "details": 1, "kept": 1})
+
+    def test_screened_postings_are_not_seen_twice(self):
+        self.assertTrue(radar.screen("workday", "Software Engineer", fresh=True))
+        self.assertIsNotNone(self.job(source="workday", screened=True))
+        self.assertTrue(radar.screen("simplify", "Software Engineer", "Remote", fresh=True))
+        self.assertIsNone(self.job(source="greenhouse", via="simplify", screened=True, location="Toronto, Canada"))
+        rows = {(src, stage): (a, f) for src, stage, a, f in radar.FUNNEL.rows()}
+        self.assertEqual(rows, {("workday", "seen"): (1, 1), ("workday", "kept"): (1, 1),
+                                ("simplify", "seen"): (1, 1), ("simplify", "location"): (1, 1)})
+
+    def test_title_stage(self):
+        search = radar.filters.Search()
+        self.assertEqual(search.title_stage("Barista"), "title")
+        self.assertEqual(search.title_stage("Staff Software Engineer"), "level")
+        self.assertIsNone(search.title_stage("Software Engineer I"))
+
+
 # --------------------------------------------------------------------------
 # State kept between runs
 

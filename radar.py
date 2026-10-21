@@ -32,7 +32,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from typing import Callable
 from pathlib import Path
@@ -132,14 +132,19 @@ def configure(store: config.Store) -> None:
     SEARCH = filters.Search(s["roles"], s["companies"]["blocked"])
 
 
-def load_companies(settings: dict) -> dict:
-    """companies.json, plus the boards the user added, minus the ones they
-    removed or whose company they blocked."""
+def load_companies(settings: dict, discovered: dict[str, list[str]] | None = None,
+                   discovered_names: dict[str, str] | None = None) -> dict:
+    """companies.json, plus the boards the user added and the ones discovery
+    tracks (discover.tracked), minus the ones the user removed or whose
+    company they blocked."""
     companies = json.loads(COMPANIES_PATH.read_text(encoding="utf-8"))
     c = settings["companies"]
-    for src, toks in c["added"].items():
+    for src, toks in [*c["added"].items(), *(discovered or {}).items()]:
         companies[src] = list(dict.fromkeys(list(companies.get(src, [])) + toks))
-    companies.setdefault("display_names", {}).update(c["display_names"])
+    names = companies.setdefault("display_names", {})
+    for tok, name in (discovered_names or {}).items():
+        names.setdefault(tok, name)
+    names.update(c["display_names"])
     removed = set(c["removed"])
     blocked = {filters.norm_company(b) for b in c["blocked"]}
     names = companies["display_names"]
@@ -298,13 +303,85 @@ def extract_skills(title: str, description: str) -> dict[str, list[str]]:
     return {"t": sorted(t), "r": sorted(r), "p": sorted(p)}
 
 
+# --------------------------------------------------------------------------
+# Funnel: where postings drop out, per source, each run
+#
+# Every posting a fetcher looks at is counted once as "seen", then at the
+# first rule that drops it: "title" (no role's title keywords fit), "level"
+# (keywords fit but not the seniority), "location", or "details" (what only
+# the description tells: years of experience, must-have and excluded words,
+# pay). The rest are "kept". Seen minus all of those is postings that closed
+# or fell outside the fetch window between the listing and the detail record.
+# Each count is kept twice: over everything seen, and over postings dated
+# within the last 7 days, which is what decides how many new jobs a week
+# the radar can find.
+
+FUNNEL_STAGES = ("seen", "title", "level", "location", "details", "kept")
+FRESH_DAYS = 7
+
+
+class Funnel:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.counts: dict[tuple[str, str], list[int]] = {}
+
+    def add(self, source: str, stage: str, fresh: bool) -> None:
+        with self.lock:
+            c = self.counts.setdefault((source, stage), [0, 0])
+            c[0] += 1
+            c[1] += int(fresh)
+
+    def rows(self) -> list[tuple[str, str, int, int]]:
+        with self.lock:
+            return [(src, stage, a, f) for (src, stage), (a, f) in sorted(self.counts.items())]
+
+    def totals(self, fresh: bool = False) -> dict[str, int]:
+        out = dict.fromkeys(FUNNEL_STAGES, 0)
+        for _, stage, a, f in self.rows():
+            out[stage] += f if fresh else a
+        return out
+
+
+FUNNEL = Funnel()
+
+
+def is_fresh(posted_at: float | None) -> bool:
+    return posted_at is not None and posted_at >= time.time() - FRESH_DAYS * 86400
+
+
+def screen(source: str, title: str, location: str | None = None, country: str | None = None,
+           remote: bool = False, fresh: bool = False) -> bool:
+    """The listing-only checks (title, level, and location when the listing
+    gives one), counted in the funnel. Fetchers call it before paying for a
+    posting's details; build_job() calls it for postings that came whole."""
+    FUNNEL.add(source, "seen", fresh)
+    stage = SEARCH.title_stage(title)
+    if stage is None and location is not None and not SEARCH.location_wanted(location, country, remote):
+        stage = "location"
+    if stage:
+        FUNNEL.add(source, stage, fresh)
+        return False
+    return True
+
+
 def build_job(*, company, title, location, country, remote, url, source,
               posted_at, posted_exact, description, apply_url, verify_url,
-              posted_field, posted_raw, sponsor_hint=None) -> Job | None:
+              posted_field, posted_raw, sponsor_hint=None, screened: bool = False,
+              via: str | None = None) -> Job | None:
+    """screened: the fetcher already passed the title through screen().
+    via: the funnel source to count under, when it differs from source
+    (a Simplify listing read from its own posting)."""
     title = (title or "").strip()
     location = (location or "").strip()
     company = (company or "").strip()
-    if not title or not SEARCH.title_wanted(title) or not SEARCH.location_wanted(location, country, remote):
+    src, fresh = via or source, is_fresh(posted_at)
+    if not title:
+        return None
+    if not screened:
+        if not screen(src, title, location, country, remote, fresh):
+            return None
+    elif not SEARCH.location_wanted(location, country, remote):
+        FUNNEL.add(src, "location", fresh)
         return None
     yoe = min_years(description)
     entry = bool(ENTRY_HINT.search(title))
@@ -312,7 +389,9 @@ def build_job(*, company, title, location, country, remote, url, source,
     roles = SEARCH.matching(filters.Facts(company, title, location, country, bool(remote or REMOTE.search(location)),
                                              description or "", yoe, entry, pay))
     if not roles:
+        FUNNEL.add(src, "details", fresh)
         return None
+    FUNNEL.add(src, "kept", fresh)
     spons, note = sponsorship(description)
     # "e.g." / "i.e." would end the sentence early for the [^.] window.
     no_opt = bool(NO_OPT.search(re.sub(r"\b(e\.g|i\.e)\.", "eg", description or "", flags=re.I)))
@@ -757,10 +836,21 @@ def _greenhouse_posting(token: str, j: dict) -> dict:
 
 
 def fetch_greenhouse(token: str) -> list[Job]:
-    data = get_json(f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true")
+    """The board's list without descriptions is about a tenth of the size of
+    the one with them, which counts at a thousand boards. Descriptions are
+    read once per posting that passes the listing checks (cached_posting);
+    titles, locations and dates come from the live list every run."""
+    data = get_json(f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs")
     out = []
     for j in data.get("jobs", []):
-        job = build_job(company=j.get("company_name") or token, **_greenhouse_posting(token, j))
+        live = _greenhouse_posting(token, j)
+        if not screen("greenhouse", live["title"] or "", live["location"], fresh=is_fresh(live["posted_at"])):
+            continue
+        detail = cached_posting(live["verify_url"], lambda: _greenhouse_posting(token, get_json(live["verify_url"])))
+        if not is_posting(detail):
+            continue
+        job = build_job(company=j.get("company_name") or token, **{**live, "description": detail["description"]},
+                        screened=True)
         if job:
             out.append(job)
     return out
@@ -907,7 +997,7 @@ def fetch_workday(token: str) -> list[Job]:
             if days is not None and days > FETCH_DAYS:
                 continue
             title = p.get("title") or ""
-            if not SEARCH.title_wanted(title):
+            if not screen("workday", title, fresh=days is not None and days <= FRESH_DAYS):
                 continue
             path = p.get("externalPath") or ""
             posting = cached_posting(f"{base}/{site}{path}", lambda: _workday_posting(
@@ -917,7 +1007,7 @@ def fetch_workday(token: str) -> list[Job]:
             posted = posting["posted_at"]
             if posted is not None and posted < cutoff - 86400:
                 continue
-            job = build_job(company=company, **{**posting, "title": title})
+            job = build_job(company=company, **{**posting, "title": title}, screened=True)
             if job:
                 out.append(job)
         if page == 0:
@@ -980,7 +1070,8 @@ def fetch_smartrecruiters(token: str) -> list[Job]:
         for p in content:
             released = parse_iso(p.get("releasedDate"))
             title = p.get("name") or ""
-            if (released and released < cutoff) or not SEARCH.title_wanted(title):
+            if (released and released < cutoff) or not screen(
+                    "smartrecruiters", title, fresh=is_fresh(released)):
                 continue
             pid = p.get("id")
             posting = cached_posting(f"https://jobs.smartrecruiters.com/{token}/{pid}", lambda: _smartrecruiters_posting(
@@ -988,7 +1079,7 @@ def fetch_smartrecruiters(token: str) -> list[Job]:
             if not is_posting(posting):
                 continue
             company = DISPLAY_NAMES.get(token) or (p.get("company") or {}).get("name") or token
-            job = build_job(company=company, **posting)
+            job = build_job(company=company, **posting, screened=True)
             if job:
                 out.append(job)
         last = parse_iso(content[-1].get("releasedDate")) if content else None
@@ -1072,13 +1163,13 @@ def fetch_oracle(token: str) -> list[Job]:
             title = r.get("Title") or ""
             locs = [r.get("PrimaryLocation") or ""] + [s.get("Name") or "" for s in r.get("secondaryLocations") or []]
             country = r.get("PrimaryLocationCountry") if len(locs) == 1 else None
-            if not (SEARCH.title_wanted(title)
-                    and SEARCH.location_wanted(" / ".join(l for l in locs if l), country)):
+            if not screen("oracle", title, " / ".join(l for l in locs if l), country,
+                          fresh=ORACLE_DATE_FACET <= FRESH_DAYS):
                 continue
             rid = str(r.get("Id"))
             posting = cached_posting(_oracle_page(host, site, rid), lambda: _oracle_posting(host, number, rid, site))
             if is_posting(posting):
-                job = build_job(company=display_name(token), **posting)
+                job = build_job(company=display_name(token), **posting, screened=True)
                 if job:
                     out.append(job)
         if not reqs or (page + 1) * ORACLE_PAGE >= total:
@@ -1139,13 +1230,13 @@ def fetch_eightfold(token: str) -> list[Job]:
             ts = p.get("postedTs")
             title = p.get("name") or ""
             location = " / ".join(p.get("locations") or [])
-            if ((ts and ts < cutoff) or not SEARCH.title_wanted(title)
-                    or not SEARCH.location_wanted(location)):
+            if (ts and ts < cutoff) or not screen("eightfold", title, location,
+                                                  fresh=is_fresh(float(ts) if ts else None)):
                 continue
             pid = str(p.get("id"))
             posting = cached_posting(f"https://{host}/careers/job/{pid}", lambda: _eightfold_posting(host, pid))
             if is_posting(posting):
-                job = build_job(company=company, **posting)
+                job = build_job(company=company, **posting, screened=True)
                 if job:
                     out.append(job)
         last = positions[-1].get("postedTs") if positions else None
@@ -1292,12 +1383,12 @@ def _fetch_icims_portal(host: str) -> list[Job]:
         if not m or (modified and modified < cutoff):
             continue
         slug_title = urllib.parse.unquote(m.group(2)).replace("-", " ")
-        if not SEARCH.title_wanted(slug_title):
+        if not screen("icims", slug_title, fresh=is_fresh(modified)):
             continue
         page = html.unescape(loc)
         posting = cached_posting(page, lambda: jsonld_posting(f"{page}?in_iframe=1", "icims", page))
         if is_posting(posting):
-            job = build_job(company=display_name(host), **posting)
+            job = build_job(company=display_name(host), **posting, screened=True)
             if job:
                 out.append(job)
     return out
@@ -1460,8 +1551,8 @@ def fetch_simplify(_: str = "") -> list[Job]:
     cutoff = time.time() - FETCH_DAYS * 86400
     listings = [j for j in data
                 if j.get("active") and j.get("is_visible", True) and (j.get("date_posted") or 0) >= cutoff
-                and SEARCH.title_wanted(j.get("title") or "")
-                and SEARCH.location_wanted(" / ".join(j.get("locations") or []))]
+                and screen("simplify", j.get("title") or "", " / ".join(j.get("locations") or []),
+                           fresh=is_fresh(j.get("date_posted")))]
     with ThreadPoolExecutor(max_workers=SIMPLIFY_WORKERS) as pool:
         results = list(pool.map(_simplify_job, listings))
     tally: dict[str, int] = {}
@@ -1508,7 +1599,7 @@ def _simplify_job(j: dict) -> tuple[Job | None, str]:
             listing = {**posting, "location": posting["location"] or listing["location"]}
             status = "with source posting"
     job = build_job(company=j.get("company_name", ""), **listing,
-                    sponsor_hint=SIMPLIFY_SPONSOR.get(j.get("sponsorship", "")))
+                    sponsor_hint=SIMPLIFY_SPONSOR.get(j.get("sponsorship", "")), screened=True, via="simplify")
     if job and status == "with source posting" and listing_key != job.key:
         job.listing_key = listing_key
     return job, status
@@ -1533,6 +1624,17 @@ class FetchResult:
     failed: list[str]           # boards that errored, with the reason
     throttled: list[str]        # boards whose host kept answering 429 (also in failed)
     attempted: list[str]
+    kept: dict[str, int] = field(default_factory=dict)     # board -> jobs it returned
+    seconds: dict[str, float] = field(default_factory=dict)  # board -> time its fetch took
+
+
+def _timed(fn: Callable[[str], list[Job]], tok: str) -> tuple[list[Job], float]:
+    t = time.monotonic()
+    try:
+        return fn(tok), time.monotonic() - t
+    except Exception as e:
+        e.seconds = time.monotonic() - t
+        raise
 
 
 def fetch_all(companies: dict[str, list[str]], skip: set[str] = frozenset(),
@@ -1545,13 +1647,15 @@ def fetch_all(companies: dict[str, list[str]], skip: set[str] = frozenset(),
     res = FetchResult([], [], [], [], [f"{src}:{tok}" for src, tok in tasks])
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         futures = {
-            pool.submit(fetch_simplify if src == "simplify" else FETCHERS[src], tok): (src, tok)
+            pool.submit(_timed, fetch_simplify if src == "simplify" else FETCHERS[src], tok): (src, tok)
             for src, tok in tasks
         }
         for done, fut in enumerate(as_completed(futures), 1):
             src, tok = futures[fut]
             try:
-                res.jobs.extend(fut.result())
+                got, res.seconds[f"{src}:{tok}"] = fut.result()
+                res.jobs.extend(got)
+                res.kept[f"{src}:{tok}"] = len(got)
             except BoardMissing:
                 res.missing.append(f"{src}:{tok}")
             except Exception as e:  # one bad board must not sink the run
@@ -1632,6 +1736,14 @@ CREATE TABLE IF NOT EXISTS robots (
     host    TEXT PRIMARY KEY,
     fetched REAL NOT NULL,
     body    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS run_funnel (
+    started REAL NOT NULL,          -- runs.started of the run
+    source  TEXT NOT NULL,
+    stage   TEXT NOT NULL,          -- FUNNEL_STAGES
+    n_all   INTEGER NOT NULL,       -- every posting seen
+    n_fresh INTEGER NOT NULL,       -- postings dated within FRESH_DAYS
+    PRIMARY KEY (started, source, stage)
 );
 CREATE TABLE IF NOT EXISTS board_state (
     board      TEXT PRIMARY KEY,    -- "<source>:<token>"
@@ -2161,6 +2273,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--update-h1b", action="store_true", help="re-download USCIS H-1B data")
     ap.add_argument("--render", action="store_true", help="rebuild the dashboard from stored jobs, no fetching")
     ap.add_argument("--status-file", help="keep this run's progress in this JSON file")
+    ap.add_argument("--funnel", action="store_true", help="show where the last run's postings dropped out")
     args = ap.parse_args(argv)
 
     global STATUS
@@ -2173,6 +2286,9 @@ def main(argv: list[str] | None = None) -> int:
         log(f"settings: {w}")
     if args.render:
         log(f"rendered {rerender(settings)} jobs")
+        return 0
+    if args.funnel:
+        print(funnel_report())
         return 0
 
     lock = oslock.FileLock(DB_PATH.parent / "radar.lock")
@@ -2189,11 +2305,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.update_h1b:
             return 0
 
-    companies = load_companies(SETTINGS)
-    DISPLAY_NAMES.update(companies.pop("display_names", {}))
-    h1b_aliases = companies.pop("h1b_aliases", {})
     started = time.time()
     cooling = load_state(started)
+    import discover     # imports radar itself, so not at module level
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    try:
+        discover.migrate(conn)
+        tracked, tracked_names = discover.tracked(conn, started)
+    finally:
+        conn.close()
+    companies = load_companies(SETTINGS, tracked, tracked_names)
+    DISPLAY_NAMES.update(companies.pop("display_names", {}))
+    h1b_aliases = companies.pop("h1b_aliases", {})
     if args.check:
         cooling = {}        # --check tries every board, cooling down or not
     STATUS.set(phase="fetching", done=0, total=0, jobs=0)
@@ -2227,6 +2350,8 @@ def main(argv: list[str] | None = None) -> int:
         with conn:
             new = store(conn, jobs, started)
             save_state(conn, res, started)
+            discover.record_run(conn, [b for b in res.attempted if b in res.kept or b in res.failed],
+                                res.kept, res.missing, started)
             finished = time.time()
             boards = (sum(len(set(v)) for k, v in companies.items() if k in FETCHERS)
                       + int(SETTINGS["radar"]["simplify_feed"]))
@@ -2234,6 +2359,9 @@ def main(argv: list[str] | None = None) -> int:
                 "INSERT INTO runs (started, finished, boards, failed, matched, new) VALUES (?,?,?,?,?,?)",
                 (started, finished, boards, len(failed) + len(missing), len(jobs), new),
             )
+            conn.executemany("INSERT OR REPLACE INTO run_funnel VALUES (?, ?, ?, ?, ?)",
+                             [(started, *row) for row in FUNNEL.rows()])
+            conn.execute("DELETE FROM run_funnel WHERE started < ?", (started - PURGE_AFTER_DAYS * 86400,))
         with conn:
             build_dashboard(conn, h1b, {
                 "started": started, "generated": finished, "previous_run": prev, "first_run": first_run or started,
@@ -2244,6 +2372,11 @@ def main(argv: list[str] | None = None) -> int:
 
     log(f"run ok: {len(jobs)} matches, {new} new, {len(failed)} failed, "
         f"{len(missing)} missing boards, {finished - started:.1f}s")
+    log("  funnel " + funnel_line(FUNNEL.totals()) + "; dated this week: " + funnel_line(FUNNEL.totals(True)))
+    slow = sorted(res.seconds.items(), key=lambda kv: -kv[1])[:5]
+    log(f"  boards: {len(res.attempted)} read, {sum(len(b) for b in tracked.values())} of them discovered; "
+        "slowest " + ", ".join(f"{b} {s:.0f}s" for b, s in slow))
+    discover_step(discover)
     for f in failed:
         log(f"  failed {f}")
     for m in missing:
@@ -2253,6 +2386,67 @@ def main(argv: list[str] | None = None) -> int:
     STATUS.set(phase="done", finished=finished, matched=len(jobs), new=new, failed=len(failed),
                missing=len(missing), boards=boards)
     return 0
+
+
+DISCOVER_BUDGET = 60        # seconds per run spent checking newly found boards
+
+
+def discover_step(discover) -> None:
+    """Once a day, collect candidate boards from the public lists; every run,
+    check a minute's worth of them. Never fails the run."""
+    STATUS.set(phase="discovering")
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    try:
+        now = time.time()
+        if discover.harvest_due(conn, now):
+            known = {f"{s}:{t}" for s, toks in load_companies(SETTINGS).items() if s in FETCHERS for t in toks}
+            with conn:
+                added = discover.harvest(conn, known, now)
+            log("discover: new candidate boards " + ", ".join(f"{k} {v}" for k, v in added.items()))
+        tally = discover.check_new(conn, DISCOVER_BUDGET)
+        if tally:
+            log("discover: checked " + ", ".join(f"{n} {s}" for s, n in tally.most_common()))
+    except Exception as e:
+        log(f"discover: stopped ({type(e).__name__}: {e})")
+    finally:
+        conn.close()
+
+
+def funnel_line(t: dict[str, int]) -> str:
+    return (f"{t['seen']} seen, -{t['title']} title, -{t['level']} level, -{t['location']} location, "
+            f"-{t['details']} details, {t['kept']} kept")
+
+
+def funnel_report(started: float | None = None) -> str:
+    """The funnel of one stored run (the latest by default), per source."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        migrate(conn)
+        started = started or conn.execute("SELECT MAX(started) FROM run_funnel").fetchone()[0]
+        rows = conn.execute("SELECT source, stage, n_all, n_fresh FROM run_funnel WHERE started = ?",
+                            (started,)).fetchall() if started else []
+    finally:
+        conn.close()
+    if not rows:
+        return "No funnel recorded yet; it is kept from the next full run on."
+    table: dict[str, dict[str, tuple[int, int]]] = {}
+    for src, stage, a, f in rows:
+        table.setdefault(src, {})[stage] = (a, f)
+    cols = FUNNEL_STAGES
+    out = [f"Run of {datetime.fromtimestamp(started):%Y-%m-%d %H:%M}. Each cell: all seen / dated in the "
+           f"last {FRESH_DAYS} days. Drop columns count where a posting left.",
+           f"{'source':16}" + "".join(f"{c:>16}" for c in cols)]
+    total = {c: [0, 0] for c in cols}
+    for src in sorted(table, key=lambda s: -table[s].get("seen", (0, 0))[0]):
+        cells = []
+        for c in cols:
+            a, f = table[src].get(c, (0, 0))
+            total[c][0] += a
+            total[c][1] += f
+            cells.append(f"{a}/{f}")
+        out.append(f"{src:16}" + "".join(f"{x:>16}" for x in cells))
+    out.append(f"{'total':16}" + "".join(f"{f'{a}/{f}':>16}" for a, f in total.values()))
+    return "\n".join(out)
 
 
 def run(argv: list[str] | None = None) -> int:

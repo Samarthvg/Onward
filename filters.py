@@ -533,6 +533,16 @@ class Search:
     def title_wanted(self, title: str) -> bool:
         return any(r.title_ok(title) for r in self.roles)
 
+    def title_stage(self, title: str) -> str | None:
+        """Why no role wants a title: "title" when no role's keywords fit it,
+        "level" when some do but none of those roles wants its seniority.
+        None when a role wants it."""
+        fits = [r for r in self.roles if r._titles.matches(title)]
+        if not fits:
+            return "title"
+        levels_ = title_levels(title)
+        return None if any(levels_ & r.seniority for r in fits) else "level"
+
     def location_wanted(self, location: str, country: str | None = None, remote: bool = False) -> bool:
         return any(r.location_ok(location, country, remote) for r in self.roles)
 

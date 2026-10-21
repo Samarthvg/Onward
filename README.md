@@ -75,6 +75,8 @@ LaunchAgent above, or the autostart file above.
 What leaves your computer:
 
 - Requests to the companies' job boards and the public SimplifyJobs list.
+- Once a day, downloads of a few public new-grad and internship lists on GitHub (SimplifyJobs, vanshb03,
+  speedyapply). Only their links are used, to find more company job boards to read (`discover.py`).
 - The USCIS data files.
 - The daily update check, if on.
 - Tectonic's download, if you chose it.
