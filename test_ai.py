@@ -235,6 +235,22 @@ class KeyEndpointTests(Base):
         self.assertNotIn(KEY, raw)
         self.assertFalse(ai.key_status("anthropic")["saved"])
 
+    def test_saved_resume_goes_back_only_to_the_dashboard(self):
+        resume = {"name": "me.pdf", "text": "Python and SQL. " * 20, "off": ["Go"], "added": [], "years": 1.5}
+        with mock.patch.object(server.PREP, "scoring_path", self.tmp / "scoring.json"):
+            status, _ = self.request("GET", "/api/scoring", origin=None)
+            self.assertEqual(status, 404)
+            status, raw = self.request("POST", "/api/scoring", resume)
+            self.assertEqual(status, 200, raw)
+            status, raw = self.request("GET", "/api/scoring", origin=None)
+            self.assertEqual(status, 200, raw)
+            got = json.loads(raw)
+            self.assertEqual((got["name"], got["text"], got["off"], got["years"]), ("me.pdf", resume["text"], ["Go"], 1.5))
+            self.assertNotIn("profile", got)
+            status, raw = self.request("GET", "/api/scoring", origin="https://evil.example")
+            self.assertEqual(status, 403)
+            self.assertNotIn("Python", raw)
+
     def test_only_the_dashboard_may_save_keys(self):
         status, _ = self.request("POST", "/api/keys", {"provider": "openai", "key": KEY}, origin="https://evil.example")
         self.assertEqual(status, 403)

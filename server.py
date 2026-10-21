@@ -618,6 +618,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"backends": tailor.backend_status(), "master": master_meta(role),
                                     "costs": typical_costs()})
 
+        if path == "/api/scoring":
+            # The resume this browser last scored with, for a browser that has none stored.
+            # Same-origin GETs carry no Origin; any other origin is refused outright.
+            if self.headers.get("Origin") not in (None, *ORIGINS):
+                return self._err(HTTPStatus.FORBIDDEN, "Forbidden")
+            s = PREP.scoring()
+            if not s:
+                return self._err(HTTPStatus.NOT_FOUND, "No resume saved yet")
+            return self._json(200, {k: s.get(k) for k in ("name", "text", "skills", "off", "added", "years")})
+
         if path == "/api/settings":
             return self._json(200, settings_payload())
 
