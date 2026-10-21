@@ -333,6 +333,8 @@
       <button type="button" data-h="24">24h</button>
       <button type="button" data-h="72">3d</button>
       <button type="button" data-h="168">7d</button>
+      <button type="button" data-h="720">30d</button>
+      <button type="button" data-h="0" title="Every posting that's still open, however long ago it went up">All open</button>
     </div>
     <input type="search" id="q" placeholder="Filter by company, title, city, skill" aria-label="Filter">
     <select id="sort" aria-label="Sort">
@@ -1032,7 +1034,8 @@ function render() {
 
   let jobs = DATA.jobs.filter((j) => {
     if (j.roles && (state.search === ALL_ROLES ? !j.roles.length : !j.roles.includes(state.search))) return false;
-    if (now - when(j) > state.hours * 3600) return false;
+    // 0 = "All open": no age limit beyond what the radar keeps on the dashboard.
+    if (state.hours && now - when(j) > state.hours * 3600) return false;
     if (state.remote && !j.remote) return false;
     if (V.sponsor && state.nosp && (j.sponsorship === "no" || (V.opt && j.no_opt))) return false;
     if (V.sponsor && state.h1bOnly && !isSponsor(j)) return false;
@@ -1175,9 +1178,11 @@ function render() {
       right, skillsRow, badges, reqDet, det));
   }
 
-  const label = { 1: "hour", 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[state.hours];
+  const label = { 1: "hour", 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days", 720: "30 days" }[state.hours];
   const many = SETTINGS.roles.length > 1;
-  $("count").textContent = `${jobs.length} job${jobs.length === 1 ? "" : "s"} posted in the last ${label}` +
+  const plural = jobs.length === 1 ? "" : "s";
+  $("count").textContent = (state.hours ? `${jobs.length} job${plural} posted in the last ${label}`
+                                        : `${jobs.length} still-open job${plural}`) +
     (!many ? "" : state.search === ALL_ROLES ? " across all your roles" : ` for \u201c${roleName(state.search)}\u201d`);
 
   const m = DATA.meta;

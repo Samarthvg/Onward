@@ -63,7 +63,8 @@ SIMPLIFY_URL = (
 )
 SIMPLIFY_VERIFY_URL = "https://github.com/SimplifyJobs/New-Grad-Positions/blob/dev/.github/scripts/listings.json"
 
-DASHBOARD_DAYS = 7          # postings older than this are not shown at all
+DASHBOARD_DAYS = 30         # postings older than this are not shown
+FETCH_DAYS = 7              # how far back paged sources (Workday, Oracle, the feed) read
 STALE_AFTER_DAYS = 2        # unseen for this long means the posting was closed
 PURGE_AFTER_DAYS = 45       # rows older than this are deleted
 WORKERS = 24
@@ -116,7 +117,7 @@ SETTINGS: dict = config.defaults()
 
 
 def configure(store: config.Store) -> None:
-    global DB_PATH, DASHBOARD_PATH, LOG_PATH, H1B_DIR, DASHBOARD_DAYS, STALE_AFTER_DAYS, PURGE_AFTER_DAYS
+    global DB_PATH, DASHBOARD_PATH, LOG_PATH, H1B_DIR, DASHBOARD_DAYS, FETCH_DAYS, STALE_AFTER_DAYS, PURGE_AFTER_DAYS
     global WORKERS, TIMEOUT, ORACLE_DATE_FACET, SEARCH, SETTINGS
     s = SETTINGS = store.load()
     DB_PATH = store.path_for("db")
@@ -125,8 +126,9 @@ def configure(store: config.Store) -> None:
     H1B_DIR = store.path_for("data_dir")
     r = s["radar"]
     DASHBOARD_DAYS, STALE_AFTER_DAYS, PURGE_AFTER_DAYS = r["dashboard_days"], r["stale_after_days"], r["purge_after_days"]
+    FETCH_DAYS = r["fetch_days"]
     WORKERS, TIMEOUT = r["workers"], r["timeout"]
-    ORACLE_DATE_FACET = 7 if DASHBOARD_DAYS <= 7 else 30
+    ORACLE_DATE_FACET = 7 if FETCH_DAYS <= 7 else 30
     SEARCH = filters.Search(s["roles"], s["companies"]["blocked"])
 
 
@@ -890,7 +892,7 @@ def fetch_workday(token: str) -> list[Job]:
     base = f"https://{host_part}.myworkdayjobs.com"
     cxs = f"{base}/wday/cxs/{tenant}/{site}"
     company = display_name(tenant)
-    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    cutoff = time.time() - FETCH_DAYS * 86400
     out: list[Job] = []
     total = 0
     for page in range(WORKDAY_MAX_PAGES):
@@ -899,7 +901,7 @@ def fetch_workday(token: str) -> list[Job]:
         page_days = [_workday_days(p.get("postedOn")) for p in postings]
         undated = all(d is None for d in page_days)
         for p, days in zip(postings, page_days):
-            if days is not None and days > DASHBOARD_DAYS:
+            if days is not None and days > FETCH_DAYS:
                 continue
             title = p.get("title") or ""
             if not SEARCH.title_wanted(title):
@@ -919,7 +921,7 @@ def fetch_workday(token: str) -> list[Job]:
             total = data.get("total") or 0   # Workday reports total on the first page only
         last = page_days[-1] if page_days else None
         if (not postings or (page + 1) * 20 >= total
-                or (last is not None and last > DASHBOARD_DAYS)
+                or (last is not None and last > FETCH_DAYS)
                 or (undated and page + 1 >= WORKDAY_UNDATED_PAGES)):
             break
     return out
@@ -960,7 +962,7 @@ def _smartrecruiters_posting(company: str, d: dict) -> dict:
 def fetch_smartrecruiters(token: str) -> list[Job]:
     """token: the company identifier in jobs.smartrecruiters.com/<identifier>.
     The postings list comes newest first; descriptions need one request each."""
-    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    cutoff = time.time() - FETCH_DAYS * 86400
     out: list[Job] = []
     for page in range(SR_MAX_PAGES):
         only = SEARCH.only_country()
@@ -994,7 +996,7 @@ def fetch_smartrecruiters(token: str) -> list[Job]:
 
 ORACLE_PAGE = 200
 ORACLE_MAX_PAGES = 10
-ORACLE_DATE_FACET = 7 if DASHBOARD_DAYS <= 7 else 30     # the site's own "posted within" buckets
+ORACLE_DATE_FACET = 7 if FETCH_DAYS <= 7 else 30     # the site's own "posted within" buckets
 
 
 def _oracle_api(host: str) -> str:
@@ -1125,7 +1127,7 @@ def fetch_eightfold(token: str) -> list[Job]:
                                    + ([("location", filters.COUNTRIES[only][0])] if only else [])
                                    + [("sort_by", "timestamp")] + [tuple(f.split("=", 1)) for f in extra])
     company = DISPLAY_NAMES.get(token) or domain.split(".")[0].title()
-    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    cutoff = time.time() - FETCH_DAYS * 86400
     out: list[Job] = []
     for page in range(EIGHTFOLD_MAX_PAGES):
         data = get_json(f"https://{host}/api/pcsx/search?{query}&start={page * EIGHTFOLD_PAGE}").get("data") or {}
@@ -1187,7 +1189,7 @@ def fetch_amazon(category: str) -> list[Job]:
     """token: an amazon.jobs job category slug, e.g. "software-development".
     The search JSON behind amazon.jobs carries full descriptions, so one
     request covers a hundred postings."""
-    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    cutoff = time.time() - FETCH_DAYS * 86400
     out: list[Job] = []
     for page in range(AMAZON_MAX_PAGES):
         query = urllib.parse.urlencode({"category[]": category, **country_param("country", ISO3), "sort": "recent",
@@ -1252,7 +1254,7 @@ def _jibe_posting(host: str, d: dict) -> dict:
 def _fetch_jibe(host: str) -> list[Job]:
     """iCIMS career sites on a company domain (careers.amd.com) run on
     iCIMS's Jibe front end, whose public /api/jobs returns full postings."""
-    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    cutoff = time.time() - FETCH_DAYS * 86400
     out: list[Job] = []
     for page in range(1, JIBE_MAX_PAGES + 1):
         query = urllib.parse.urlencode({"page": page, "limit": JIBE_PAGE, "sortBy": "posted_date",
@@ -1279,7 +1281,7 @@ def _fetch_icims_portal(host: str) -> list[Job]:
     (linked from robots.txt) lists every posting with a slug title and a
     last-modified time; postings modified within the window whose slug passes
     the title filters are read once each for their schema.org JobPosting."""
-    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    cutoff = time.time() - FETCH_DAYS * 86400
     out: list[Job] = []
     for loc, lastmod in SITEMAP_URL.findall(get_text(f"https://{host}/sitemap.xml")):
         m = ICIMS_JOB.match(html.unescape(loc))
@@ -1452,7 +1454,7 @@ def fetch_simplify(_: str = "") -> list[Job]:
     so it gets the real description, date and evidence; the rest stay as
     listings without descriptions."""
     data = get_json(SIMPLIFY_URL)
-    cutoff = time.time() - DASHBOARD_DAYS * 86400
+    cutoff = time.time() - FETCH_DAYS * 86400
     listings = [j for j in data
                 if j.get("active") and j.get("is_visible", True) and (j.get("date_posted") or 0) >= cutoff
                 and SEARCH.title_wanted(j.get("title") or "")

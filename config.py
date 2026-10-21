@@ -40,7 +40,7 @@ import voice
 
 CODE_DIR = Path(__file__).resolve().parent
 SETTINGS_FILE = "settings.json"
-VERSION = 4
+VERSION = 5
 
 
 def platform_data_dir() -> Path:
@@ -318,7 +318,13 @@ SCHEMA = Obj({
         "logs_dir": Str("", 500),
     }),
     "radar": Obj({
-        "dashboard_days": Int(7, 1, 60),        # postings older than this are not shown at all
+        # How old a posting may be and still be shown. Separate from fetch_days:
+        # boards like Greenhouse return every open job anyway, and older open
+        # jobs (an entry-level role posted 6 weeks ago) are still worth seeing.
+        "dashboard_days": Int(30, 1, 90),
+        # How far back paged sources (Workday, Oracle, the SimplifyJobs feed)
+        # read each run. Deeper means many more requests per run.
+        "fetch_days": Int(7, 1, 60),
         "stale_after_days": Int(2, 1, 30),      # unseen for this long means the posting was closed
         "purge_after_days": Int(45, 7, 3650),   # rows older than this are deleted
         "workers": Int(24, 1, 64),
@@ -477,7 +483,17 @@ def _v4(data: dict, home: Path) -> dict:
     return data
 
 
-MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3, 4: _v4}
+def _v5(data: dict, home: Path) -> dict:
+    """dashboard_days split into what's shown (now 30 by default) and how far
+    back paged sources fetch (fetch_days, 7). Someone on the old default of
+    7 gets the new one; a value they chose themselves is kept."""
+    r = data.get("radar")
+    if isinstance(r, dict) and r.get("dashboard_days") == 7:
+        r["dashboard_days"] = 30
+    return data
+
+
+MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3, 4: _v4, 5: _v5}
 
 
 def migrate(data: dict, home: Path) -> tuple[dict, bool]:
