@@ -156,14 +156,14 @@ class InstructionTests(unittest.TestCase):
         tailor._codex_json, old_codex = fake("chatgpt"), tailor._codex_json
         tailor._claude_json, old_claude = fake("claude-code"), tailor._claude_json
         try:
-            tailor.run_chatgpt(res, self.JOB, JD)
-            tailor.run_claude_code(res, self.JOB, JD)
+            for backend in ("chatgpt", "claude-code"):
+                tailor.ask(backend, *tailor.tailor_prompt(res, self.JOB, JD), tailor.SCHEMA, "tailor")
         finally:
             tailor._codex_json, tailor._claude_json = old_codex, old_claude
         seen["manual"] = tailor.build_manual_prompt(TEX, self.JOB, JD)
         for name, prompt in seen.items():
             self.assertIn("Don't touch the Beta Site project.", prompt.replace("\\u2019", "'"), name)
-        # claude-api sends the job block as the user message.
+        # The API backends send the job block as the user message.
         self.assertIn("Beta Site project", tailor._job_block(self.JOB, JD))
 
     def test_absent_without_instruction(self):

@@ -6,8 +6,8 @@ threshold and pass their filters are queued. One at a time, best match
 first, each job gets either a tailored resume or a note that the master
 resume already fits (tailoring would only reorder or the posting is
 already covered), plus drafts for the custom questions on its form when
-the ATS publishes them. ChatGPT runs per day are capped to stay inside the
-user's plan. Nothing here applies to anything: the user opens each job from
+the ATS publishes them. Model runs per day are capped to stay inside the
+user's plan; runs on an API key are also held to its monthly budget (ai.py). Nothing here applies to anything: the user opens each job from
 the queue, reviews what the extension filled and presses Submit.
 """
 
@@ -74,7 +74,9 @@ STALE_AFTER = 2 * 86400          # radar.py's STALE_AFTER_DAYS: unseen this long
 MAX_ATTEMPTS = 2
 NOTIFY_EVERY = 30 * 60           # while the queue is still working, at most one toast per half hour
 BACKOFF = 15 * 60                # after the backend is unreachable or signed out
-FATAL = re.compile(r"not signed in|isn't installed|log ?in", re.I)
+# Problems no retry fixes until the user acts: sign-in, a missing or rejected
+# API key, or a used-up monthly budget.
+FATAL = re.compile(r"not signed in|isn't installed|log ?in|api key|api budget", re.I)
 DASHBOARD_URL = "http://127.0.0.1:8765/#queue"
 
 
@@ -219,6 +221,8 @@ class Preparer:
 
     def poke(self) -> None:
         self.dirty = True
+        # Settings changed (a new key, a higher budget): try again right away.
+        self.paused_until = 0.0
         self.wake.set()
 
     @staticmethod
@@ -346,7 +350,7 @@ class Preparer:
             conn.close()
 
     def reserve(self, conn, cap: int) -> bool:
-        """Counts one ChatGPT run against today's cap, if any are left."""
+        """Counts one model run against today's cap, if any are left."""
         with conn:
             if self.usage(conn) >= cap:
                 return False
@@ -364,7 +368,7 @@ class Preparer:
     def next_job(self, conn, cap_left: bool) -> tuple[str, str] | None:
         sql = "SELECT job_key, decision FROM prep WHERE state = 'queued'"
         if not cap_left:
-            sql += " AND decision = 'master'"      # these still get ready without a ChatGPT run
+            sql += " AND decision = 'master'"      # these still get ready without a model run
         return conn.execute(sql + " ORDER BY score DESC, created LIMIT 1").fetchone()
 
     def process(self, key: str) -> str:
@@ -387,7 +391,7 @@ class Preparer:
             if decision == "tailor":
                 if not self.reserve(conn, s["daily_cap"]):
                     self._update(conn, key, state="queued",
-                                 error=f"Waiting: today's {s['daily_cap']} ChatGPT runs are used up. Continues tomorrow.")
+                                 error=f"Waiting: today's {s['daily_cap']} model runs are used up. Continues tomorrow.")
                     return "requeued"
                 result = tailor.tailor(master, meta, jd, s["backend"], self.out_dir)
                 tailored_id = uuid.uuid4().hex[:12]
@@ -433,7 +437,7 @@ class Preparer:
         if not qs:
             return []
         if not self.reserve(conn, s["daily_cap"]):
-            notes.append("daily ChatGPT limit reached, so questions are drafted when you open the form")
+            notes.append("daily model run limit reached, so questions are drafted when you open the form")
             return []
         prof = (self.scoring() or {}).get("profile") or {}
         # Short ids for the model; positions map them back.
@@ -480,7 +484,7 @@ class Preparer:
             if self.usage(conn) >= cap:
                 with conn:
                     conn.execute("UPDATE prep SET error = ? WHERE state = 'queued' AND decision = 'tailor'",
-                                 (f"Waiting: today's {cap} ChatGPT runs are used up. Continues tomorrow.",))
+                                 (f"Waiting: today's {cap} model runs are used up. Continues tomorrow.",))
         finally:
             conn.close()
 

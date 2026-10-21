@@ -257,7 +257,7 @@
 
   /* ------------------------------------------------------- AI answers */
 
-  const BACKEND_NAMES = { chatgpt: "ChatGPT", "claude-code": "Claude" };
+  const BACKEND_NAMES = { chatgpt: "ChatGPT", "claude-code": "Claude", "openai-api": "OpenAI API", "claude-api": "Anthropic API" };
   const AI_TEXT = new Set(["text", "email", "url", "number", "search", "date", "combo", "prompt", "textarea"]);
 
   async function helperJob(start) {
@@ -375,7 +375,9 @@
 
   async function draft(it) {
     it.drafting = true;
-    it.why = "Drafting with your " + (store.settings.draftBackend === "claude-code" ? "Claude" : store.settings.draftBackend === "chatgpt" ? "ChatGPT" : store.settings.draftBackend) + " login…";
+    const b = store.settings.draftBackend;
+    it.why = b === "chatgpt" || b === "claude-code" ? "Drafting with your " + BACKEND_NAMES[b] + " login…"
+      : "Drafting with your " + (BACKEND_NAMES[b] || b) + " key…";
     JR.panel.render();
     const info = JR.sites.jobInfo(document);
     const payload = {
@@ -388,6 +390,10 @@
       const start = await api.runtime.sendMessage({ type: "jr:draftStart", payload });
       if (!start || start.error) throw new Error((start && start.error) || "The It gets easier helper didn't answer.");
       if (start.prompt) { it.prompt = start.prompt; it.why = "Manual mode: copy the prompt below."; return; }
+      if (start.estimate != null) {
+        it.why = "Drafting with your " + (BACKEND_NAMES[b] || b) + " key, about " + (start.estimate < 0.01 ? "under 1¢" : "$" + start.estimate.toFixed(2)) + "…";
+        JR.panel.render();
+      }
       const end = Date.now() + 15 * 60 * 1000;
       for (;;) {
         await sleep(2000);

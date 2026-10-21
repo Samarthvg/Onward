@@ -30,11 +30,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import ai
 import appinfo
 import ats
 import config
 import filters
 import prep
+import pricing
 import radar
 import resume_import
 import resume_tex as rt
@@ -192,10 +194,49 @@ def settings_payload() -> dict:
             "seniority": list(config.SENIORITY), "workplace": list(config.WORKPLACE),
             "visa": list(config.VISA_STATUS), "backends": list(config.TAILOR_BACKENDS),
             "draft_backends": list(config.DRAFT_BACKENDS), "sources": list(config.SOURCES),
+            "strictness": list(config.STRICTNESS), "tones": list(tailor.voice.TONES),
+            "max_samples": tailor.voice.MAX_SAMPLES, "sample_max": tailor.voice.SAMPLE_MAX,
         },
         "resumes": {r["id"]: master_meta(r["id"]) for r in s["roles"]},
         "render": RENDER,
+        "ai": ai_payload(),
     }
+
+
+def ai_payload() -> dict:
+    """Paid API providers for the Settings page: models with prices, whether
+    a key is saved (never the key), this month's spend, and what a typical
+    run costs with the user's resume."""
+    out = {}
+    for prov in ai.PROVIDERS:
+        out[prov] = {"name": pricing.PROVIDER_NAMES[prov], "key": ai.key_status(prov),
+                     "spent": round(ai.spent(prov), 4),
+                     "models": [{"id": m.id, "label": m.label, "input": m.input, "output": m.output}
+                                for m in pricing.MODELS[prov]]}
+    return {"providers": out, "prices_as_of": pricing.PRICES_AS_OF, "month": ai.this_month(),
+            "typical": typical_costs(), "default_voice": list(tailor.voice.DEFAULT_BANNED)}
+
+
+TYPICAL_JD = "x" * 5000       # a posting of usual length, for typical-cost estimates
+
+
+def typical_costs() -> dict:
+    """{backend: {"tailor": $, "draft": $}} for the API backends, from the
+    master resume and a posting of usual length. Character-based token
+    counts: quick, and no network."""
+    if not MASTER.exists():
+        return {}
+    try:
+        tex = MASTER.read_text(encoding="utf-8")
+        job = {"company": "", "title": ""}
+        out = {}
+        for backend in pricing.API_BACKENDS:
+            t = tailor.estimate_tailor(tex, job, TYPICAL_JD, backend, exact=False)
+            d = tailor.estimate_draft(tex, job, "Why do you want to work here?", "", TYPICAL_JD, backend, exact=False)
+            out[backend] = {"tailor": t["cost"], "draft": d["cost"], "model": t["model"]}
+        return out
+    except ValueError:
+        return {}
 
 
 def extension_info() -> dict:
@@ -462,7 +503,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/status":
             role = (q.get("role") or [""])[0][:40]
-            return self._json(200, {"backends": tailor.backend_status(), "master": master_meta(role)})
+            return self._json(200, {"backends": tailor.backend_status(), "master": master_meta(role),
+                                    "costs": typical_costs()})
 
         if path == "/api/settings":
             return self._json(200, settings_payload())
@@ -472,6 +514,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/render":
             return self._json(200, RENDER)
+
         if path == "/api/app":
             return self._json(200, app_payload())
 
@@ -483,9 +526,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, f.read_bytes(), "application/x-xpinstall",
                               {"Content-Disposition": f'attachment; filename="{info["xpi"]}"'})
 
-
         if path == "/api/about":
             return self._json(200, {"text": tailor.about_me(), "max": tailor.ABOUT_MAX})
+
+        if path == "/api/usage":
+            return self._json(200, ai.usage_summary())
 
         if path == "/api/job":
             row = job_row((q.get("key") or [""])[0])
@@ -549,6 +594,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/settings":
             return self._settings(data)
+        if path == "/api/keys":
+            return self._keys(data)
+        if path == "/api/estimate":
+            return self._estimate(data)
         if path.startswith("/api/companies/"):
             return self._companies(path.rsplit("/", 1)[-1], data)
         if path == "/api/draft":
@@ -689,6 +738,55 @@ class Handler(BaseHTTPRequestHandler):
             schedule_render()
         return self._json(200, settings_payload())
 
+    def _keys(self, data: dict):
+        """Save ({"provider", "key"}) or remove ({"provider", "key": ""}) an
+        API key. The answer says only whether one is saved now."""
+        provider = str(data.get("provider", ""))
+        if provider not in ai.PROVIDERS:
+            return self._err(HTTPStatus.BAD_REQUEST, "Unknown provider")
+        key = str(data.get("key") or "")
+        if not key.strip():
+            ai.delete_key(provider)
+            PREP.poke()
+            return self._json(200, {"provider": provider, "key": ai.key_status(provider), "warning": ""})
+        try:
+            key = ai.clean_key(key)
+        except ValueError as e:
+            return self._err(HTTPStatus.BAD_REQUEST, str(e))
+        problem = ai.verify_key(provider, key)
+        warning = ""
+        if problem == "connection":
+            warning = "Saved, but it couldn't be checked: no connection to the provider."
+        elif problem:
+            return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, problem)
+        ai.save_key(provider, key)
+        PREP.poke()
+        return self._json(200, {"provider": provider, "key": ai.key_status(provider), "warning": warning})
+
+    def _estimate(self, data: dict):
+        """What tailoring one job would cost on a paid API, before running it.
+        {"cost": null} for the subscription logins and manual paste."""
+        backend = str(data.get("backend", ""))
+        provider = pricing.API_BACKENDS.get(backend)
+        if not provider:
+            return self._json(200, {"cost": None})
+        role = str(data.get("role") or "")[:40]
+        if not master_path(role).exists():
+            return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume first")
+        key = str(data.get("key", ""))
+        row = job_row(key) or {}
+        jd = str(data.get("jd") or row.get("description") or "")
+        job = {"company": row.get("company", data.get("company", "")), "title": row.get("title", data.get("title", "")),
+               "instruction": tailor.clean_instruction(data.get("instruction"))}
+        try:
+            est = tailor.estimate_tailor(master_path(role).read_text(encoding="utf-8"), job, jd, backend)
+        except ValueError as e:
+            return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
+        budget = ai.settings(provider)["monthly_budget"]
+        spent = ai.spent(provider)
+        return self._json(200, {**est, "budget": budget, "spent": round(spent, 4),
+                                "over_budget": spent + est["cost"] > budget})
+
     def _companies(self, action: str, data: dict):
         c = STORE.section("companies")
         if action == "lookup":
@@ -769,7 +867,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume in the dashboard first")
         backend = str(data.get("backend", "chatgpt"))
         if backend not in set(tailor.DRAFT_BACKENDS) | {"manual"}:
-            return self._err(HTTPStatus.BAD_REQUEST, "Drafting works with chatgpt, claude-code or manual")
+            return self._err(HTTPStatus.BAD_REQUEST, "Drafting works with " + ", ".join(tailor.DRAFT_BACKENDS) + " or manual")
         question = str(data.get("question", "")).strip()[:2000]
         if not question:
             return self._err(HTTPStatus.BAD_REQUEST, "No question to answer")
@@ -788,7 +886,11 @@ class Handler(BaseHTTPRequestHandler):
                                                {"company": params["company"], "title": params["title"]},
                                                question, params["context"], params["jd"], max_chars)
             return self._json(200, {"prompt": prompt})
-        return self._json(202, {"id": submit_draft(params)})
+        est = None
+        if backend in pricing.API_BACKENDS:
+            est = tailor.estimate_draft(MASTER.read_text(encoding="utf-8"), {"company": params["company"], "title": params["title"]},
+                                        question, params["context"], params["jd"], backend, max_chars, exact=False)
+        return self._json(202, {"id": submit_draft(params), "estimate": est and est["cost"]})
 
     def _answers(self, data: dict):
         """Answers for the questions autofill couldn't fill; poll /api/draft/<id>."""
@@ -796,7 +898,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume in the dashboard first")
         backend = str(data.get("backend", "chatgpt"))
         if backend not in tailor.DRAFT_BACKENDS:
-            return self._err(HTTPStatus.BAD_REQUEST, "Answering works with chatgpt or claude-code")
+            return self._err(HTTPStatus.BAD_REQUEST, "Answering works with " + ", ".join(tailor.DRAFT_BACKENDS))
         questions = []
         for q in (data.get("questions") or [])[:60]:
             if not isinstance(q, dict) or not str(q.get("question", "")).strip():

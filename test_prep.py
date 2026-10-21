@@ -261,7 +261,7 @@ class QueueTests(Base):
         waiting = [c for c in ("Tailorco", "Tailortwo") if it[c]["state"] == "queued"]
         self.assertEqual(len(tailored), 1)
         self.assertEqual(len(waiting), 1)
-        self.assertIn("ChatGPT runs are used up", it[waiting[0]]["note"])
+        self.assertIn("model runs are used up", it[waiting[0]]["note"])
         # The master-resume job needs no run and gets ready anyway.
         self.assertEqual(it["Coveredco"]["state"], "ready")
         self.assertEqual(len(self.model.calls), 1)

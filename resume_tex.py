@@ -101,6 +101,13 @@ def plain(tex: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+def words(text: str) -> set[str]:
+    """Lowercased word-like tokens, tool names with dots and symbols intact
+    ("node.js", "c++"). A sentence's full stop is not part of its last word,
+    so a term that ends a sentence ("... on Kafka.") still counts."""
+    return {w.lower().rstrip(".") for w in re.findall(r"[A-Za-z0-9.+#-]+", text)} - {""}
+
+
 def tag_skills(text: str, tag: str) -> set[str]:
     out: set[str] = set()
     for m in re.finditer(rf"(?<!\\)%\s*{tag}\s*:\s*(.+)", text, re.I):
@@ -284,7 +291,7 @@ def parse(tex: str) -> Resume:
     everything = plain(tex)
     tags = " ".join(re.findall(r"(?<!\\)%\s*(?:skills|inventory)\s*:\s*(.+)", tex, re.I))
     res.inventory = with_implied(find_skills(everything) | tag_skills(tex, "skills") | tag_skills(tex, "inventory"))
-    res.vocabulary = {w.lower() for w in re.findall(r"[A-Za-z0-9.+#-]+", everything + " " + tags)}
+    res.vocabulary = words(everything + " " + tags)
     if not res.entries:
         raise ValueError("No itemize blocks found. Bullets need to be inside \\begin{itemize} ... \\end{itemize}.")
     return res
@@ -362,7 +369,7 @@ def check_honesty(old: str, new: str, allowed: set[str], vocabulary: set[str], j
     new_nums = set(re.findall(r"\d+(?:\.\d+)?", new_p)) - old_nums
     if new_nums:
         return f"introduces numbers not in your original ({', '.join(sorted(new_nums))})"
-    jd_words = {w.lower() for w in re.findall(r"[A-Za-z0-9.+#-]+", jd)}
+    jd_words = words(jd)
     for tok in TECHY.findall(new_p):
         t = tok.lower()
         if t not in vocabulary and t in jd_words and t not in old_p.lower():
@@ -424,9 +431,17 @@ class Change:
     reason: str = ""
 
 
-def plan_edits(res: Resume, out: dict, jd: str) -> tuple[list[tuple[Span, str]], list[Change], dict]:
+# How far a rewritten bullet may grow, per tailoring strictness: (factor,
+# extra characters) over the original's plain text. "reword" lets a bullet
+# be restructured, which tends to lengthen it. Everything else, the honesty
+# checks above in particular, is the same at every level.
+BULLET_GROWTH = {"strict": (1.3, 40), "reword": (1.5, 40)}
+
+
+def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict") -> tuple[list[tuple[Span, str]], list[Change], dict]:
     """Turn model output into concrete span replacements plus a change log.
     Anything that fails validation is logged as rejected and left unchanged."""
+    factor, extra = BULLET_GROWTH.get(strictness, BULLET_GROWTH["strict"])
     changes: list[Change] = []
     rewrites: dict[str, str] = {}
 
@@ -439,7 +454,7 @@ def plan_edits(res: Resume, out: dict, jd: str) -> tuple[list[tuple[Span, str]],
         if not new or plain(new) == plain(b.tex):
             continue
         reason = (check_latex(new)
-                  or (len(plain(new)) > len(plain(b.tex)) * 1.3 + 40 and "makes the bullet much longer")
+                  or (len(plain(new)) > len(plain(b.tex)) * factor + extra and "makes the bullet much longer")
                   or check_honesty(b.tex, new, entry.allowed, res.vocabulary, jd))
         if reason:
             changes.append(Change("bullet", b.id, entry.title, plain(b.tex), plain(new), "rejected", reason))

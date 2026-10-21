@@ -3,8 +3,9 @@
 Every module reads its choices from here instead of its own constants:
 the user's roles (radar.py tags jobs with the ones they match), the visa
 features each turns on, the user's own company boards, match-score weights
-(match.py and the dashboard), tailoring backends and the apply queue
-(tailor.py, prep.py), and where data files live.
+(match.py and the dashboard), tailoring backends, strictness and the apply
+queue (tailor.py, prep.py), API models and budgets (ai.py), the writing
+voice of drafted answers, and where data files live.
 
 The file is checked against SCHEMA on every load. A value of the wrong type
 falls back to its default (and is reported), numbers outside their range are
@@ -34,10 +35,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 import filters
+import pricing
+import voice
 
 CODE_DIR = Path(__file__).resolve().parent
 SETTINGS_FILE = "settings.json"
-VERSION = 3
+VERSION = 4
 
 
 def platform_data_dir() -> Path:
@@ -218,8 +221,13 @@ WORKPLACE = ("onsite", "hybrid", "remote")
 # sponsorship: needs H-1B or other sponsorship; authorized: citizen, permanent
 # resident or otherwise free to work, so no visa signals are shown.
 VISA_STATUS = ("opt", "sponsorship", "authorized")
-TAILOR_BACKENDS = ("chatgpt", "claude-code", "claude-api", "manual")
-DRAFT_BACKENDS = ("chatgpt", "claude-code")
+# chatgpt and claude-code run on the user's subscription login; openai-api and
+# claude-api bill the user's own API key (ai.py), within a monthly budget.
+TAILOR_BACKENDS = ("chatgpt", "claude-code", "openai-api", "claude-api", "manual")
+DRAFT_BACKENDS = ("chatgpt", "claude-code", "openai-api", "claude-api")
+# strict: bullets keep their wording except for the job's terms; reword: they may
+# be rephrased freely. Both reject new skills, numbers and job-only terms.
+STRICTNESS = ("strict", "reword")
 SETUP_STEPS = ("welcome", "resume", "profile", "role", "ai", "extension", "fetch")
 SOURCES = ("greenhouse", "lever", "ashby", "workday", "smartrecruiters", "oracle", "eightfold", "amazon", "icims")
 
@@ -342,7 +350,19 @@ SCHEMA = Obj({
         "backend": Str("chatgpt", choices=TAILOR_BACKENDS),     # the tailor dialog's default
         "draft_backend": Str("chatgpt", choices=DRAFT_BACKENDS),
         "target_pages": Int(1, 1, 3),
-        "claude_model": Str("claude-opus-5-5", 100),
+        "strictness": Str("strict", choices=STRICTNESS),
+    }),
+    # The user's own API keys (stored by ai.py, never here): model and monthly
+    # budget in US dollars. A budget of 0 blocks every paid call.
+    "providers": Obj({p: Obj({
+        "model": Str(pricing.default_model(p), 100, choices=pricing.model_ids(p)),
+        "monthly_budget": Num(5, 0, 10_000),
+    }) for p in pricing.MODELS}),
+    # How drafted answers should sound (tailor.VOICE).
+    "voice": Obj({
+        "tone": Str("casual", choices=voice.TONES),
+        "samples": List(Str(max_len=voice.SAMPLE_MAX), [], voice.MAX_SAMPLES),
+        "banned_phrases": List(Str(max_len=120), list(voice.DEFAULT_BANNED), 300),
     }),
     "queue": QUEUE,
     "ui": Obj({"advanced": Bool(False)}),
@@ -441,7 +461,23 @@ def _v3(data: dict, home: Path) -> dict:
     return data
 
 
-MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3}
+def _v4(data: dict, home: Path) -> dict:
+    """API models moved from tailoring.claude_model to one entry per provider."""
+    t = data.get("tailoring")
+    model = t.pop("claude_model", None) if isinstance(t, dict) else None
+    if model and model != pricing.default_model("anthropic"):
+        if model in pricing.model_ids("anthropic"):
+            prov = data.setdefault("providers", {})
+            if isinstance(prov, dict):
+                prov.setdefault("anthropic", {})["model"] = model
+        else:
+            data["notices"] = list(data.get("notices") or []) + [
+                f"The Claude API model {model} isn't offered any more, so Claude API runs now use "
+                f"{pricing.default_model('anthropic')}. You can pick another in Settings, under AI models."]
+    return data
+
+
+MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3, 4: _v4}
 
 
 def migrate(data: dict, home: Path) -> tuple[dict, bool]:

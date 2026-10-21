@@ -50,15 +50,16 @@ class DefaultsTests(Tmp):
                                         "years_penalty": 0.35, "min_experience_fit": 0.15,
                                         "unstated_years_fit": 0.85, "unknown_keyword_weight": 0.8})
         self.assertEqual(d["tailoring"], {"backend": "chatgpt", "draft_backend": "chatgpt", "target_pages": 1,
-                                          "claude_model": "claude-opus-5-5"})
+                                          "strictness": "strict"})
+        self.assertEqual(d["providers"]["anthropic"]["model"], "claude-opus-5-5")
         (r,) = d["roles"]
         self.assertEqual((r["id"], r["title_keywords"], r["seniority"], r["countries"], r["visa"]["status"]),
                          ("software", filters.SOFTWARE_KEYWORDS, ["entry"], ["US"], "opt"))
         self.assertEqual(d["active_role"], "software")
         self.assertEqual(d["notices"], [])
         self.assertTrue(d["radar"]["simplify_feed"])
-        self.assertEqual(config.TAILOR_BACKENDS, ("chatgpt", "claude-code", "claude-api", "manual"))
-        self.assertEqual(config.DRAFT_BACKENDS, ("chatgpt", "claude-code"))
+        self.assertEqual(config.TAILOR_BACKENDS, ("chatgpt", "claude-code", "openai-api", "claude-api", "manual"))
+        self.assertEqual(config.DRAFT_BACKENDS, ("chatgpt", "claude-code", "openai-api", "claude-api"))
 
     def test_missing_file_gives_defaults_without_writing(self):
         s = self.store()

@@ -274,6 +274,9 @@
   .setup ol.steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13px; }
   code.cmd { font-size: 12px; padding: 4px 8px; border-radius: 6px; background: var(--chip); overflow-wrap: anywhere; }
   @media (max-width: 600px) { .setup { padding: 16px 14px; } }
+  table.usage { border-collapse: collapse; font-size: 13px; width: 100%; }
+  table.usage th, table.usage td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  table.usage th { color: var(--muted); font-weight: 600; }
   [hidden] { display: none !important; }
 
   .toast {
@@ -1416,12 +1419,27 @@ async function refreshStatus() {
   renderResumeBar();
 }
 
+// Dollar amounts: cents stay readable ($0.004 shows as "under 1¢").
+function money(x) {
+  if (x == null) return "";
+  if (x < 0.01) return x > 0 ? "under 1¢" : "$0";
+  return "$" + (x < 10 ? x.toFixed(2) : x.toFixed(0));
+}
+const typicalCost = (id, kind) => {
+  const c = helper.status && helper.status.costs && helper.status.costs[id];
+  return c ? ` About ${money(c[kind])} a ${kind === "tailor" ? "resume" : "draft"}.` : "";
+};
+
 const BACKENDS = [
-  { id: "chatgpt", name: "ChatGPT", desc: "Runs on your ChatGPT plan. No extra cost.", ok: (b) => b.chatgpt, setup: "codex login" },
-  { id: "claude-code", name: "Claude", desc: "Runs on your Claude plan. No extra cost.", ok: (b) => b.claude_code, setup: "claude auth login" },
-  { id: "manual", name: "Paste into any chat", desc: "Copy a prompt, paste the answer back.", ok: () => true },
-  { id: "claude-api", name: "Claude API key", desc: "Billed per use, about 8 to 15 cents.", ok: (b) => b.claude_api, hidden: (b) => !b.claude_api },
+  { id: "chatgpt", name: "ChatGPT", desc: () => "Runs on your ChatGPT plan. No extra cost.", ok: (b) => b.chatgpt, setup: "Needs one-time sign-in: run codex login" },
+  { id: "claude-code", name: "Claude", desc: () => "Runs on your Claude plan. No extra cost.", ok: (b) => b.claude_code, setup: "Needs one-time sign-in: run claude auth login" },
+  { id: "manual", name: "Paste into any chat", desc: () => "Copy a prompt, paste the answer back.", ok: () => true },
+  { id: "openai-api", name: "OpenAI API key", desc: () => "Billed to your key, within your monthly budget." + typicalCost("openai-api", "tailor"),
+    ok: (b) => b.openai_api, setup: "Add an OpenAI key in Settings, under AI models" },
+  { id: "claude-api", name: "Anthropic API key", desc: () => "Billed to your key, within your monthly budget." + typicalCost("claude-api", "tailor"),
+    ok: (b) => b.claude_api, setup: "Add an Anthropic key in Settings, under AI models" },
 ];
+const PAID = new Set(["openai-api", "claude-api"]);
 
 function progressLine(text) {
   return el("div", { class: "progress" }, el("span", { class: "spin", "aria-hidden": "true" }), el("span", { text }));
@@ -1461,13 +1479,12 @@ function renderTailorForm(j, jd, history) {
   if (!BACKENDS.some((be) => be.id === chosen)) chosen = SETTINGS.tailoring.backend || "chatgpt";
   const opts = el("div", { class: "opts", role: "radiogroup", "aria-label": "Model" });
   for (const be of BACKENDS) {
-    if (be.hidden && be.hidden(b)) continue;
     const ready = be.ok(b);
     const input = el("input", { type: "radio", name: "backend", value: be.id });
     input.checked = be.id === chosen;
-    input.addEventListener("change", () => { chosen = be.id; store.set("backend", chosen); syncManual(); });
+    input.addEventListener("change", () => { chosen = be.id; store.set("backend", chosen); syncManual(); estimate(); });
     opts.append(el("label", { class: "opt" + (ready ? "" : " off") }, input,
-      el("div", {}, el("b", { text: be.name }), el("span", { text: ready ? be.desc : (be.setup ? `Needs one-time sign-in: run ${be.setup}` : "Not available") }))));
+      el("div", {}, el("b", { text: be.name }), el("span", { text: ready ? be.desc() : (be.setup || "Not available") }))));
   }
 
   const rewrite = el("input", { type: "checkbox", id: "rewriteChk" });
@@ -1476,6 +1493,7 @@ function renderTailorForm(j, jd, history) {
 
   const jdBox = el("textarea", { class: "jd", id: "jdBox", placeholder: "Paste the full job description here." });
   jdBox.value = jd;
+  jdBox.addEventListener("input", () => estimate());
 
   const instr = el("input", { type: "text", id: "tailorInstr", maxlength: "500", style: "width:100%",
     placeholder: "Optional, e.g. emphasize backend more, don't touch the Kanbas project" });
@@ -1492,6 +1510,28 @@ function renderTailorForm(j, jd, history) {
     } })),
     answer);
   function syncManual() { manual.hidden = chosen !== "manual"; go.textContent = chosen === "manual" ? "Apply answer" : "Tailor resume"; }
+
+  // On a paid API, what this run will cost, from the real prompt, before it starts.
+  const costLine = el("p", { class: "note", "aria-live": "polite" });
+  let estTimer = 0, estSeq = 0;
+  function estimate() {
+    clearTimeout(estTimer);
+    if (!PAID.has(chosen)) { costLine.replaceChildren(); return; }
+    costLine.textContent = "Working out the cost…";
+    estTimer = setTimeout(async () => {
+      const seq = ++estSeq;
+      try {
+        const e = await api("/api/estimate", { backend: chosen, key: j.key, jd: jdBox.value, instruction: instr.value, role: tailorRole(j) });
+        if (seq !== estSeq || e.cost == null) return;
+        const month = new Date().toLocaleString(undefined, { month: "long" });
+        costLine.replaceChildren(
+          el("span", { text: `About ${money(e.cost)} for this resume on ${e.model} (${e.input_tokens.toLocaleString()} tokens in${e.exact_input ? "" : ", estimated"}, about ${e.output_tokens.toLocaleString()} out). ` }),
+          el("span", { style: e.over_budget ? "color:var(--warn)" : "", text: e.over_budget
+            ? `That's more than is left of your ${money(e.budget)} budget for ${month} (${money(e.spent)} used), so it won't run. Raise the budget in Settings.`
+            : `${money(e.spent)} of your ${money(e.budget)} budget used in ${month}.` }));
+      } catch (err) { if (seq === estSeq) costLine.textContent = err.message; }
+    }, 400);
+  }
 
   const result = el("div", { id: "tailorResult", style: "display:grid;gap:12px" });
   const start = () => {
@@ -1525,7 +1565,7 @@ function renderTailorForm(j, jd, history) {
   const refreshHistory = async () => { try { showHistory(await api("/api/history?key=" + encodeURIComponent(j.key))); } catch {} };
 
   $("tailorBody").replaceChildren(...[
-    el("p", { class: "section-h", text: "Model" }), opts,
+    el("p", { class: "section-h", text: "Model" }), opts, costLine,
     el("label", { class: "toggle" }, rewrite, " Reword bullets to use the job's keywords (otherwise only reorders, trims, and updates tech lines and skills)"),
     el("p", { class: "section-h", text: "Job description" + (jd ? " (saved from the posting, edit if needed)" : "") }), jdBox,
     el("label", { class: "section-h", for: "tailorInstr", text: "Your request for this version" }), instr,
@@ -1534,6 +1574,7 @@ function renderTailorForm(j, jd, history) {
     result, hist, tagHelp(),
   ].filter(Boolean));
   syncManual();
+  estimate();
 }
 
 // The role whose master resume tailors a job: the shown one, or with all
@@ -1634,7 +1675,8 @@ function renderResult(r, out, onAdjust) {
   out.replaceChildren(...[
     el("div", { class: "row" },
       el("b", { text: `${r.pages} page${r.pages === 1 ? "" : "s"}` }),
-      el("span", { class: "note", text: `${r.model} · ${r.seconds}s` }),
+      el("span", { class: "note", text: `${r.model} · ${r.seconds}s` + (r.cost != null ? ` · ${money(r.cost)}` : "")
+        + (r.strictness === "reword" ? " · reworded freely" : "") }),
       el("span", { class: "spacer", style: "flex:1" }),
       el("a", { class: "btn primary", href: "/files/" + r.pdf, target: "_blank", rel: "noopener", text: "Open PDF ↗" }),
       el("a", { class: "btn", href: "/files/" + r.tex, download: r.tex, text: "Download .tex" })),
@@ -1874,7 +1916,9 @@ function openPrefs() {
   const grid = el("div", { class: "prefs" }, ...[
     row("enabled", "Prepare jobs", chk("enabled")),
     row("threshold", "Minimum match", num("threshold", 0, 100), "New postings at or above this score are prepared."),
-    row("daily_cap", "ChatGPT runs a day", num("daily_cap", 0, 200), "Tailoring and drafting each count one. Keeps the queue inside your plan's limits."),
+    row("backend", "Prepare with", select(["chatgpt", "claude-code", "openai-api", "claude-api"].map((b) => [b, LABELS.backends[b] || b]), s.backend),
+      "API keys are billed per use and stop at their monthly budget."),
+    row("daily_cap", "Model runs a day", num("daily_cap", 0, 200), "Tailoring and drafting each count one. Keeps the queue inside your plan's limits."),
     row("skip_coverage", "Skip tailoring at", num("skip_coverage", 0, 100), "% of required keywords already on your master resume. Tailoring is also skipped when it could only reorder."),
     row("needs_sponsorship", "Skip no-sponsorship jobs", chk("needs_sponsorship"), "Leaves out postings that rule out sponsorship or OPT."),
     row("locations", "Locations", txt("locations", "e.g. Boston, New York, Seattle"), "Comma separated, matched against the job location. Empty means anywhere."),
@@ -1916,7 +1960,14 @@ const LABELS = {
     authorized: ["Citizen, permanent resident, or otherwise free to work", "No visa badges or filters."],
   },
   backends: { chatgpt: "ChatGPT (your ChatGPT plan)", "claude-code": "Claude (your Claude plan)",
-    "claude-api": "Claude API key (billed per use)", manual: "Paste into any chat" },
+    "openai-api": "OpenAI API key (billed per use)", "claude-api": "Anthropic API key (billed per use)", manual: "Paste into any chat" },
+  strictness: {
+    strict: ["Strict", "Bullets keep their wording. The model may only swap in the job's terms for things a bullet already says."],
+    reword: ["Reword", "Bullets may be rephrased and restructured to fit the job. Still never adds a skill, number or job-only term your resume doesn't back."],
+  },
+  tones: { casual: ["Casual", "Like a student talking to a person: contractions, plain words."],
+    neutral: ["Neutral", "Friendly and direct, neither chatty nor stiff."],
+    formal: ["Formal", "Polished and courteous, few contractions, still plain words."] },
   sources: { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", workday: "Workday", smartrecruiters: "SmartRecruiters",
     oracle: "Oracle", eightfold: "Eightfold", amazon: "Amazon", icims: "iCIMS" },
 };
@@ -2040,7 +2091,7 @@ function renderSettings() {
       el("label", { class: "toggle", for: "advToggle" }, adv, "Show advanced settings")),
     d.warnings.length ? el("div", { class: "errbox", role: "status" }, "Some saved settings were invalid and fell back to their defaults: ",
       el("ul", { style: "margin:6px 0 0;padding-left:18px" }, ...d.warnings.slice(0, 8).map((w) => el("li", { text: humanError(w) })))) : null,
-    rolesCard(), companiesCard(), tailoringCard(), appCard(),
+    rolesCard(), companiesCard(), tailoringCard(), aiCard(), voiceCard(), appCard(),
     advanced() ? scoringCard() : null, advanced() ? radarCard() : null, advanced() ? storageCard() : null,
     el("p", { class: "note", text: `Saved on this computer in ${d.file}. Nothing here leaves it.` })));
 }
@@ -2353,21 +2404,112 @@ function tailoringCard() {
   const backend = select(ch.backends.map((b) => [b, LABELS.backends[b] || b]), t.backend);
   const draft = select(ch.draft_backends.map((b) => [b, LABELS.backends[b] || b]), t.draft_backend);
   const pages = number(t.target_pages, 1, 3, 1);
-  const cmodel = text(t.claude_model);
+  const strict = radios("How much tailoring may change", "strictness",
+    ch.strictness.map((k) => [k, ...LABELS.strictness[k]]), t.strictness);
   const adv = advanced();
   return el("section", { class: "card", "aria-labelledby": "tailH" },
     el("h3", { id: "tailH", text: "Resume tailoring and the apply queue" }),
     el("div", { class: "fields" },
       field("Tailor with", backend, "The model picked first in the Tailor resume dialog."),
       field("Draft form answers with", draft, "Used by the browser extension when you don't pick one."),
-      adv ? field("Resume length (pages)", pages) : null,
-      adv ? field("Claude API model", cmodel) : null),
+      strict.node,
+      adv ? field("Resume length (pages)", pages) : null),
     el("div", { class: "rowline" },
       el("button", { type: "button", text: "Apply queue settings…", onclick: async () => { await loadQueue(); openPrefs(); } }),
       el("span", { class: "note", text: "Minimum match, daily model runs, notifications." })),
     saveBar("Save tailoring", () => postSettings({ tailoring: {
-      backend: backend.value, draft_backend: draft.value, ...(adv ? { target_pages: +pages.value, claude_model: cmodel.value } : {}),
+      backend: backend.value, draft_backend: draft.value, strictness: strict.get(), ...(adv ? { target_pages: +pages.value } : {}),
     } }).then(() => { SETTINGS.tailoring.backend = backend.value; store.del("backend"); })));
+}
+
+// API keys go to the helper once and are kept in the system keychain; the
+// page only ever learns whether one is saved.
+function aiCard() {
+  const d = cfg.data, prov = d.settings.providers, info = d.ai;
+  const month = new Date().toLocaleString(undefined, { month: "long" });
+  const usage = el("div", { style: "display:grid;gap:8px" });
+  const blocks = Object.entries(info.providers).map(([id, p]) => {
+    const keyIn = el("input", { type: "password", autocomplete: "off", spellcheck: "false",
+      placeholder: p.key.saved ? "A key is saved. Paste a new one to replace it." : "Paste your API key" });
+    const status = el("p", { class: "note", "aria-live": "polite", text: p.key.saved
+      ? { keychain: "Key saved in your system keychain.", file: "Key saved in a private file in your data folder.",
+          environment: "Using the key from your environment." }[p.key.where] || "Key saved."
+      : "No key yet." });
+    const saveKey = async (key) => {
+      status.textContent = key ? "Checking the key…" : "Removing…";
+      try {
+        const r = await api("/api/keys", { provider: id, key });
+        keyIn.value = "";
+        p.key = r.key;
+        status.textContent = r.warning || (key ? "Key saved and working." : r.key.saved ? "Removed. The key from your environment is still used." : "Removed.");
+        refreshStatus();
+      } catch (e) { status.textContent = e.message; }
+    };
+    const model = select(p.models.map((m) => [m.id, `${m.label}: $${m.input.toFixed(2)} in / $${m.output.toFixed(2)} out per million tokens`]), prov[id].model);
+    const budget = number(prov[id].monthly_budget, 0, 10000, 1);
+    const typ = info.typical[id === "openai" ? "openai-api" : "claude-api"];
+    return { id, model, budget, node: el("div", { class: "fields" },
+      el("div", { class: "field wide" }, el("label", { class: "section-h", text: `${p.name} API` }),
+        el("div", { class: "rowline" }, keyIn,
+          el("button", { type: "button", text: "Save key", onclick: () => keyIn.value.trim() ? saveKey(keyIn.value) : toast("Paste a key first.") }),
+          p.key.saved && p.key.where !== "environment" ? el("button", { type: "button", class: "ghost", text: "Remove key", onclick: () => saveKey("") }) : null),
+        status),
+      field("Model", model, typ ? `With your resume, about ${money(typ.tailor)} per tailored resume and ${money(typ.draft)} per drafted answer on the model saved now.` : ""),
+      field(`Monthly budget (US$)`, budget, `${money(p.spent)} used in ${month}. Paid calls stop when the next one would go over; 0 turns this key off.`)) };
+  });
+  const loadUsage = async () => {
+    usage.replaceChildren(progressLine("Loading usage…"));
+    try {
+      const u = await api("/api/usage");
+      const names = Object.fromEntries(Object.entries(info.providers).map(([k, v]) => [k, v.name]));
+      usage.replaceChildren(...[
+        u.months.length ? el("table", { class: "usage" },
+          el("thead", {}, el("tr", {}, ...["Month", "Provider", "Calls", "Tokens in", "Tokens out", "Cost"].map((h) => el("th", { text: h })))),
+          el("tbody", {}, ...u.months.map((m) => el("tr", {}, el("td", { text: m.month }), el("td", { text: names[m.provider] || m.provider }),
+            el("td", { text: String(m.calls) }), el("td", { text: m.input_tokens.toLocaleString() }),
+            el("td", { text: m.output_tokens.toLocaleString() }), el("td", { text: money(m.cost) })))))
+          : el("p", { class: "note", text: "No paid calls yet." }),
+        u.calls.length ? el("details", {}, el("summary", { text: `Latest ${u.calls.length} calls` }),
+          el("table", { class: "usage" }, el("tbody", {}, ...u.calls.map((c) => el("tr", {},
+            el("td", { text: fmt(c.created) }), el("td", { text: c.model }), el("td", { text: c.purpose }),
+            el("td", { text: c.state === "failed" ? "failed: " + c.error : c.state === "reserved" ? "running" : "" }),
+            el("td", { text: money(c.cost) })))))) : null].filter(Boolean));
+    } catch (e) { usage.replaceChildren(el("p", { class: "note", text: e.message })); }
+  };
+  return el("section", { class: "card", "aria-labelledby": "aiH" },
+    el("h3", { id: "aiH", text: "AI models" }),
+    el("p", { text: "ChatGPT and Claude logins run on your existing plan and cost nothing extra. With your own OpenAI or Anthropic API key you pay the provider per use instead; It gets easier shows the cost before each run and stops at your monthly budget. Keys stay on this computer and are never shown again after saving." }),
+    ...blocks.map((b) => b.node),
+    el("p", { class: "note", text: `Prices as published by the providers in ${info.prices_as_of}.` }),
+    saveBar("Save models and budgets", () => postSettings({ providers: Object.fromEntries(blocks.map((b) =>
+      [b.id, { model: b.model.value, monthly_budget: +b.budget.value }])) })),
+    el("div", { class: "rowline" }, el("button", { type: "button", text: "Show usage", onclick: loadUsage })),
+    usage);
+}
+
+function voiceCard() {
+  const v = cfg.data.settings.voice, ch = cfg.data.choices;
+  const tone = radios("Tone", "tone", ch.tones.map((k) => [k, ...LABELS.tones[k]]), v.tone);
+  const samples = Array.from({ length: ch.max_samples }, (_, i) => {
+    const t = el("textarea", { class: "jd", rows: "4", maxlength: String(ch.sample_max),
+      placeholder: i ? "Another sample (optional)" : "Paste something you wrote yourself: an old cover letter, an email, a post." });
+    t.value = v.samples[i] || "";
+    return t;
+  });
+  const banned = el("textarea", { class: "jd", rows: "8", spellcheck: "false" });
+  banned.value = v.banned_phrases.join("\n");
+  return el("section", { class: "card", "aria-labelledby": "voiceH" },
+    el("h3", { id: "voiceH", text: "Writing voice for drafted answers" }),
+    el("p", { text: "How answers to questions like “Why do you want to work here?” should sound. Used by the extension, the apply queue and every model." }),
+    el("div", { class: "fields" },
+      tone.node,
+      el("div", { class: "field wide" }, el("label", { text: "Your writing samples" }), ...samples,
+        el("p", { class: "note", text: "Drafts copy how you write (sentence length, word choice, how you open and close), never the content." })),
+      field("Phrases drafts must never use", banned, "One per line. * matches any ending (resonat*), ... any words in between (not only ... but also). Drafts that use one get rewritten.", { wide: true })),
+    el("div", { class: "rowline" },
+      saveBar("Save writing voice", () => postSettings({ voice: { tone: tone.get(),
+        samples: samples.map((t) => t.value.trim()).filter(Boolean), banned_phrases: lines(banned.value) } })),
+      el("button", { type: "button", text: "Restore the default phrases", onclick: () => { banned.value = cfg.data.ai.default_voice.join("\n"); } })));
 }
 
 function scoringCard() {

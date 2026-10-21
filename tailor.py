@@ -8,11 +8,16 @@ the result fits on one page.
 Backends, all returning the same JSON:
   chatgpt      OpenAI's `codex` CLI on your ChatGPT subscription login, no API key
   claude-code  the `claude` CLI on your Claude subscription login, no API key
-  claude-api   Anthropic API with ANTHROPIC_API_KEY (or an `ant auth` profile)
+  openai-api   the OpenAI API on the user's own key, billed per token (ai.py)
+  claude-api   the Anthropic API on the user's own key, billed per token (ai.py)
   manual       you paste the prompt into any chat and paste the JSON answer back
 
-draft_answer() writes a first draft of a free-text application answer with
-the same backends, except claude-api, which bills per token.
+The API backends go through ai.call_json(), which estimates each call's
+cost, keeps to the monthly budget and records what it really cost.
+
+draft_answer() and answer_questions() write answers to application
+questions with the same backends (manual paste is handled by the caller),
+in the voice the user set up in Settings.
 """
 
 from __future__ import annotations
@@ -26,8 +31,11 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+import ai
 import config
+import pricing
 import resume_tex as rt
+import voice
 
 def _tailoring(key: str, env: str | None = None):
     """settings.json "tailoring"; the JOBRADAR_* environment variables that
@@ -40,12 +48,12 @@ def runner_dir() -> Path:
     return config.store().path_for("resume_dir") / ".claude-runner"
 
 
-def claude_model() -> str:
-    return _tailoring("claude_model", "JOBRADAR_CLAUDE_MODEL")
-
-
 def target_pages() -> int:
     return _tailoring("target_pages")
+
+
+def strictness() -> str:
+    return _tailoring("strictness")
 
 
 MAX_TRIM_STEPS = 15
@@ -96,9 +104,29 @@ SCHEMA = {
     "additionalProperties": False,
 }
 
+# The rules that change at the "reword" strictness. The truthfulness rules
+# (1, 2, 6) are the same at every level, and resume_tex checks them in code.
+STRICT_RULES = (
+    """3. Keep what each bullet says the person did. You may rephrase a bullet so it uses the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs" when the job says that), or so that a verified skill for that entry is named explicitly. Lead with a strong past-tense verb. Avoid filler such as "leveraged", "spearheaded", "utilized", "synergy".""",
+    """5. A rewritten bullet must stay about the same length as the original (one printed line is about 110 characters). Only rewrite bullets where it clearly helps; leave the rest out of bullet_rewrites.""",
+)
+REWORD_RULES = (
+    """3. Keep what each bullet says the person did: the same work, scope, results and tools. Within that, you may rephrase a bullet freely: restructure the sentence, lead with the part that matters most for this job, pick different verbs, use the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs"), and name a verified skill for that entry explicitly. Lead with a strong past-tense verb. Avoid filler such as "leveraged", "spearheaded", "utilized", "synergy".""",
+    """5. A rewritten bullet may grow a little, at most about a third longer than the original (one printed line is about 110 characters); shorter is better. Rewrite any bullet a rephrase makes clearly better for this job; leave the rest out of bullet_rewrites.""",
+)
+assert all(r in INSTRUCTIONS for r in STRICT_RULES)
 
-class BackendError(Exception):
-    pass
+
+def instructions(level: str = "strict") -> str:
+    """The tailoring rules for a strictness level (config.STRICTNESS)."""
+    text = INSTRUCTIONS
+    if level == "reword":
+        for old, new in zip(STRICT_RULES, REWORD_RULES):
+            text = text.replace(old, new)
+    return text
+
+
+BackendError = ai.BackendError
 
 
 def _resume_block(res: rt.Resume) -> str:
@@ -196,19 +224,49 @@ def _codex_json(prompt: str, schema: dict) -> tuple[dict, str]:
 
 
 
-def run_claude_code(res: rt.Resume, job: dict, jd: str) -> tuple[dict, str]:
-    return _claude_json(INSTRUCTIONS + "\n\n" + _resume_block(res) + "\n\n" + _job_block(job, jd), SCHEMA)
+def ask(backend: str, system: str, user: str, schema: dict, purpose: str,
+        questions: int = 0, cache_system: bool = False) -> tuple[dict, str, float | None]:
+    """One structured answer from any backend but manual: (JSON, model,
+    cost in dollars, None for the subscription logins). `system` is what
+    stays the same across jobs (rules, resume), `user` the rest; the CLIs
+    get both as one prompt."""
+    if backend == "chatgpt":
+        raw, model = _codex_json(system + "\n\n" + user, schema)
+        return raw, model, None
+    if backend == "claude-code":
+        raw, model = _claude_json(system + "\n\n" + user, schema)
+        return raw, model, None
+    provider = pricing.API_BACKENDS.get(backend)
+    if not provider:
+        raise BackendError(f"Unknown backend {backend}")
+    raw, model, info = ai.call_json(provider, system, user, schema, purpose, questions, cache_system)
+    return raw, model, info["cost"]
 
 
-def run_chatgpt(res: rt.Resume, job: dict, jd: str) -> tuple[dict, str]:
-    return _codex_json("\n\n".join([INSTRUCTIONS, _resume_block(res), _job_block(job, jd)]), SCHEMA)
+def estimate(backend: str, system: str, user: str, purpose: str, questions: int = 0, exact: bool = True) -> dict | None:
+    """What a call would cost on a paid API; None for the subscription
+    logins and manual paste, which cost nothing extra."""
+    provider = pricing.API_BACKENDS.get(backend)
+    return ai.estimate(provider, system, user, purpose, questions, exact) if provider else None
 
 
-def build_manual_prompt(master_tex: str, job: dict, jd: str) -> str:
+def tailor_prompt(res: rt.Resume, job: dict, jd: str, level: str = "strict") -> tuple[str, str]:
+    """(system, user). The rules and resume are the same for every job, so
+    the API backends cache them; only the job block varies."""
+    return instructions(level) + "\n\n" + _resume_block(res), _job_block(job, jd)
+
+
+def estimate_tailor(master_tex: str, job: dict, jd: str, backend: str, level: str | None = None,
+                    exact: bool = True) -> dict | None:
+    system, user = tailor_prompt(rt.parse(master_tex), job, jd, level or strictness())
+    return estimate(backend, system, user, "tailor", exact=exact)
+
+
+def build_manual_prompt(master_tex: str, job: dict, jd: str, level: str | None = None) -> str:
     """Everything a chat model needs, for pasting into ChatGPT or Claude by hand."""
     res = rt.parse(master_tex)
     return "\n\n".join([
-        INSTRUCTIONS,
+        instructions(level or strictness()),
         "Reply with a single JSON object and nothing else, matching this JSON Schema:\n"
         + json.dumps(SCHEMA, indent=1),
         _resume_block(res),
@@ -232,53 +290,17 @@ def parse_manual_answer(text: str) -> dict:
     return data
 
 
-def run_claude_api(res: rt.Resume, job: dict, jd: str) -> tuple[dict, str]:
-    import anthropic
-    client = anthropic.Anthropic()
-    try:
-        # The resume and instructions are identical across jobs, so they sit in a
-        # cached system prefix; only the job description varies per request.
-        with client.beta.messages.stream(
-            model=claude_model(),
-            max_tokens=32000,
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-            system=[{"type": "text", "text": INSTRUCTIONS + "\n\n" + _resume_block(res),
-                     "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": _job_block(job, jd)}],
-            output_config={"effort": "medium",
-                           "format": {"type": "json_schema", "schema": SCHEMA}},
-        ) as stream:
-            msg = stream.get_final_message()
-    except anthropic.AuthenticationError as e:
-        raise BackendError("No valid Anthropic API key. Set ANTHROPIC_API_KEY or run `ant auth login`.") from e
-    except anthropic.RateLimitError as e:
-        raise BackendError("Anthropic rate limit hit. Wait a minute and try again.") from e
-    except anthropic.APIStatusError as e:
-        raise BackendError(f"Anthropic API error {e.status_code}: {e.message}") from e
-    except anthropic.APIConnectionError as e:
-        raise BackendError("Couldn't reach the Anthropic API.") from e
-    if msg.stop_reason == "refusal":
-        raise BackendError("Claude declined this request.")
-    if msg.stop_reason == "max_tokens":
-        raise BackendError("Claude's answer was cut off. Try again.")
-    text = next((b.text for b in msg.content if b.type == "text"), "")
-    try:
-        return json.loads(text), msg.model
-    except json.JSONDecodeError as e:
-        raise BackendError("Claude returned malformed output.") from e
-
-
-BACKENDS = {"chatgpt": run_chatgpt, "claude-code": run_claude_code, "claude-api": run_claude_api}
+BACKENDS = tuple(b for b in config.TAILOR_BACKENDS if b != "manual")
 
 
 # --------------------------------------------------------------------------
 # Writing voice for drafted answers
 #
-# Drafts should read like the applicant wrote them: a new grad talking to a
-# person, not a model summarizing a resume. The prompt sets the voice, and
-# style_problems() checks the result in code, because models drift back to
-# the same stock phrases whatever the prompt says.
+# Drafts should read like the applicant wrote them: a person talking to a
+# person, not a model summarizing a resume. The prompt sets the voice (the
+# tone, the applicant's own writing samples, the banned phrases from
+# Settings), and style_problems() checks the result in code, because models
+# drift back to the same stock phrases whatever the prompt says.
 
 ABOUT_MAX = 4000
 
@@ -286,34 +308,70 @@ ABOUT_MAX = 4000
 def about_path() -> Path:
     return config.store().path_for("resume_dir") / "about_me.txt"
 
-VOICE = """How to write it
-- Sound like a real new-grad student talking to a person: plain everyday words, contractions (I'm, I've, it's), a mix of short and longer sentences, and a bit of real personality. It should read like the applicant typed it, not like a cover letter template.
-- Lead with an honest, personal reason when ABOUT THE APPLICANT gives one that fits (an interest, something they care about, how they use the product). Never invent interests, hobbies, feelings or stories that aren't written there.
+
+TONE_RULES = {
+    "casual": "- Sound like a real new-grad student talking to a person: plain everyday words, contractions (I'm, I've, it's), a mix of short and longer sentences, and a bit of real personality. It should read like the applicant typed it, not like a cover letter template.",
+    "neutral": "- Sound like a thoughtful applicant writing to a person: plain everyday words, some contractions, a mix of short and longer sentences. Friendly and direct, neither chatty nor stiff. It should read like the applicant typed it, not like a cover letter template.",
+    "formal": "- Write in a polished, professional register: complete sentences, few contractions, courteous and precise. Still use plain words instead of corporate buzzwords, and keep it specific and personal. It should read like the applicant wrote it, not like a cover letter template.",
+}
+
+VOICE_BODY = """- Lead with an honest, personal reason when ABOUT THE APPLICANT gives one that fits (an interest, something they care about, how they use the product). Never invent interests, hobbies, feelings or stories that aren't written there.
 - Mention at most one or two things from the resume, described the way you'd tell a friend what you built ("I built a chatbot that remembers past conversations"), not as a resume line full of tool names. Name a tool only if the question or the job really cares about it.
-- Don't restate the company's mission or the posting back to them, and don't explain what their product does.
-- Never use these or anything like them: "appeals to me", "resonates", "aligns with", "connects to", "makes that connection", "concrete", "I would bring", "I'd bring", "leverage", "passionate", "thrilled", "excited to", "eager to", "deeply", "at the intersection of", "drive impact", "cutting-edge", "seamless", "robust", "fast-paced", "dynamic", "I am confident", "not only ... but also", "In [project], I built", "This experience taught me", "Ultimately".
-- Also avoid cover-letter stock lines: "offers the chance", "the opportunity to", "a big reason", "this particular role", "I'd like to apply", "matters to me", "take an idea from", "through to", "grounded", "meaningful", "impactful", "contribute to".
-- No em dashes, no semicolons, no lists of three adjectives or three items in a row.
+- Don't restate the company's mission or the posting back to them, and don't explain what their product does."""
+
+# The wording the default banned-phrase list is written into the prompt
+# with; an edited list is listed phrase by phrase instead.
+DEFAULT_BANNED_RULES = """- Never use these or anything like them: "appeals to me", "resonates", "aligns with", "connects to", "makes that connection", "concrete", "I would bring", "I'd bring", "leverage", "passionate", "thrilled", "excited to", "eager to", "deeply", "at the intersection of", "drive impact", "cutting-edge", "seamless", "robust", "fast-paced", "dynamic", "I am confident", "not only ... but also", "In [project], I built", "This experience taught me", "Ultimately".
+- Also avoid cover-letter stock lines: "offers the chance", "the opportunity to", "a big reason", "this particular role", "I'd like to apply", "matters to me", "take an idea from", "through to", "grounded", "meaningful", "impactful", "contribute to"."""
+
+VOICE_END = """- No em dashes, no semicolons, no lists of three adjectives or three items in a row.
 - Don't repeat a word (other than small common words) and use the company or product name at most twice.
 
 Example of the difference (different company, same idea):
 Too machine-written: "Notion's mission resonates with me because it empowers teams to collaborate seamlessly. In my capstone project, I leveraged React and Node.js to build a robust task-management platform, and I would bring this full-stack experience to Notion's dynamic team."
 Sounds like a person: "I've used Notion for every class since my first semester, so I already have opinions about what it gets right. For my capstone I built a small task tracker in React and Node, and the hardest part was making edits feel instant when two people were working at once. I'd love to work on that kind of problem with people who care about it as much as I do.\""""
 
-# Stock phrasing that marks text as machine-written. Checked case-insensitively.
-AI_TELLS = [
-    r"appeals? to me", r"resonat\w+", r"aligns? (?:with|perfectly)", r"connects? (?:to|with)",
-    r"make[sd]? that connection", r"\bconcrete(?:ly)?\b", r"\bI(?:'d| would) bring\b", r"\bleverag\w+",
-    r"\bpassionat\w+", r"\bthrilled\b", r"\bexcited to\b", r"\beager to\b", r"\bdeeply\b",
-    r"at the intersection of", r"drive (?:real )?impact", r"cutting[- ]edge", r"\bseamless(?:ly)?\b",
-    r"\brobust\b", r"fast[- ]paced", r"\bdynamic\b", r"I am confident", r"not only\b.{0,60}\bbut also",
-    r"\bthis experience (?:taught|gave|showed)", r"\bultimately\b", r"\bfurthermore\b", r"\bmoreover\b",
-    r"\bin today's\b", r"\bunique opportunity\b", r"\bsynergy\b", r"\bend-to-end\b",
-    r"offers? (?:me )?the chance", r"\bthe opportunity to\b", r"\ba big reason\b", r"\bthis particular role\b",
-    r"\bI'd like to apply\b", r"\bmatters? to me\b", r"take an idea from", r"\bthrough to\b",
-    r"\bgrounded\b", r"\bmeaningful\b", r"\bimpactful\b", r"\bcontribute to\b",
-]
-_TELL_RX = [re.compile(p, re.I) for p in AI_TELLS]
+MAX_BANNED_IN_PROMPT = 150
+
+
+def voice_settings() -> dict:
+    return config.store().section("voice")
+
+
+def voice_rules(v: dict | None = None) -> str:
+    """The "How to write it" block for the user's tone and banned phrases."""
+    v = v or voice_settings()
+    banned = list(v["banned_phrases"])
+    if tuple(banned) == voice.DEFAULT_BANNED:
+        banned_rules = DEFAULT_BANNED_RULES
+    elif banned:
+        listed = ", ".join(f'"{p}"' for p in banned[:MAX_BANNED_IN_PROMPT])
+        banned_rules = (f"- Never use these phrases or anything like them: {listed}. "
+                        '("*" stands for any word ending and "..." for any words in between.)')
+    else:
+        banned_rules = ""
+    tone = v["tone"] if v["tone"] in TONE_RULES else "casual"
+    end = VOICE_END
+    if tone != "casual":
+        end += "\n(The example shows the idea, not the tone. Keep to the tone described at the top.)"
+    return "How to write it\n" + "\n".join(x for x in (TONE_RULES[tone], VOICE_BODY, banned_rules, end) if x)
+
+
+# The default voice, as the prompts used it before voice settings existed.
+VOICE = voice_rules({"tone": "casual", "banned_phrases": list(voice.DEFAULT_BANNED), "samples": []})
+
+
+def samples_block(v: dict | None = None) -> str:
+    """The applicant's own writing, for drafts to imitate."""
+    samples = [x.strip() for x in (v or voice_settings())["samples"] if x.strip()]
+    if not samples:
+        return ""
+    body = "\n\n".join(f"--- sample {i} ---\n{x[:voice.SAMPLE_MAX]}" for i, x in enumerate(samples, 1))
+    return ("WRITING SAMPLES (the applicant wrote these. Match how they write: sentence length, word choice, "
+            "how formal they are, how they open and close. Don't copy their sentences, and use a fact from them "
+            "only if the resume or ABOUT THE APPLICANT says it too)\n" + body)
+
+
 _STOP = set("""a an the and or but if of to in on at for with from by as is are was were be been being it its
 this that these those i i'm i've i'd me my we our you your they their them he she his her there here what
 which who whom how why when where so than then too very just also not no can could would should will
@@ -334,10 +392,13 @@ def save_about_me(text: str) -> None:
     about_path().write_text(text.strip()[:ABOUT_MAX] + "\n", encoding="utf-8")
 
 
-def style_problems(text: str, company: str = "") -> list[str]:
-    """Concrete reasons a draft reads as machine-written, for a rewrite pass."""
+def style_problems(text: str, company: str = "", banned: list[str] | tuple[str, ...] | None = None) -> list[str]:
+    """Concrete reasons a draft reads as machine-written, for a rewrite pass.
+    `banned` defaults to the user's banned-phrase list in Settings."""
+    if banned is None:
+        banned = voice_settings()["banned_phrases"]
     problems = []
-    for rx in _TELL_RX:
+    for rx in voice.compile_phrases(tuple(banned)):
         m = rx.search(text)
         if m:
             problems.append(f'uses the stock phrase "{m.group(0)}"')
@@ -373,11 +434,12 @@ def style_problems(text: str, company: str = "") -> list[str]:
     return problems
 
 
-REWRITE_INSTRUCTIONS = """Rewrite each answer below so it sounds like the applicant wrote it themselves. Keep every fact exactly as it is and add no new ones. Fix the listed problems and follow the voice rules. Keep each answer about the same length and within its character limit.
+def rewrite_instructions(v: dict | None = None) -> str:
+    return ("Rewrite each answer below so it sounds like the applicant wrote it themselves. Keep every fact exactly "
+            "as it is and add no new ones. Fix the listed problems and follow the voice rules. Keep each answer "
+            "about the same length and within its character limit.\n\n" + voice_rules(v)
+            + '\n\nReturn one entry per id with the rewritten text in "answer".')
 
-""" + VOICE + """
-
-Return one entry per id with the rewritten text in "answer"."""
 
 REWRITE_SCHEMA = {
     "type": "object",
@@ -390,41 +452,44 @@ REWRITE_SCHEMA = {
 }
 
 
-def humanize(items: list[dict], backend: str, company: str = "") -> list[dict]:
+def humanize(items: list[dict], backend: str, company: str = "", costs: list[float] | None = None) -> list[dict]:
     """One rewrite pass over answers that still read as machine-written.
 
     items: [{"id", "answer", "max_chars"}]. Returns the same list with
     rewritten answers where the rewrite came back cleaner, plus "style_notes"
-    listing whatever problems remain so the dashboard can point them out."""
-    flagged = [dict(i, problems=style_problems(i["answer"], company)) for i in items]
+    listing whatever problems remain so the dashboard can point them out.
+    A paid rewrite's cost is appended to `costs`."""
+    v = voice_settings()
+    banned = v["banned_phrases"]
+    flagged = [dict(i, problems=style_problems(i["answer"], company, banned)) for i in items]
     todo = [i for i in flagged if i["problems"]]
     if todo:
         lines = []
         for i in todo:
             limit = f" (at most {i['max_chars']} characters)" if i.get("max_chars") else ""
             lines.append(f"[id {i['id']}]{limit}\nproblems: {'; '.join(i['problems'])}\nanswer: {i['answer']}")
-        prompt = REWRITE_INSTRUCTIONS + "\n\nANSWERS\n" + "\n\n".join(lines)
+        material = "\n\n".join(x for x in (samples_block(v), "ANSWERS\n" + "\n\n".join(lines)) if x)
         try:
-            if backend == "chatgpt":
-                raw, _ = _codex_json(prompt, REWRITE_SCHEMA)
-            else:
-                raw, _ = _claude_json(prompt, REWRITE_SCHEMA)
+            raw, _, cost = ask(backend, rewrite_instructions(v), material, REWRITE_SCHEMA, "rewrite")
+            if cost is not None and costs is not None:
+                costs.append(cost)
         except BackendError:
+            # The budget ran out or the model failed: keep the first draft and its notes.
             raw = {}
         better = {str(a.get("id")): str(a.get("answer", "")).strip() for a in (raw or {}).get("answers", [])}
         for i in todo:
             new = _fit(better.get(str(i["id"]), ""), int(i.get("max_chars") or 0))
             # Keep the rewrite only if it really is cleaner.
-            if new and len(style_problems(new, company)) < len(i["problems"]):
+            if new and len(style_problems(new, company, banned)) < len(i["problems"]):
                 i["answer"] = new
-                i["problems"] = style_problems(new, company)
+                i["problems"] = style_problems(new, company, banned)
     return [dict({k: v for k, v in i.items() if k != "problems"}, style_notes=i["problems"]) for i in flagged]
 
 
 # --------------------------------------------------------------------------
 # Drafting answers to application questions ("Why this company?")
 
-DRAFT_INSTRUCTIONS = """You draft one answer to a question on a job application, written as the applicant, using their resume and the job posting. The applicant reviews and edits it before sending.
+DRAFT_RULES = """You draft one answer to a question on a job application, written as the applicant, using their resume and the job posting. The applicant reviews and edits it before sending.
 
 Rules
 1. Use only facts from the resume and from ABOUT THE APPLICANT. Never invent employers, projects, numbers, dates, skills, interests or personal details. If neither supports something the question asks about, answer honestly with what they do show instead of making something up.
@@ -433,7 +498,7 @@ Rules
 4. Length: {length}.
 5. Put only the answer text in the "answer" field.
 
-""" + VOICE
+"""
 
 DRAFT_SCHEMA = {
     "type": "object",
@@ -442,13 +507,23 @@ DRAFT_SCHEMA = {
     "additionalProperties": False,
 }
 
-# Subscription logins only. claude-api bills per token, so drafting never
-# uses it. Same list as config.DRAFT_BACKENDS.
+# Every backend but manual paste, which the caller handles. Same list as
+# config.DRAFT_BACKENDS; the API ones are held to their monthly budget.
 DRAFT_BACKENDS = config.DRAFT_BACKENDS
+
+
+def _about_and_samples(parts: list[str], v: dict) -> None:
+    about = about_me()
+    if about:
+        parts.append(f"ABOUT THE APPLICANT (their own words: interests and motivations you may use)\n{about}")
+    samples = samples_block(v)
+    if samples:
+        parts.append(samples)
 
 
 def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0) -> tuple[str, str]:
     """(instructions, material) for drafting one answer."""
+    v = voice_settings()
     length = (f"at most {max_chars} characters, including spaces; aim for about {int(max_chars * 0.8)}"
               if max_chars else "about 90 to 130 words in one or two short paragraphs, or shorter if the question asks for something brief")
     parts = [f"QUESTION\n{question.strip()}"]
@@ -459,18 +534,22 @@ def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: st
     if jd.strip():
         parts.append(f"JOB POSTING\n{jd.strip()[:20000]}")
     parts.append(f"RESUME\n{rt.plain(master_tex)}")
-    about = about_me()
-    if about:
-        parts.append(f"ABOUT THE APPLICANT (their own words: interests and motivations you may use)\n{about}")
-    # .replace, not .format: the voice rules contain literal braces-free text but
-    # may gain some, and only {length} is a placeholder.
-    return DRAFT_INSTRUCTIONS.replace("{length}", length), "\n\n".join(parts)
+    _about_and_samples(parts, v)
+    # .replace, not .format: only {length} is a placeholder, and the voice
+    # rules (the user's own phrases among them) may contain braces.
+    return DRAFT_RULES.replace("{length}", length) + voice_rules(v), "\n\n".join(parts)
 
 
 def build_draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0) -> str:
     """The whole drafting prompt, for pasting into a chat by hand."""
     instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars)
     return instructions.replace('Put only the answer text in the "answer" field.', "Reply with only the answer text.") + "\n\n" + material
+
+
+def estimate_draft(master_tex: str, job: dict, question: str, context: str, jd: str, backend: str,
+                   max_chars: int = 0, exact: bool = True) -> dict | None:
+    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars)
+    return estimate(backend, instructions, material, "draft", exact=exact)
 
 
 def _fit(text: str, max_chars: int) -> str:
@@ -482,7 +561,7 @@ def _fit(text: str, max_chars: int) -> str:
     return (cut[:end + 1] if end > max_chars // 2 else cut.rsplit(" ", 1)[0]).strip()
 
 
-ANSWERS_INSTRUCTIONS = """You fill in the remaining questions on one job application, as the applicant, using their resume, their profile and the job posting. The applicant reviews every answer before submitting.
+ANSWERS_RULES = """You fill in the remaining questions on one job application, as the applicant, using their resume, their profile and the job posting. The applicant reviews every answer before submitting.
 
 Rules
 1. Never invent experience, employers, projects, numbers, skills, awards, dates, interests or personal details. Use only what the resume, the profile and ABOUT THE APPLICANT say, plus plain inferences from them (someone living in Boston is not a California resident; a May 2026 graduate can start around June 2026; someone whose resume doesn't list this company has not worked there).
@@ -491,7 +570,7 @@ Rules
 4. Short text questions get short answers (a date, a year, a name, a few words). Open questions get a specific answer for this company and role: about 80 to 150 words unless the question asks for less, and never more than its character limit. First person; no greeting, no headings. Write open answers by the voice rules below.
 5. Return one entry per question id.
 
-""" + VOICE
+"""
 
 ANSWERS_SCHEMA = {
     "type": "object",
@@ -508,7 +587,9 @@ PROFILE_FOR_ANSWERS = ("firstName", "lastName", "preferredName", "location", "co
                        "school", "degree", "major", "gradDate", "languages", "linkedin", "github", "portfolio")
 
 
-def answers_prompt(master_tex: str, job: dict, profile: dict, questions: list[dict], jd: str) -> str:
+def answers_prompt(master_tex: str, job: dict, profile: dict, questions: list[dict], jd: str) -> tuple[str, str]:
+    """(instructions, material) for answering several questions at once."""
+    v = voice_settings()
     prof = "\n".join(f"{k}: {str(profile.get(k, '')).strip()}" for k in PROFILE_FOR_ANSWERS if str(profile.get(k, "")).strip())
     qs = []
     for q in questions:
@@ -521,29 +602,35 @@ def answers_prompt(master_tex: str, job: dict, profile: dict, questions: list[di
         if q.get("options"):
             line += "\n    options: " + " | ".join(q["options"])
         qs.append(line)
-    parts = [ANSWERS_INSTRUCTIONS, f"JOB: {job.get('title', '')} at {job.get('company', '')}"]
+    parts = [f"JOB: {job.get('title', '')} at {job.get('company', '')}"]
     if jd.strip():
         parts.append(f"JOB POSTING\n{jd.strip()[:15000]}")
     parts += [f"PROFILE\n{prof}", f"RESUME\n{rt.plain(master_tex)}"]
-    about = about_me()
-    if about:
-        parts.append(f"ABOUT THE APPLICANT (their own words: interests and motivations you may use)\n{about}")
+    _about_and_samples(parts, v)
     parts.append("QUESTIONS\n" + "\n".join(qs))
-    return "\n\n".join(parts)
+    return ANSWERS_RULES + voice_rules(v), "\n\n".join(parts)
+
+
+def estimate_answers(master_tex: str, job: dict, profile: dict, questions: list[dict], jd: str, backend: str,
+                     exact: bool = True) -> dict | None:
+    instructions, material = answers_prompt(master_tex, job, profile, questions, jd)
+    return estimate(backend, instructions, material, "answers", questions=len(questions), exact=exact)
+
+
+def _total(costs: list[float]) -> float | None:
+    return round(sum(costs), 4) if costs else None
 
 
 def answer_questions(master_tex: str, job: dict, profile: dict, questions: list[dict], jd: str, backend: str) -> dict:
     """Answers for several application questions in one model call."""
     if backend not in DRAFT_BACKENDS:
-        raise BackendError(f"Answering questions can't use {backend}. Choose ChatGPT or Claude.")
+        raise BackendError(f"Answering questions can't use {backend}.")
     if not questions:
-        return {"answers": [], "backend": backend, "model": "", "seconds": 0}
+        return {"answers": [], "backend": backend, "model": "", "seconds": 0, "cost": None}
     started = time.time()
-    prompt = answers_prompt(master_tex, job, profile, questions, jd)
-    if backend == "chatgpt":
-        raw, model = _codex_json(prompt, ANSWERS_SCHEMA)
-    else:
-        raw, model = _claude_json(prompt, ANSWERS_SCHEMA)
+    instructions, material = answers_prompt(master_tex, job, profile, questions, jd)
+    raw, model, cost = ask(backend, instructions, material, ANSWERS_SCHEMA, "answers", questions=len(questions))
+    costs = [cost] if cost is not None else []
     byid = {str(q["id"]): q for q in questions}
     out = []
     for a in (raw or {}).get("answers", []):
@@ -565,32 +652,31 @@ def answer_questions(master_tex: str, job: dict, profile: dict, questions: list[
     long = [{"id": a["id"], "answer": a["answer"], "max_chars": byid[a["id"]].get("max_chars")}
             for a in out if a["id"] in open_ids and len(a["answer"]) > 120]
     if long:
-        fixed = {i["id"]: i for i in humanize(long, backend, job.get("company", ""))}
+        fixed = {i["id"]: i for i in humanize(long, backend, job.get("company", ""), costs)}
         for a in out:
             if a["id"] in fixed:
                 a["answer"] = fixed[a["id"]]["answer"]
                 a["style_notes"] = fixed[a["id"]]["style_notes"]
-    return {"answers": out, "backend": backend, "model": model, "seconds": round(time.time() - started, 1)}
+    return {"answers": out, "backend": backend, "model": model, "seconds": round(time.time() - started, 1),
+            "cost": _total(costs)}
 
 
 def draft_answer(master_tex: str, job: dict, question: str, context: str, jd: str,
                  backend: str, max_chars: int = 0) -> dict:
     if backend not in DRAFT_BACKENDS:
-        raise BackendError(f"Drafting can't use {backend}. Choose ChatGPT or Claude.")
+        raise BackendError(f"Drafting can't use {backend}.")
     if not question.strip():
         raise BackendError("No question to answer.")
     started = time.time()
     instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars)
-    if backend == "chatgpt":
-        raw, model = _codex_json(instructions + "\n\n" + material, DRAFT_SCHEMA)
-    else:
-        raw, model = _claude_json(instructions + "\n\n" + material, DRAFT_SCHEMA)
+    raw, model, cost = ask(backend, instructions, material, DRAFT_SCHEMA, "draft")
+    costs = [cost] if cost is not None else []
     answer = _fit(str((raw or {}).get("answer", "")), max_chars)
     if not answer:
         raise BackendError("The model returned an empty answer. Try again.")
-    checked = humanize([{"id": "1", "answer": answer, "max_chars": max_chars}], backend, job.get("company", ""))[0]
+    checked = humanize([{"id": "1", "answer": answer, "max_chars": max_chars}], backend, job.get("company", ""), costs)[0]
     return {"answer": checked["answer"], "style_notes": checked["style_notes"], "backend": backend,
-            "model": model, "seconds": round(time.time() - started, 1)}
+            "model": model, "seconds": round(time.time() - started, 1), "cost": _total(costs)}
 
 
 _LOGIN_CACHE: dict[str, tuple[float, bool]] = {}
@@ -626,7 +712,9 @@ def backend_status() -> dict:
     return {"claude_code": _signed_in("claude", ["claude", "auth", "status"], _claude_logged_in),
             "chatgpt": _signed_in("codex", ["codex", "login", "status"],
                                   lambda p: p.returncode == 0 and "logged in" in (p.stdout + p.stderr).lower()),
-            "claude_api": bool(os.environ.get("ANTHROPIC_API_KEY"))}
+            # A key saved in Settings or set in the environment.
+            "openai_api": ai.key_status("openai")["saved"],
+            "claude_api": ai.key_status("anthropic")["saved"]}
 
 
 # --------------------------------------------------------------------------
@@ -665,21 +753,25 @@ def _slug(s: str) -> str:
 
 
 def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
-           rewrite_bullets: bool = True, manual_answer: str | None = None) -> dict:
+           rewrite_bullets: bool = True, manual_answer: str | None = None, level: str | None = None) -> dict:
+    """`level` is the strictness (config.STRICTNESS), the user's setting by default."""
     if backend != "manual" and backend not in BACKENDS:
         raise BackendError(f"Unknown backend {backend}")
     if len(jd.strip()) < 200:
         raise BackendError("The job description is too short to tailor against. Paste the full posting.")
+    level = level or strictness()
     started = time.time()
     res = rt.parse(master_tex)
+    cost = None
     if backend == "manual":
         raw, model = parse_manual_answer(manual_answer or ""), "pasted answer"
     else:
-        raw, model = BACKENDS[backend](res, job, jd)
+        system, user = tailor_prompt(res, job, jd, level)
+        raw, model, cost = ask(backend, system, user, SCHEMA, "tailor", cache_system=True)
     if not rewrite_bullets:
         raw = {**raw, "bullet_rewrites": []}
 
-    spans, changes, state = rt.plan_edits(res, raw, jd)
+    spans, changes, state = rt.plan_edits(res, raw, jd, level)
     tex = rt.apply(master_tex, spans)
 
     # Compile; if a model edit broke LaTeX, fall back to selection-only edits.
@@ -753,4 +845,6 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
         "changes": [asdict(c) for c in final_changes],
         "master_digest": res.digest,
         "instruction": clean_instruction(job.get("instruction")),
+        "strictness": level,
+        "cost": cost,
     }

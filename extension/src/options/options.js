@@ -150,9 +150,13 @@ $("helperCheck").addEventListener("click", async () => {
   const r = await api.runtime.sendMessage({ type: "jr:helperStatus" });
   if (!r || r.error) { out.textContent = (r && r.error) || "No answer from the helper."; return; }
   const b = r.backends || {};
+  const c = r.costs || {};
+  const cost = (id) => (c[id] ? ", about " + (c[id].draft < 0.01 ? "under 1¢" : "$" + c[id].draft.toFixed(2)) + " a draft" : "");
   const parts = [
     "ChatGPT " + (b.chatgpt ? "signed in" : "not signed in"),
     "Claude " + (b.claude_code ? "signed in" : "not signed in"),
+    "OpenAI key " + (b.openai_api ? "saved" + cost("openai-api") : "not added"),
+    "Anthropic key " + (b.claude_api ? "saved" + cost("claude-api") : "not added"),
   ];
   out.textContent = "Running. " + parts.join(", ") + "." + (r.master ? "" : " Upload your master .tex resume in the dashboard to enable drafts.");
 });
