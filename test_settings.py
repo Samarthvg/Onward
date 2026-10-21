@@ -39,7 +39,7 @@ class DefaultsTests(Tmp):
         self.assertEqual(d["version"], config.VERSION)
         self.assertEqual((d["radar"]["dashboard_days"], d["radar"]["fetch_days"], d["radar"]["stale_after_days"],
                           d["radar"]["purge_after_days"], d["radar"]["workers"], d["radar"]["timeout"]),
-                         (30, 7, 2, 45, 24, 25))
+                         (365, 7, 2, 45, 24, 25))
         self.assertEqual(d["paths"], {"db": "jobs.db", "resume_dir": "resume", "data_dir": "data",
                                       "dashboard": "dashboard.html", "logs_dir": ""})
         self.assertEqual(d["queue"], {
@@ -93,7 +93,7 @@ class ValidationTests(Tmp):
                     "queue": {"threshold": -5, "backend": "gpt-9", "quiet_start": "25:00"},
                     "tailoring": {"backend": "ollama"}, "nonsense": 1})
         s = self.store().load()
-        self.assertEqual(s["radar"]["dashboard_days"], 30)           # wrong type: default
+        self.assertEqual(s["radar"]["dashboard_days"], 365)          # wrong type: default
         self.assertEqual(s["radar"]["workers"], 64)                  # out of range: clamped
         self.assertTrue(s["radar"]["simplify_feed"])
         self.assertEqual(s["queue"]["threshold"], 0)
@@ -307,9 +307,9 @@ class ShowVsFetchWindowTests(Tmp):
     """dashboard_days (what's shown) split from fetch_days (how far back
     paged sources read), so older open jobs show without deeper fetching."""
 
-    def test_old_default_moves_to_30_and_chosen_values_stay(self):
+    def test_old_default_moves_to_a_year_and_chosen_values_stay(self):
         self.write({"version": 4, "radar": {"dashboard_days": 7}})
-        self.assertEqual(self.store().load()["radar"]["dashboard_days"], 30)
+        self.assertEqual(self.store().load()["radar"]["dashboard_days"], 365)
         self.write({"version": 4, "radar": {"dashboard_days": 3}})
         self.assertEqual(self.store().load()["radar"]["dashboard_days"], 3)
 

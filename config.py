@@ -321,7 +321,7 @@ SCHEMA = Obj({
         # How old a posting may be and still be shown. Separate from fetch_days:
         # boards like Greenhouse return every open job anyway, and older open
         # jobs (an entry-level role posted 6 weeks ago) are still worth seeing.
-        "dashboard_days": Int(30, 1, 90),
+        "dashboard_days": Int(365, 1, 3650),
         # How far back paged sources (Workday, Oracle, the SimplifyJobs feed)
         # read each run. Deeper means many more requests per run.
         "fetch_days": Int(7, 1, 60),
@@ -484,12 +484,13 @@ def _v4(data: dict, home: Path) -> dict:
 
 
 def _v5(data: dict, home: Path) -> dict:
-    """dashboard_days split into what's shown (now 30 by default) and how far
-    back paged sources fetch (fetch_days, 7). Someone on the old default of
-    7 gets the new one; a value they chose themselves is kept."""
+    """dashboard_days split into what's shown (now a year, so "All open"
+    really means every open posting) and how far back paged sources fetch
+    (fetch_days, 7). Someone on the old default of 7 gets the new one; a
+    value they chose themselves is kept."""
     r = data.get("radar")
     if isinstance(r, dict) and r.get("dashboard_days") == 7:
-        r["dashboard_days"] = 30
+        r["dashboard_days"] = 365
     return data
 
 

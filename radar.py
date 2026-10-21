@@ -63,7 +63,7 @@ SIMPLIFY_URL = (
 )
 SIMPLIFY_VERIFY_URL = "https://github.com/SimplifyJobs/New-Grad-Positions/blob/dev/.github/scripts/listings.json"
 
-DASHBOARD_DAYS = 30         # postings older than this are not shown
+DASHBOARD_DAYS = 365        # postings older than this are not shown
 FETCH_DAYS = 7              # how far back paged sources (Workday, Oracle, the feed) read
 STALE_AFTER_DAYS = 2        # unseen for this long means the posting was closed
 PURGE_AFTER_DAYS = 45       # rows older than this are deleted
@@ -407,8 +407,11 @@ class HostGate:
                 raise Throttled(f"{url} (host asked to pause {self.paused_until - now:.0f}s)")
             start = max(now, self.next_at, self.paused_until)
             self.next_at = start + self.interval
-        if start > now:
-            time.sleep(start - now)
+        # time.sleep can wake a little early (Windows clocks tick every ~15 ms),
+        # so keep sleeping until the slot really starts: a site's crawl delay
+        # is a promise, not an estimate.
+        while (left := start - time.monotonic()) > 0:
+            time.sleep(left)
 
     def pause(self, seconds: float) -> None:
         with self.lock:
