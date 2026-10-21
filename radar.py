@@ -5,6 +5,11 @@ static dashboard of the freshest roles.
 Usage:
     python radar.py            fetch, store, render dashboard.html
     python radar.py --check    list board tokens that no longer resolve
+    python radar.py --render   rebuild dashboard.html from stored jobs
+
+Only one run fetches at a time (radar.lock in the data folder); a run that
+finds another one going exits with SKIPPED. With --status-file, a run keeps
+a small JSON file of its progress for the app's scheduler to show.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ from pathlib import Path
 
 import config
 import filters
+import oslock
 import reqparse
 # Title and location rules live in filters.py with the user's roles.
 from filters import (ENTRY_HINT, NON_US, NOT_ENTRY, REMOTE, US_CITIES, US_MARKER,  # noqa: F401
@@ -1525,7 +1531,8 @@ class FetchResult:
 
 
 def fetch_all(companies: dict[str, list[str]], skip: set[str] = frozenset(),
-              simplify: bool = True) -> FetchResult:
+              simplify: bool = True, progress: Callable[[int, int, int], None] | None = None) -> FetchResult:
+    """progress(boards done, boards in all, jobs so far) is called as boards finish."""
     tasks = [(src, tok) for src, toks in companies.items() if src in FETCHERS
              for tok in dict.fromkeys(toks) if f"{src}:{tok}" not in skip]
     if simplify:
@@ -1536,7 +1543,7 @@ def fetch_all(companies: dict[str, list[str]], skip: set[str] = frozenset(),
             pool.submit(fetch_simplify if src == "simplify" else FETCHERS[src], tok): (src, tok)
             for src, tok in tasks
         }
-        for fut in as_completed(futures):
+        for done, fut in enumerate(as_completed(futures), 1):
             src, tok = futures[fut]
             try:
                 res.jobs.extend(fut.result())
@@ -1546,6 +1553,8 @@ def fetch_all(companies: dict[str, list[str]], skip: set[str] = frozenset(),
                 if isinstance(e, Throttled):
                     res.throttled.append(f"{src}:{tok}")
                 res.failed.append(f"{src}:{tok} ({type(e).__name__}: {e})")
+            if progress:
+                progress(done, len(tasks), len(res.jobs))
     res.missing.sort()
     res.failed.sort()
     return res
@@ -2007,7 +2016,8 @@ def public_settings(s: dict) -> dict:
     switcher and visa badges, scoring weights, tailoring defaults, notices.
     No paths or notification topics."""
     return {"roles": s["roles"], "active_role": s["active_role"], "scoring": s["scoring"],
-            "tailoring": {k: s["tailoring"][k] for k in ("backend", "draft_backend")}, "notices": s["notices"]}
+            "tailoring": {k: s["tailoring"][k] for k in ("backend", "draft_backend")}, "notices": s["notices"],
+            "setup": s["setup"]}
 
 
 def needs_visa_data(s: dict) -> bool:
@@ -2045,6 +2055,11 @@ def rerender(store_: config.Store | None = None) -> int:
         last = conn.execute("SELECT id, started, finished, boards, failed, new FROM runs "
                             "ORDER BY id DESC LIMIT 1").fetchone()
         if not last:
+            # Nothing fetched yet: an empty page, so a new install opens on its setup steps.
+            render([], {"generated": None, "previous_run": None, "first_run": None, "boards": 0, "failed": 0,
+                        "missing": 0, "new": 0, "h1b_years": list(h1b.years),
+                        "skills": json.loads(SKILLS_PATH.read_text(encoding="utf-8")), "skill_w": {}, "term_w": {},
+                        "settings": public_settings(SETTINGS)})
             return 0
         prev = conn.execute("SELECT MAX(finished) FROM runs WHERE id < ?", (last[0],)).fetchone()[0]
         first_run = conn.execute("SELECT MIN(started) FROM runs").fetchone()[0]
@@ -2065,6 +2080,38 @@ def log(msg: str) -> None:
         print(line)
     with LOG_PATH.open("a", encoding="utf-8") as f:
         f.write(line + "\n")
+
+
+class RunStatus:
+    """This run's progress as a JSON file, replaced atomically: phase
+    (starting, visa-data, fetching, saving, done, skipped, error), boards
+    done and in all, jobs found, and the totals once done."""
+
+    def __init__(self, path: str | None) -> None:
+        self.path = Path(path) if path else None
+        self.data: dict = {"pid": os.getpid(), "started": time.time(), "phase": "starting"}
+        self._last = 0.0
+
+    def set(self, throttle: bool = False, **kw) -> None:
+        self.data.update(kw, updated=time.time())
+        if not self.path or (throttle and time.monotonic() - self._last < 0.5):
+            return
+        self._last = time.monotonic()
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        try:
+            tmp.write_text(json.dumps(self.data), encoding="utf-8")
+            for _ in range(5):
+                try:
+                    tmp.replace(self.path)
+                    break
+                except PermissionError:     # Windows: the reader has it open this instant
+                    time.sleep(0.05)
+        except OSError:
+            pass
+
+
+STATUS = RunStatus(None)
+SKIPPED = 3     # exit code when another run holds the lock
 
 
 def load_state(now: float) -> dict[str, tuple[float, str]]:
@@ -2103,13 +2150,16 @@ def save_state(conn: sqlite3.Connection, res: FetchResult, now: float) -> None:
                      [(b,) for b in res.attempted if b not in res.throttled])
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="list board tokens that 404")
     ap.add_argument("--update-h1b", action="store_true", help="re-download USCIS H-1B data")
     ap.add_argument("--render", action="store_true", help="rebuild the dashboard from stored jobs, no fetching")
-    args = ap.parse_args()
+    ap.add_argument("--status-file", help="keep this run's progress in this JSON file")
+    args = ap.parse_args(argv)
 
+    global STATUS
+    STATUS = RunStatus(args.status_file)
     settings = config.store()
     configure(settings)
     for d in {DB_PATH.parent, LOG_PATH.parent, DASHBOARD_PATH.parent}:
@@ -2120,8 +2170,16 @@ def main() -> int:
         log(f"rendered {rerender(settings)} jobs")
         return 0
 
+    lock = oslock.FileLock(DB_PATH.parent / "radar.lock")
+    if not lock.acquire():
+        log("another run is still going; skipping this one")
+        STATUS.set(phase="skipped")
+        return SKIPPED
+    STATUS.set()
+
     have_h1b = any((H1B_DIR / f"h1b_datahubexport-{y}.csv").exists() for y in H1B_YEARS)
     if args.update_h1b or (not have_h1b and needs_visa_data(SETTINGS)):
+        STATUS.set(phase="visa-data")
         update_h1b()
         if args.update_h1b:
             return 0
@@ -2133,7 +2191,9 @@ def main() -> int:
     cooling = load_state(started)
     if args.check:
         cooling = {}        # --check tries every board, cooling down or not
-    res = fetch_all(companies, set(cooling), simplify=SETTINGS["radar"]["simplify_feed"])
+    STATUS.set(phase="fetching", done=0, total=0, jobs=0)
+    res = fetch_all(companies, set(cooling), simplify=SETTINGS["radar"]["simplify_feed"],
+                    progress=lambda done, total, n: STATUS.set(done < total, done=done, total=total, jobs=n))
     jobs = dedupe(res.jobs)
     missing, failed = res.missing, res.failed
 
@@ -2153,6 +2213,7 @@ def main() -> int:
         print(f"{len(jobs)} matching jobs")
         return 0
 
+    STATUS.set(phase="saving")
     h1b = H1BIndex.load(h1b_aliases) if needs_visa_data(SETTINGS) else H1BIndex()
     conn = sqlite3.connect(DB_PATH, timeout=30)
     try:
@@ -2184,13 +2245,21 @@ def main() -> int:
         log(f"  missing {m}")
     for board, (until, err) in sorted(cooling.items()):
         log(f"  skipped {board} until {datetime.fromtimestamp(until):%m-%d %H:%M}, last: {err}")
+    STATUS.set(phase="done", finished=finished, matched=len(jobs), new=new, failed=len(failed),
+               missing=len(missing), boards=boards)
     return 0
 
 
-if __name__ == "__main__":
+def run(argv: list[str] | None = None) -> int:
+    """main(), with a crash logged and reported in the status file."""
     try:
-        sys.exit(main())
-    except Exception:
+        return main(argv)
+    except Exception as e:
         import traceback
         log("run failed:\n" + traceback.format_exc())
-        sys.exit(1)
+        STATUS.set(phase="error", error=f"{type(e).__name__}: {e}")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(run())

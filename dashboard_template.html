@@ -51,6 +51,7 @@
   .btn.primary, button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
   .btn.primary:hover, button.primary:hover { filter: brightness(1.06); }
   button.ghost { background: transparent; color: var(--muted); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
   button.ghost:hover { color: var(--text); }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -207,13 +208,14 @@
   .notice { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 12px; border-radius: 10px;
     background: var(--new-soft); color: var(--text); font-size: 13px; }
   .notice span { flex: 1 1 240px; }
-  .settings { display: grid; gap: 14px; }
+  .settings { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .field select, .field input, .field textarea, .rowline select { max-width: 100%; min-width: 0; }
   .settings-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
   .settings-head h2 { font-size: 18px; margin: 0; flex: 1 1 auto; }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 16px; display: grid; gap: 14px; }
   .card h3 { font-size: 15px; margin: 0; }
   .card > p, .card .lead { margin: 0; color: var(--muted); font-size: 13px; }
-  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 22px; align-items: start; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 14px 22px; align-items: start; }
   .field { display: grid; gap: 5px; min-width: 0; }
   .field > label, .field legend { font-size: 13px; font-weight: 600; color: var(--text); padding: 0; }
   .field .note { margin: 0; }
@@ -244,6 +246,34 @@
   .savebar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
   .adv[hidden] { display: none; }
   .okline { color: var(--ok); font-size: 13px; }
+  /* First-run setup */
+  body.in-setup #viewTabs, body.in-setup #openKit, body.in-setup #roleSel, body.in-setup #resumeBar,
+  body.in-setup #status, body.in-setup #notices { display: none !important; }
+  .setup { max-width: 720px; margin: 8px auto 0; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; padding: 20px 22px; display: grid; gap: 16px; }
+  .setup-count { margin: 0; }
+  .setup-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+  .setup-steps li { padding: 3px 10px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+  .setup-steps li.done { background: var(--accent-soft); color: var(--ok); }
+  .setup-steps li.now { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .setup-body { display: grid; gap: 12px; }
+  .setup-body h2 { font-size: 20px; margin: 0; }
+  .setup-body h2:focus { outline: none; }
+  .setup-body h3 { font-size: 14px; margin: 0; }
+  .setup-body p { margin: 0; }
+  .setup-body .lead { color: var(--muted); }
+  .setup-out { display: grid; gap: 10px; }
+  .setup-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-top: 1px solid var(--line); padding-top: 14px; }
+  .setup-nav .spacer { flex: 1 1 auto; }
+  .setup .drop { display: grid; gap: 4px; justify-items: center; text-align: center; padding: 22px 12px; cursor: pointer;
+    border: 1px dashed var(--muted); border-radius: 10px; background: var(--surface-2); }
+  .setup .drop.drag, .setup .drop:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .setup input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .setup input[type=file]:focus-visible + .drop { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .setup progress { width: 100%; height: 10px; accent-color: var(--accent); }
+  .setup ol.steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13px; }
+  code.cmd { font-size: 12px; padding: 4px 8px; border-radius: 6px; background: var(--chip); overflow-wrap: anywhere; }
+  @media (max-width: 600px) { .setup { padding: 16px 14px; } }
   [hidden] { display: none !important; }
 
   .toast {
@@ -290,6 +320,7 @@
     <ul class="list" id="qlist"></ul>
   </section>
   <section id="settingsView" hidden aria-labelledby="settingsTitle"></section>
+  <section id="setupView" hidden aria-labelledby="setupTitle"></section>
   <div id="jobsView">
 
   <div class="controls">
@@ -764,23 +795,45 @@ function texText(src) {
     .replace(/[ \t]+/g, " ");
 }
 
-async function readResume(file) {
+// How each kind of resume file becomes text. Word (.docx) is the next one:
+// read its paragraphs (list items as "- " lines) into text here, and
+// scoring, the setup steps and the tailoring outline work unchanged.
+const RESUME_READERS = {
+  pdf: async (f) => ({ text: await pdfText(await f.arrayBuffer()) }),
+  tex: async (f) => { const rawTex = await f.text(); return { text: texText(rawTex), rawTex }; },
+  txt: async (f) => ({ text: await f.text() }),
+  md: async (f) => ({ text: await f.text() }),
+  docx: null,
+};
+
+async function resumeFromFile(file) {
   const name = file.name;
   const ext = name.split(".").pop().toLowerCase();
-  let text, rawTex = null;
-  if (ext === "pdf") text = await pdfText(await file.arrayBuffer());
-  else if (ext === "tex") { rawTex = await file.text(); text = texText(rawTex); }
-  else if (ext === "txt" || ext === "md") text = await file.text();
-  else throw new Error("Use a PDF, .tex or .txt file. For Word files, save as PDF first.");
+  const read = RESUME_READERS[ext];
+  if (!read) {
+    throw new Error(ext === "docx" || ext === "doc" ? "Word files can't be read yet. In Word, choose File, Save As, PDF, and upload that."
+      : "Use a PDF, .tex or .txt file.");
+  }
+  const { text, rawTex = null } = await read(file);
   if (text.replace(/\s/g, "").length < 200) {
     throw new Error("Couldn't read text from that file. If it's a scanned PDF, export a text PDF instead.");
   }
+  return { name, text, rawTex };
+}
+
+// The resume jobs are scored against (kept in this browser).
+function useResume({ name, text }) {
   const prev = state.resume || {};
   state.resume = { name, text, skills: detectSkills(text), off: prev.off || [], added: prev.added || [], at: Date.now() };
   store.set("resume", state.resume);
   rescore();
   if (state.sort === "new") { state.sort = "match"; store.set("sort", "match"); }
   render();
+}
+
+async function readResume(file) {
+  const { name, text, rawTex } = await resumeFromFile(file);
+  useResume({ name, text });
   toast(`Read ${state.resume.skills.length} skills from ${name}. Sorted by best match.`);
   if (rawTex !== null && HELPER) {
     try {
@@ -798,9 +851,24 @@ function contactsFrom(text) {
   const li = text.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w%-]+\/?/i); if (li) out.linkedin = "https://" + li[0].replace(/^https?:\/\//, "");
   const gh = text.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+\/?/i); if (gh) out.github = "https://" + gh[0].replace(/^https?:\/\//, "");
   const first = text.split(/\n/).map((l) => l.trim()).find((l) => /^[A-Za-z][A-Za-z'.-]+(?: [A-Za-z][A-Za-z'.-]+){1,3}$/.test(l));
-  if (first) { const p = first.split(" "); out.firstName = p[0]; out.lastName = p.slice(1).join(" "); }
+  if (first) {
+    // A middle initial ("Jane Q. Doe") belongs to neither name field.
+    const p = first.split(" ").filter((w, i, all) => i === 0 || i === all.length - 1 || !/^[A-Za-z]\.?$/.test(w));
+    out.firstName = p[0]; out.lastName = p.slice(1).join(" ");
+  }
   const school = text.match(/[A-Z][A-Za-z.&' ]{2,60}(?:University|College|Institute of Technology)(?: of [A-Z][A-Za-z ]+)?/);
   if (school) out.school = school[0].trim();
+  const top = text.split(/\n/).slice(0, 4).join(" | ");
+  const loc = top.match(/\b([A-Z][A-Za-z.]+(?: [A-Z][A-Za-z.]+)*, [A-Z]{2})\b/); if (loc) out.location = loc[1];
+  const deg = text.match(/\b(Bachelor|Master|Doctor)(?:'s)? of ([A-Z][a-z]+(?: [A-Z][a-z]+)?)(?:,? in ([A-Z][A-Za-z&]*(?: (?:and |& )?(?!(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b)[A-Z][A-Za-z&]*){0,4}))?/);
+  if (deg) {
+    out.degree = `${deg[1]} of ${deg[2]}`;
+    if (deg[3]) out.major = deg[3];
+    // The last month and year on the degree's line is when it ends.
+    const line = text.slice(deg.index).split(/\n/)[0];
+    const dates = line.match(/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (?:19|20)\d\d\b/gi);
+    if (dates) out.gradDate = dates[dates.length - 1];
+  }
   return out;
 }
 
@@ -1110,7 +1178,8 @@ function render() {
     (!many ? "" : state.search === ALL_ROLES ? " across all your roles" : ` for \u201c${roleName(state.search)}\u201d`);
 
   const m = DATA.meta;
-  $("status").replaceChildren(
+  if (!m.generated) $("status").replaceChildren("No jobs fetched yet. The first search starts once setup is done.");
+  else $("status").replaceChildren(
     "Updated ", el("b", { text: ago(m.generated) }), ` (${fmt(m.generated)}) · ${m.boards} boards`,
     m.new ? ` · ${m.new} new since last run` : "",
     m.failed ? ` · ${m.failed} boards unreachable` : "");
@@ -1638,7 +1707,8 @@ async function loadQueue() {
 }
 
 function showView(v) {
-  state.view = (v === "queue" || v === "settings") && HELPER ? v : "jobs";
+  state.view = (v === "queue" || v === "settings" || v === "setup") && HELPER ? v : "jobs";
+  if (setupNeeded() && state.view !== "settings") state.view = "setup";
   const hash = state.view === "jobs" ? "" : "#" + state.view;
   if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname);
   // Saved settings rebuilt the job list on the helper: load the new one.
@@ -1646,7 +1716,10 @@ function showView(v) {
   $("queueView").hidden = state.view !== "queue";
   $("settingsView").hidden = state.view !== "settings";
   $("jobsView").hidden = state.view !== "jobs";
+  $("setupView").hidden = state.view !== "setup";
+  document.body.classList.toggle("in-setup", state.view === "setup");
   if (state.view === "settings") openSettings();
+  if (state.view === "setup") openSetup();
   for (const b of $("viewTabs").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.view === state.view));
   clearInterval(queue.timer);
   if (state.view === "queue") { loadQueue(); queue.timer = setInterval(loadQueue, 20000); }
@@ -1967,7 +2040,7 @@ function renderSettings() {
       el("label", { class: "toggle", for: "advToggle" }, adv, "Show advanced settings")),
     d.warnings.length ? el("div", { class: "errbox", role: "status" }, "Some saved settings were invalid and fell back to their defaults: ",
       el("ul", { style: "margin:6px 0 0;padding-left:18px" }, ...d.warnings.slice(0, 8).map((w) => el("li", { text: humanError(w) })))) : null,
-    rolesCard(), companiesCard(), tailoringCard(),
+    rolesCard(), companiesCard(), tailoringCard(), appCard(),
     advanced() ? scoringCard() : null, advanced() ? radarCard() : null, advanced() ? storageCard() : null,
     el("p", { class: "note", text: `Saved on this computer in ${d.file}. Nothing here leaves it.` })));
 }
@@ -2352,6 +2425,512 @@ function storageCard() {
 }
 
 
+// ---------------------------------------------------------------- first-run setup
+
+// A new install opens on these steps; each one is saved on the helper as it
+// is reached, so closing the page picks up where it stopped. Existing users
+// never see them (settings migration v3), and "Skip setup" ends them.
+const SETUP_STEPS = [
+  ["welcome", "Welcome"], ["resume", "Resume"], ["profile", "Your details"], ["role", "What you want"],
+  ["ai", "AI"], ["extension", "Browser extension"], ["fetch", "First search"],
+];
+const setup = { step: "welcome", app: null, timer: null, outline: null, tex: null, saved: null, pending: null };
+const CODEX_DOCS = "https://learn.chatgpt.com/docs/codex/cli";
+const CLAUDE_DOCS = "https://code.claude.com/docs/en/setup";
+const ON_WINDOWS = /Windows/.test(navigator.userAgent);
+// Claude's own installer needs nothing else; Codex installs through Node.js (nodejs.org).
+const CLAUDE_INSTALL = ON_WINDOWS ? "irm https://claude.ai/install.ps1 | iex" : "curl -fsSL https://claude.ai/install.sh | bash";
+const CODEX_INSTALL = "npm install -g @openai/codex";
+
+function setupNeeded() { return HELPER && !!SETTINGS.setup && !SETTINGS.setup.done; }
+
+async function openSetup() {
+  const view = $("setupView");
+  view.replaceChildren(progressLine("Loading…"));
+  try {
+    [cfg.data, setup.app] = await Promise.all([api("/api/settings"), api("/api/app")]);
+  } catch (e) {
+    view.replaceChildren(el("div", { class: "errbox", text: "The local helper isn't responding. " + e.message }));
+    return;
+  }
+  if (cfg.data.settings.setup.done) { SETTINGS.setup = cfg.data.settings.setup; showView("jobs"); return; }
+  setup.step = cfg.data.settings.setup.step;
+  renderSetup();
+}
+
+async function goStep(step) {
+  clearInterval(setup.timer);
+  setup.step = step;
+  try { await postSettings({ setup: { step } }); } catch {}
+  renderSetup();
+  const h = $("setupTitle");
+  if (h) h.focus();
+  window.scrollTo(0, 0);
+}
+
+async function endSetup() {
+  clearInterval(setup.timer);
+  await postSettings({ setup: { done: true } });
+  SETTINGS.setup = { ...SETTINGS.setup, done: true };
+  history.replaceState(null, "", location.pathname);
+  location.reload();
+}
+
+function renderSetup() {
+  const i = Math.max(0, SETUP_STEPS.findIndex(([id]) => id === setup.step));
+  const steps = el("ol", { class: "setup-steps" }, ...SETUP_STEPS.map(([id, label], n) =>
+    el("li", { class: n < i ? "done" : n === i ? "now" : "", "aria-current": n === i ? "step" : null, text: label })));
+  const body = el("div", { class: "setup-body" });
+  const next = SETUP_STEPS[i + 1], prev = SETUP_STEPS[i - 1];
+  const nav = el("div", { class: "setup-nav" },
+    prev ? el("button", { type: "button", text: "Back", onclick: () => goStep(prev[0]) }) : null,
+    el("span", { class: "spacer" }),
+    el("button", { type: "button", class: "ghost", text: next ? "Skip setup" : "Finish without searching", onclick: async () => {
+      if (next && !confirm("Skip the rest of setup? You can run it again from Settings.")) return;
+      try { await endSetup(); } catch (e) { toast(e.message); }
+    } }));
+  // Each step fills the body and returns its main button. Empty parts (null) are left out.
+  const append = body.append.bind(body);
+  body.append = (...xs) => append(...xs.filter((x) => x != null && x !== false));
+  const advance = SETUP_RENDER[setup.step](body, () => next && goStep(next[0]));
+  if (advance) nav.append(advance);
+  $("setupView").replaceChildren(el("div", { class: "setup" },
+    el("p", { class: "note setup-count", text: `Step ${i + 1} of ${SETUP_STEPS.length}` }), steps, body, nav));
+}
+
+function setupHead(title, lead) {
+  return [el("h2", { id: "setupTitle", tabindex: "-1", text: title }), ...(lead ? [el("p", { class: "lead", text: lead })] : [])];
+}
+
+function nextButton(label, onclick, opts = {}) {
+  return el("button", { type: "button", class: "primary", text: label, disabled: opts.disabled ? "disabled" : null, onclick });
+}
+
+const SETUP_RENDER = {
+  welcome(body, next) {
+    body.append(...setupHead("Welcome to It gets easier"),
+      el("p", { text: "It checks hundreds of company career sites every 30 minutes for entry-level jobs that fit you, " +
+        "scores each one against your resume, and can tailor your resume and draft answers for the ones you choose." }),
+      el("p", { text: "Everything stays on this computer. It reads public job boards. AI features use your own " +
+        "ChatGPT or Claude sign-in, or your own API key. Nothing about you is sent to It gets easier." }),
+      el("p", { class: "note", text: "Setup takes about five minutes. If you close this page, it picks up where you left off." }));
+    return nextButton("Get started", next);
+  },
+
+  resume(body, next) {
+    const file = el("input", { type: "file", id: "setupFile", accept: ".pdf,.tex,.txt,.md,.docx" });
+    const drop = el("label", { class: "drop", for: "setupFile" },
+      el("b", { text: state.resume ? `Using ${state.resume.name}` : "Choose your resume" }),
+      el("span", { class: "note", text: state.resume ? "Choose or drop another file to replace it." : "PDF, LaTeX (.tex) or plain text. Or drop it here." }));
+    const out = el("div", { class: "setup-out", "aria-live": "polite" });
+    const tailoring = el("div", { class: "setup-out" });
+    const go = nextButton("Next", next, { disabled: !state.resume });
+    const take = async (f) => {
+      if (!f) return;
+      out.replaceChildren(progressLine("Reading " + f.name + "…"));
+      try {
+        const r = await resumeFromFile(f);
+        useResume(r);
+        out.replaceChildren(el("span", { class: "okline", text: `Read ${state.resume.skills.length} skills from ${r.name}. ` +
+          "Jobs will be scored against them." }));
+        drop.firstChild.textContent = `Using ${r.name}`;
+        drop.lastChild.textContent = "Choose or drop another file to replace it.";
+        go.disabled = false;
+        setup.saved = null;
+        setup.outline = null;
+        drawTailoring(tailoring, r);
+      } catch (e) { out.replaceChildren(el("div", { class: "errbox", role: "alert", text: e.message })); }
+      file.value = "";
+    };
+    file.addEventListener("change", () => take(file.files[0]));
+    for (const ev of ["dragenter", "dragover"]) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("drag"); });
+    for (const ev of ["dragleave", "drop"]) drop.addEventListener(ev, () => drop.classList.remove("drag"));
+    drop.addEventListener("drop", (e) => { e.preventDefault(); take(e.dataTransfer.files[0]); });
+    body.append(...setupHead("Your resume", "It's read here in your browser and saved only on this computer."),
+      file, drop, out, tailoring, formatsNote());
+    if (state.resume) drawTailoring(tailoring, null);
+    return go;
+  },
+
+  profile(body, next) {
+    const found = state.resume ? contactsFrom(state.resume.text) : {};
+    const P = { ...found, ...Object.fromEntries(Object.entries(state.profile).filter(([, v]) => v)) };
+    const keys = ["firstName", "lastName", "email", "phone", "location", "linkedin", "github", "school", "degree", "major", "gradDate"];
+    const inputs = {};
+    const fields = KIT.filter(([k]) => keys.includes(k)).map(([k, label, type]) => {
+      const i = el("input", { type, value: P[k] || "", autocomplete: "off" });
+      inputs[k] = i;
+      return field(label, i, found[k] && !state.profile[k] ? "Read from your resume." : "");
+    });
+    body.append(...setupHead("Check your details",
+      "Used to fill in applications, by the Apply kit and the browser extension. Fix anything that was read wrong."),
+      el("div", { class: "fields" }, ...fields));
+    return nextButton("Next", () => {
+      for (const [k, i] of Object.entries(inputs)) state.profile[k] = i.value.trim();
+      store.set("profile", state.profile);
+      updateBookmarklet();
+      syncScoring();
+      next();
+    });
+  },
+
+  role(body, next) {
+    const d = cfg.data, s = d.settings, cur = s.roles[0];
+    const name = text(cur.name, "e.g. Software engineer, Data analyst");
+    // The kind of job fills in the title rules, which stay folded away unless the user opens them.
+    const kinds = d.choices.templates.filter((t) => t.title_keywords.length);
+    const same = kinds.find((t) => t.title_keywords.join("\n") === cur.title_keywords.join("\n"));
+    const from = select([...kinds.map((t) => [t.id, t.label]), ["own", "Something else (write the titles)"]], same ? same.id : "own");
+    const keywords = el("textarea", { class: "jd", rows: "6", spellcheck: "false", placeholder: "e.g. product designer/ux designer" });
+    keywords.value = cur.title_keywords.join("\n");
+    const rules = el("details", { class: "field wide", open: same ? null : "" },
+      el("summary", { text: "Show the job titles it looks for" }),
+      field("Job titles to look for", keywords, "One per line. A posting's title has to contain one of them. " +
+        "“full stack/fullstack” means either; a line starting with “-” leaves those titles out."));
+    from.addEventListener("change", () => {
+      const t = kinds.find((x) => x.id === from.value);
+      if (!t) { keywords.value = ""; rules.open = true; keywords.focus(); return; }
+      keywords.value = t.title_keywords.join("\n");
+      if (name.value.trim() === cur.name || !name.value.trim()) name.value = t.label;
+    });
+    const levels = checks("Level", d.choices.seniority.map((x) => [x, LABELS.seniority[x]]), cur.seniority, "", { wide: true });
+    let countries = [...cur.countries];
+    const cname = (code) => (d.choices.countries.find((c) => c.code === code) || { name: code }).name;
+    const cbox = el("div", { class: "tags", "aria-live": "polite" });
+    const cpick = el("select", { "aria-label": "Add a country" });
+    const drawCountries = () => {
+      cbox.replaceChildren(...(countries.length ? countries.map((c) => el("span", { class: "tag" }, cname(c),
+        el("button", { type: "button", "aria-label": `Remove ${cname(c)}`, text: "×", onclick: () => { countries = countries.filter((x) => x !== c); drawCountries(); cpick.focus(); } })))
+        : [el("span", { class: "note", text: "Any country" })]));
+      cpick.replaceChildren(el("option", { value: "", text: "Add a country…" }),
+        ...d.choices.countries.filter((c) => !countries.includes(c.code)).map((c) => el("option", { value: c.code, text: c.name })));
+    };
+    cpick.addEventListener("change", () => { if (cpick.value) { countries.push(cpick.value); drawCountries(); cpick.focus(); } });
+    drawCountries();
+    const cities = text(cur.cities, "e.g. Boston, Seattle, New York");
+    const work = checks("Work setting", d.choices.workplace.map((x) => [x, LABELS.workplace[x]]), cur.workplace);
+    const visa = radios("Work authorization", "setup-visa", d.choices.visa.map((x) => [x, ...LABELS.visa[x]]), cur.visa.status);
+    const out = el("div", { "aria-live": "polite" });
+    body.append(...setupHead("What are you looking for?",
+      "This is your first role: a search for one kind of job. You can add more roles later in Settings."),
+      el("div", { class: "fields" },
+        field("Name it", name),
+        field("Kind of job", from),
+        rules,
+        levels.node,
+        el("fieldset", { class: "field" }, el("legend", { text: "Countries" }), cbox, cpick),
+        field("Cities", cities, "Comma separated. Empty means anywhere in your countries. Remote jobs always count."),
+        work.node, visa.node),
+      out);
+    return nextButton("Save and continue", async (ev) => {
+      const btn = ev.currentTarget;
+      const n = name.value.trim() || "My search";
+      const role = { ...cur, name: n, title_keywords: lines(keywords.value), seniority: levels.get(),
+        countries: [...countries], cities: words(cities.value), workplace: work.get(),
+        visa: { ...cur.visa, status: visa.get() || cur.visa.status, hide_no_sponsorship: cur.visa.hide_no_sponsorship } };
+      btn.disabled = true;
+      out.replaceChildren(progressLine("Saving…"));
+      try {
+        await postSettings({ roles: [role, ...s.roles.slice(1)], active_role: role.id });
+        store.set("role", role.id);
+        next();
+      } catch (e) { out.replaceChildren(problems(e)); btn.disabled = false; }
+    });
+  },
+
+  ai(body, next) {
+    const t = cfg.data.settings.tailoring;
+    // API keys are offered for the providers this helper supports.
+    const keyed = [["openai-api", "OpenAI"], ["claude-api", "Anthropic"]].filter(([b]) => cfg.data.choices.backends.includes(b));
+    const choices = [
+      ["chatgpt", "Your ChatGPT account", "Uses your ChatGPT plan. No extra cost."],
+      ["claude-code", "Your Claude account", "Uses your Claude plan. No extra cost."],
+      keyed.length ? ["api", "An API key", `${keyed.map((k) => k[1]).join(" or ")}, billed to your key within a monthly budget you set.`] : null,
+      ["manual", "No AI connection", "Copy a prompt into any chat and paste the answer back. Free, a little more work."],
+    ].filter(Boolean);
+    const isApi = (x) => keyed.some(([b]) => b === x);
+    const pick = radios("How should It gets easier use AI?", "setup-ai", choices, isApi(t.backend) ? "api" : t.backend);
+    const detail = el("div", { class: "setup-out" });
+    const check = el("button", { type: "button", text: "Check again", onclick: async () => {
+      check.disabled = true;
+      try { setup.app = await api("/api/app"); } catch {}
+      check.disabled = false;
+      draw();
+    } });
+    const cmd = (c) => el("div", { class: "rowline" }, el("code", { class: "cmd", text: c }),
+      el("button", { type: "button", text: "Copy", onclick: async () => {
+        try { await navigator.clipboard.writeText(c); toast("Copied"); } catch { toast("Select the command and copy it."); }
+      } }));
+    const login = (ok, label, docs, install, signin, needs) => ok
+      ? el("p", { class: "okline", text: `Signed in to ${label}. Nothing else to do.` })
+      : el("div", { class: "found" },
+          el("p", { style: "margin:0", text: `Not signed in yet. Two one-time steps in a terminal (${ON_WINDOWS ? "open PowerShell from the Start menu" : "open Terminal"}):` }),
+          el("ol", { style: "margin:0;padding-left:20px;display:grid;gap:6px" },
+            el("li", {}, "Install it: ", cmd(install), el("span", { class: "note" }, needs || "", "Or follow ",
+              el("a", { href: docs, target: "_blank", rel: "noopener", text: "the official instructions" }), ".")),
+            el("li", {}, "Sign in with your account: ", cmd(signin))),
+          el("div", { class: "rowline" }, check));
+    const provider = radios("Which provider?", "setup-provider", keyed, isApi(t.backend) ? t.backend : keyed[0] && keyed[0][0]);
+    const draw = () => {
+      const v = pick.get(), bb = setup.app.backends || {};
+      if (v === "chatgpt") detail.replaceChildren(login(bb.chatgpt, "ChatGPT", CODEX_DOCS, CODEX_INSTALL, "codex login",
+        "This needs Node.js from nodejs.org first. "));
+      else if (v === "claude-code") detail.replaceChildren(login(bb.claude_code, "Claude", CLAUDE_DOCS, CLAUDE_INSTALL, "claude auth login"));
+      else if (v === "api") detail.replaceChildren(provider.node, typeof aiCard === "function" ? aiCard() : el("p", { class: "note", text: "Add your key in Settings." }));
+      else detail.replaceChildren(el("p", { class: "note", text: "Tailoring and drafted answers give you a prompt to paste into any chat. " +
+        "The apply queue won't prepare jobs ahead of time, since that needs a connected model." }));
+    };
+    pick.node.addEventListener("change", draw);
+    draw();
+    const out = el("div", { "aria-live": "polite" });
+    body.append(...setupHead("Connect AI", "Used to tailor your resume and draft answers to application questions. " +
+      "Only your resume, your details and the job posting are sent, to the provider you choose."), pick.node, detail, out);
+    return nextButton("Save and continue", async () => {
+      const v = pick.get() === "api" ? provider.get() : pick.get();
+      const draftOk = cfg.data.choices.draft_backends.includes(v);
+      const patch = { tailoring: { backend: v, ...(draftOk ? { draft_backend: v } : {}) },
+        queue: draftOk ? { backend: v } : { enabled: false } };
+      try {
+        await postSettings(patch);
+        SETTINGS.tailoring.backend = v;
+        store.del("backend");
+        next();
+      } catch (e) { out.replaceChildren(problems(e)); }
+    });
+  },
+
+  extension(body, next) {
+    const x = setup.app.extension || {};
+    const copy = (c) => el("button", { type: "button", text: "Copy", onclick: async () => {
+      try { await navigator.clipboard.writeText(c); toast("Copied"); } catch { toast("Select it and copy it."); }
+    } });
+    const firefox = x.firefox_store
+      ? el("p", {}, el("a", { class: "btn primary", href: x.firefox_store, target: "_blank", rel: "noopener", text: "Add to Firefox" }))
+      : x.xpi
+        ? el("div", {}, el("p", {}, el("a", { class: "btn primary", href: "/api/extension.xpi", text: "Install in Firefox" })),
+            el("p", { class: "note", text: "Open this page in Firefox and press the button. Firefox asks to confirm: press Add." }))
+        : el("ol", { class: "steps" },
+            el("li", {}, "In Firefox, open ", el("code", { text: "about:debugging#/runtime/this-firefox" }), " ", copy("about:debugging#/runtime/this-firefox")),
+            el("li", { text: "Press Load Temporary Add-on… and choose manifest.json in the folder below." }),
+            el("li", { text: "This lasts until Firefox restarts. A permanent install arrives with the signed release." }));
+    const chrome = x.chrome_store
+      ? el("p", {}, el("a", { class: "btn primary", href: x.chrome_store, target: "_blank", rel: "noopener", text: "Add to Chrome" }))
+      : el("ol", { class: "steps" },
+          el("li", {}, "Open ", el("code", { text: "chrome://extensions" }), " (Edge: ", el("code", { text: "edge://extensions" }), ") ", copy("chrome://extensions")),
+          el("li", { text: "Turn on Developer mode, top right." }),
+          el("li", { text: "Press Load unpacked and choose the folder below. It stays installed." }));
+    body.append(...setupHead("Install the browser extension",
+      "It fills in applications on Greenhouse, Lever, Ashby and Workday with your details, attaches your resume and " +
+      "drafts answers. It never submits anything: you always review and press Submit yourself."),
+      el("div", { class: "fields" },
+        el("section", { class: "found" }, el("h3", { text: "Firefox" }), firefox),
+        el("section", { class: "found" }, el("h3", { text: "Chrome or Edge" }), chrome)),
+      x.folder && !(x.firefox_store && x.chrome_store) ? el("div", { class: "field" }, el("label", { class: "section-h", text: "Extension folder" }),
+        el("div", { class: "rowline" }, el("code", { class: "cmd", text: x.folder }), copy(x.folder))) : null,
+      el("p", { class: "note", text: "Once it's installed, open its options and press Import from dashboard to copy your details over. " +
+        "You can do this later; the Apply kit at the top of the dashboard has the same details." }));
+    return nextButton("Next", next);
+  },
+
+  fetch(body) {
+    const out = el("div", { class: "setup-out", "aria-live": "polite" });
+    const start = nextButton("Start the search", async () => {
+      start.disabled = true;
+      try { await api("/api/app/run", {}); } catch (e) { if (!/already running/.test(e.message)) { out.replaceChildren(el("div", { class: "errbox", text: e.message })); start.disabled = false; return; } }
+      poll();
+    });
+    const done = nextButton("See your jobs", async () => { try { await endSetup(); } catch (e) { toast(e.message); } });
+    done.hidden = true;
+    const bar = el("progress", { max: "100", value: "0", "aria-label": "Search progress" });
+    const draw = (sc) => {
+      const r = sc.running, last = sc.last;
+      if (r) {
+        const fetching = r.phase === "fetching" && r.total;
+        bar.value = fetching ? Math.round(100 * r.done / r.total) : r.phase === "saving" ? 100 : 0;
+        out.replaceChildren(el("p", { style: "margin:0", text: r.label + (fetching ? `: ${r.done} of ${r.total} boards` : "…") }), bar,
+          el("p", { class: "note", text: r.jobs != null ? `${r.jobs} matching postings${fetching ? " so far" : ""}.` : "The first search takes a few minutes." }));
+        start.hidden = true;
+        return true;
+      }
+      if (last && setup.startedAt && last.finished >= setup.startedAt) {
+        if (last.outcome === "error") {
+          out.replaceChildren(el("div", { class: "errbox", role: "alert", text: last.error || "The search failed." }));
+          start.hidden = false; start.disabled = false; start.textContent = "Try again";
+        } else {
+          out.replaceChildren(el("p", { class: "okline", text: `Done: ${last.matched ?? "your"} jobs found. They're scored against your resume.` }));
+          start.hidden = true; done.hidden = false; done.focus();
+          const skip = $("setupView").querySelector(".setup-nav .ghost");
+          if (skip) skip.hidden = true;
+        }
+        return false;
+      }
+      return false;
+    };
+    const poll = () => {
+      setup.startedAt = setup.startedAt || Date.now() / 1000 - 5;
+      clearInterval(setup.timer);
+      const tick = async () => {
+        try { const a = await api("/api/app"); setup.app = a; if (!draw(a.schedule) && !a.schedule.running) clearInterval(setup.timer); } catch {}
+      };
+      setup.timer = setInterval(tick, 1000);
+      tick();
+    };
+    body.append(...setupHead("Find your first jobs", "This reads every company's job board now. After this it runs by itself every " +
+      `${cfg.data.settings.radar.interval_minutes} minutes while you're logged in, from the icon in your system tray.`), out);
+    if (setup.app.schedule.running) { setup.startedAt = setup.app.schedule.running.started - 5; poll(); }
+    const wrap = el("span", { class: "rowline" }, start, done);
+    return wrap;
+  },
+};
+
+// The tailoring half of the resume step: a .tex is saved as the master;
+// a PDF or text resume becomes one through an outline the user checks.
+function drawTailoring(box, r) {
+  const tex = setup.app.tex;
+  if (r && r.rawTex !== null) {
+    saveMaster(box, { name: r.name, tex: r.rawTex });
+    return;
+  }
+  const m = helper.status && helper.status.master;
+  if (!setup.saved && !r && m) setup.saved = `Your tailoring resume is set up: ${m.name || "master.tex"}, ${m.entries.length} entries.`;
+  if (setup.saved) { box.replaceChildren(savedLine(setup.outline)); return; }
+  const text0 = r ? r.text : state.resume && state.resume.text;
+  if (!text0) return;
+  const start = el("button", { type: "button", text: "Set up tailoring for this resume", onclick: async () => {
+    start.disabled = true;
+    try {
+      const o = await api("/api/master/outline", { text: text0 });
+      setup.outline = o.outline;
+      drawOutline(box, state.resume.name);
+    } catch (e) { box.append(el("div", { class: "errbox", text: e.message })); start.disabled = false; }
+  } });
+  if (setup.outline) { drawOutline(box, state.resume.name); return; }
+  box.replaceChildren(el("div", { class: "found" },
+    el("b", { text: "Tailored resumes (optional)" }),
+    el("p", { style: "margin:0", text: "To make a version of this resume for each job, It gets easier needs it as a LaTeX file. " +
+      "It can make one with a plain, clean layout from what it read. You check it once." }),
+    tex && !tex.active ? texOffer(setup.app) : null,
+    el("div", { class: "rowline" }, start, el("span", { class: "note", text: "You can skip this and do it later." }))));
+}
+
+function drawOutline(box, name) {
+  const area = el("textarea", { class: "jd", rows: "18", spellcheck: "false", "aria-label": "What was read from your resume" });
+  area.value = setup.outline;
+  area.addEventListener("input", () => { setup.outline = area.value; });
+  box.replaceChildren(el("div", { class: "found" },
+    el("b", { text: "Check what was read" }),
+    el("p", { style: "margin:0", text: "Lines starting with # are sections, ## are jobs or projects (title | company | dates), " +
+      "and - are bullet points. Fix anything out of place, then make the resume." }),
+    area,
+    el("div", { class: "rowline" }, el("button", { type: "button", class: "primary", text: "Make my tailoring resume",
+      onclick: () => saveMaster(box, { name, outline: area.value }) }))));
+}
+
+function savedLine(outline) {
+  return el("div", { class: "rowline" }, el("span", { class: "okline", text: setup.saved }),
+    setup.preview ? el("a", { class: "btn", href: setup.preview, target: "_blank", rel: "noopener", text: "See the PDF" }) : null,
+    outline ? el("button", { type: "button", class: "ghost", text: "Change it", onclick: (e) => {
+      setup.saved = null;
+      drawOutline(e.currentTarget.closest(".setup-out"), state.resume.name);
+    } }) : null);
+}
+
+async function saveMaster(box, body) {
+  box.replaceChildren(progressLine("Checking and making a PDF… the first time can take a minute."));
+  try {
+    const s = await api("/api/master", body);
+    setup.saved = `Saved for tailoring: ${s.entries.length} entries, ${s.pages} page${s.pages === 1 ? "" : "s"}.`;
+    setup.preview = s.preview;
+    box.replaceChildren(savedLine(body.outline));
+    refreshStatus();
+  } catch (e) {
+    const res = await fetch("/api/app").then((x) => x.json()).catch(() => null);
+    if (res) setup.app = res;
+    const noEngine = setup.app && !setup.app.tex.active;
+    setup.pending = noEngine ? body : null;
+    box.replaceChildren(el("div", { class: "errbox", role: "alert", text: noEngine ? "Making a PDF needs a PDF engine, and none is installed yet." : e.message }),
+      noEngine ? texOffer(setup.app, () => saveMaster(box, body)) : null,
+      body.outline ? el("div", { class: "rowline" }, el("button", { type: "button", text: "Back to the outline", onclick: () => { setup.outline = body.outline; drawOutline(box, body.name); } })) : null);
+  }
+}
+
+// Downloading Tectonic is the user's choice: what, from where, how big.
+function texOffer(app, after) {
+  const dl = app.tex.download;
+  const box = el("div", { class: "setup-out" });
+  const mb = (n) => Math.round(n / 1e6);
+  const draw = (d) => {
+    if (d.state === "running") {
+      box.replaceChildren(progressLine(`Downloading Tectonic… ${mb(d.done)} of ${mb(d.total)} MB`));
+    } else if (d.state === "done") {
+      box.replaceChildren(el("p", { class: "okline", text: "Tectonic is ready." }));
+      if (after) after();
+    } else {
+      box.replaceChildren(
+        el("p", { style: "margin:0", text: `No LaTeX program is installed on this computer. It gets easier can download Tectonic ${dl.version}, ` +
+          `a free program that makes PDFs from LaTeX (about ${mb(dl.size)} MB, from Tectonic's GitHub releases). The first resume it makes ` +
+          "also downloads the LaTeX packages it needs, about 50 MB, from Tectonic's servers. Only those files are downloaded; your resume stays here." }),
+        d.state === "error" ? el("div", { class: "errbox", text: d.error }) : null,
+        el("div", { class: "rowline" }, el("button", { type: "button", class: "primary", text: "Download Tectonic", onclick: async () => {
+          try { await api("/api/app/tectonic", {}); } catch (e) { toast(e.message); return; }
+          watch();
+        } }), el("span", { class: "note", text: "Already have TeX Live or MiKTeX? Restart It gets easier after installing and it's found." })));
+    }
+  };
+  const watch = () => {
+    const t = setInterval(async () => {
+      try {
+        const a = await api("/api/app");
+        setup.app = a;
+        draw(a.tex.download);
+        if (a.tex.download.state !== "running") clearInterval(t);
+      } catch { clearInterval(t); }
+    }, 1000);
+  };
+  if (!dl.available) box.append(el("p", { class: "note", text: "Install TeX Live or MiKTeX to make tailored PDFs on this computer." }));
+  else { draw(dl); if (dl.state === "running") watch(); }
+  return box;
+}
+
+function formatsNote() {
+  const f = setup.app.tex.formats;
+  return el("details", { class: "note" }, el("summary", { text: "What works with which resume" }),
+    el("ul", { style: "margin:6px 0 0;padding-left:18px;display:grid;gap:4px" },
+      el("li", { text: f.tex }), el("li", { text: f.converted }), el("li", { text: f.none }), el("li", { text: f.word })));
+}
+
+// Settings: the app itself. Filled in once the helper answers.
+function appCard() {
+  const s = cfg.data.settings;
+  const every = number(s.radar.interval_minutes, 10, 1440, 5);
+  const upd = el("input", { type: "checkbox" });
+  upd.checked = s.app.check_updates;
+  const about = el("div", { style: "display:grid;gap:10px" }, progressLine("Checking…"));
+  api("/api/app").then((a) => {
+    const tex = a.tex;
+    about.replaceChildren(
+      el("p", { class: "note", text: `It gets easier ${a.version}. ` + (a.schedule.next_run ? `Next search ${fmt(a.schedule.next_run)}.`
+        : a.schedule.automatic ? "" : "Timed searches run while the app (its tray icon) is running.") }),
+      el("div", { class: "field" }, el("label", { class: "section-h", text: "PDF engine for tailored resumes" }),
+        el("p", { class: "note", text: tex.active === "tex" ? `Your TeX installation: ${tex.tex.xelatex || tex.tex.pdflatex}`
+          : tex.active === "tectonic" ? `Tectonic: ${tex.tectonic}` : "None yet." }),
+        tex.active ? null : texOffer(a)));
+  }).catch(() => about.replaceChildren());
+  return el("section", { class: "card", "aria-labelledby": "appH" },
+    el("h3", { id: "appH", text: "App" }), about,
+    el("div", { class: "fields" },
+      field("Search for jobs every (minutes)", every),
+      el("div", { class: "field" }, el("label", { class: "toggle" }, upd, "Check for updates once a day"),
+        el("p", { class: "note", text: "Asks GitHub for the latest release. Nothing about you is sent." }))),
+    el("div", { class: "rowline" },
+      saveBar("Save", () => postSettings({ radar: { interval_minutes: +every.value }, app: { check_updates: upd.checked } })),
+      el("button", { type: "button", text: "Run setup again", onclick: async () => {
+        try { await postSettings({ setup: { done: false, step: "welcome" } }); SETTINGS.setup = { done: false, step: "welcome" }; showView("setup"); }
+        catch (e) { toast(e.message); }
+      } })));
+}
+
+
 // ---------------------------------------------------------------- wiring
 
 async function handleFile(file) {
@@ -2404,7 +2983,7 @@ if (HELPER) {
 }
 // Keep relative times current; reload for fresh data every 10 minutes unless a dialog is open.
 setInterval(render, 60000);
-setInterval(() => { if (!document.querySelector("dialog[open]") && state.view !== "settings") location.reload(); }, 600000);
+setInterval(() => { if (!document.querySelector("dialog[open]") && state.view !== "settings" && state.view !== "setup") location.reload(); }, 600000);
 </script>
 </body>
 </html>

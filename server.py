@@ -9,13 +9,14 @@ must come from the dashboard's own origin (or, for drafts, from the
 extension), so other websites open in the same browser can't trigger
 tailoring or read your resume.
 
-Run:  pythonw server.py      (windowless; the scheduled task does this at logon)
+Run:  pythonw server.py      (just the helper; app.py runs it with the tray and the scheduler)
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import sqlite3
 import sys
@@ -29,15 +30,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import appinfo
 import ats
 import config
 import filters
 import prep
 import radar
+import resume_import
 import resume_tex as rt
+import scheduler
 import tailor
+import texengine
 
-HOST, PORT = "127.0.0.1", 8765
+# JOBRADAR_PORT only for tests next to a running copy: the extension talks to 8765.
+HOST, PORT = "127.0.0.1", int(os.environ.get("JOBRADAR_PORT") or 8765)
 ORIGINS = {f"http://{HOST}:{PORT}", f"http://localhost:{PORT}"}
 STORE = config.store()
 DASHBOARD = STORE.path_for("dashboard")
@@ -86,6 +92,10 @@ def db() -> sqlite3.Connection:
 
 
 PREP = prep.Preparer(db, RESUME_DIR, OUT_DIR, log, store=STORE)
+# Runs radar.py. Run now works everywhere; timed runs only in the app (app.py).
+SCHEDULER = scheduler.Scheduler(STORE, log, automatic=False)
+# Set by app.py: {"autostart": bool, "update": {...} or None, "port_conflict": str}
+APP_STATE: dict = {}
 
 
 def job_row(key: str) -> dict | None:
@@ -186,6 +196,44 @@ def settings_payload() -> dict:
         "resumes": {r["id"]: master_meta(r["id"]) for r in s["roles"]},
         "render": RENDER,
     }
+
+
+def extension_info() -> dict:
+    """Where the Autofill extension is, for the setup steps: store listings
+    once they exist, else a signed .xpi shipped with the app, and the folder
+    Chrome's Load unpacked needs."""
+    folder = extension_dir()
+    xpis = sorted(folder.glob("web-ext-artifacts/*.xpi"), key=lambda p: p.stat().st_mtime) if folder else []
+    return {"firefox_store": appinfo.FIREFOX_ADDON_URL, "chrome_store": appinfo.CHROME_STORE_URL,
+            "xpi": xpis[-1].name if xpis else None, "folder": str(folder) if folder else None}
+
+
+def extension_dir() -> Path | None:
+    """The unpacked extension. A packaged app keeps it inside its bundle,
+    which a folder picker can't always reach (a macOS .app), so it is
+    copied to the data folder whenever the bundled version changes."""
+    src = Path(__file__).resolve().parent / "extension"
+    if not (src / "manifest.json").exists():
+        return None
+    if not getattr(sys, "frozen", False):
+        return src
+    dest = STORE.home / "extension"
+    try:
+        same = (dest / "manifest.json").read_bytes() == (src / "manifest.json").read_bytes()
+    except OSError:
+        same = False
+    if not same:
+        import shutil
+        shutil.rmtree(dest, ignore_errors=True)
+        shutil.copytree(src, dest, ignore=shutil.ignore_patterns("test", "node_modules"))
+    return dest
+
+
+def app_payload() -> dict:
+    """The app's state for the dashboard's setup steps and status."""
+    return {"name": appinfo.NAME, "version": appinfo.VERSION, "schedule": SCHEDULER.status(),
+            "setup": STORE.section("setup"), "tex": texengine.status(), "extension": extension_info(),
+            "backends": tailor.backend_status(), "data_folder": str(STORE.home), **APP_STATE}
 
 
 def set_role_resume(rid: str, name: str) -> None:
@@ -424,6 +472,17 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/render":
             return self._json(200, RENDER)
+        if path == "/api/app":
+            return self._json(200, app_payload())
+
+        if path == "/api/extension.xpi":
+            info = extension_info()
+            if not info["xpi"]:
+                return self._err(HTTPStatus.NOT_FOUND, "No signed extension in this build")
+            f = extension_dir() / "web-ext-artifacts" / info["xpi"]
+            return self._send(200, f.read_bytes(), "application/x-xpinstall",
+                              {"Content-Disposition": f'attachment; filename="{info["xpi"]}"'})
+
 
         if path == "/api/about":
             return self._json(200, {"text": tailor.about_me(), "max": tailor.ABOUT_MAX})
@@ -533,17 +592,45 @@ class Handler(BaseHTTPRequestHandler):
             tailor.save_about_me(str(data.get("text", "")))
             return self._json(200, {"ok": True})
 
+        if path == "/api/app/run":
+            if not SCHEDULER.run_now("dashboard"):
+                return self._err(HTTPStatus.CONFLICT, "A job search is already running")
+            return self._json(202, app_payload())
+        if path == "/api/app/tectonic":
+            # The user agreed in the dashboard to download Tectonic.
+            if not texengine.tectonic_asset():
+                return self._err(HTTPStatus.BAD_REQUEST, "Tectonic has no download for this computer")
+            texengine.DOWNLOAD.start()
+            return self._json(202, texengine.status())
+
+        if path == "/api/master/outline":
+            # Text read from a PDF or text resume, as an outline the user can correct.
+            text = str(data.get("text", ""))[:200_000]
+            if len(text.strip()) < 200:
+                return self._err(HTTPStatus.BAD_REQUEST, "No resume text")
+            return self._json(200, {"outline": resume_import.text_to_outline(text)})
+
         if path == "/api/master":
             tex = str(data.get("tex", ""))
+            if "outline" in data:
+                # A PDF or text resume, as the outline the user checked: made into a .tex master.
+                try:
+                    tex = resume_import.outline_to_tex(str(data["outline"])[:200_000])
+                except ValueError as e:
+                    return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
             # With a role, the resume becomes that role's own master.
             role = str(data.get("role") or "")[:40]
             if role and role not in {r["id"] for r in STORE.load()["roles"]}:
                 return self._err(HTTPStatus.BAD_REQUEST, "Unknown role")
+            # The PDF is kept next to the tailored ones, so the user can look at it.
+            preview = OUT_DIR / (f"master-{role}-preview.pdf" if role else "master-preview.pdf")
             try:
                 res = rt.parse(tex)
-                pages = rt.compile_pdf(tex)
+                pages = rt.compile_pdf(tex, preview)
             except (ValueError, rt.CompileError) as e:
-                return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, f"Couldn't use this resume: {e}")
+                return self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {
+                    "error": f"Couldn't use this resume: {e}",
+                    "no_engine": texengine.pick(rt.engine_for(tex)) is None})
             RESUME_DIR.mkdir(parents=True, exist_ok=True)
             target = RESUME_DIR / f"master-{role}.tex" if role else MASTER
             target.write_text(tex, encoding="utf-8")
@@ -552,7 +639,8 @@ class Handler(BaseHTTPRequestHandler):
             if role:
                 set_role_resume(role, target.name)
             PREP.poke()
-            return self._json(200, {**rt.summary(res), "pages": pages, "name": data.get("name")})
+            return self._json(200, {**rt.summary(res), "pages": pages, "name": data.get("name"),
+                                    "preview": f"/files/{preview.name}"})
 
         if path in ("/api/tailor", "/api/prompt"):
             role = str(data.get("role") or "")[:40]
@@ -597,7 +685,8 @@ class Handler(BaseHTTPRequestHandler):
         except config.SettingsError as e:
             return self._json(HTTPStatus.BAD_REQUEST, {"error": "Some settings aren't valid", "errors": e.errors})
         PREP.poke()
-        schedule_render()
+        if set(patch) - {"setup", "app"}:      # the setup steps' progress doesn't change the job list
+            schedule_render()
         return self._json(200, settings_payload())
 
     def _companies(self, action: str, data: dict):
@@ -732,20 +821,42 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(202, {"id": submit_draft(params)})
 
 
-def main() -> int:
+def prepare() -> None:
+    """Folders, settings and a first dashboard page, before serving."""
+    if not STORE.path.exists():
+        # A new install: its settings are written before anything else
+        # creates files here, so it isn't taken for an older install that
+        # has already done the setup steps (config._v3).
+        STORE.save(STORE.load(), strict=False)
     for d in (RESUME_DIR, OUT_DIR, DB_PATH.parent, LOG_PATH.parent):
         d.mkdir(parents=True, exist_ok=True)
     STORE.load()
     for w in STORE.warnings:
         log(f"settings: {w}")
+    if not DASHBOARD.exists():
+        radar.rerender(STORE)
+
+
+def bind() -> ThreadingHTTPServer:
+    """Raises OSError when the port is taken."""
+    return ThreadingHTTPServer((HOST, PORT), Handler)
+
+
+def start_background() -> None:
+    threading.Thread(target=_render_loop, name="render", daemon=True).start()
+    PREP.start()
+    SCHEDULER.start()
+
+
+def main() -> int:
+    prepare()
     try:
-        httpd = ThreadingHTTPServer((HOST, PORT), Handler)
+        httpd = bind()
     except OSError as e:
         log(f"could not bind {HOST}:{PORT}: {e}")
         return 1
     log(f"serving http://{HOST}:{PORT}")
-    threading.Thread(target=_render_loop, name="render", daemon=True).start()
-    PREP.start()
+    start_background()
     httpd.serve_forever()
     return 0
 

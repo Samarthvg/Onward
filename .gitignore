@@ -15,6 +15,17 @@ data/
 dashboard.html
 *.tmp
 
+# The app's state in the data folder (scheduler, locks, downloaded Tectonic)
+app-state.json
+radar-status.json
+*.lock
+.autostart-set
+tools/
+
+# Installer builds
+build/
+dist/
+
 # Logs
 *.log
 

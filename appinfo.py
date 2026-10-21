@@ -1,0 +1,21 @@
+"""Names and version of the app, in one place for the code, the tray, the
+installers (packaging/) and the update check."""
+
+NAME = "It gets easier"
+SLUG = "it-gets-easier"                 # file names, the Linux autostart entry, package ids
+TAGLINE = "Fresh entry-level job postings, a tailored resume and an apply queue, on your own computer"
+VERSION = "0.1.0"                       # bump with each release; tags are v<VERSION>
+BUNDLE_ID = "io.github.itgetseasier"    # macOS bundle and LaunchAgent label
+
+# "owner/repo" on GitHub. Releases there are what the update check reads and
+# what the installers are uploaded to. Empty turns the update check off.
+GITHUB_REPO = ""
+# The subject name on the Windows code-signing certificate (e.g. "Jane Doe").
+# When set, a downloaded update installs only if Windows says it is signed
+# by exactly this publisher.
+WINDOWS_PUBLISHER = ""
+
+# Store listings of the Autofill extension, once they exist. Until then the
+# setup steps offer the signed .xpi (Firefox) and Load unpacked (Chrome).
+FIREFOX_ADDON_URL = ""
+CHROME_STORE_URL = ""

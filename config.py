@@ -37,7 +37,7 @@ import filters
 
 CODE_DIR = Path(__file__).resolve().parent
 SETTINGS_FILE = "settings.json"
-VERSION = 2
+VERSION = 3
 
 
 def platform_data_dir() -> Path:
@@ -220,6 +220,7 @@ WORKPLACE = ("onsite", "hybrid", "remote")
 VISA_STATUS = ("opt", "sponsorship", "authorized")
 TAILOR_BACKENDS = ("chatgpt", "claude-code", "claude-api", "manual")
 DRAFT_BACKENDS = ("chatgpt", "claude-code")
+SETUP_STEPS = ("welcome", "resume", "profile", "role", "ai", "extension", "fetch")
 SOURCES = ("greenhouse", "lever", "ashby", "workday", "smartrecruiters", "oracle", "eightfold", "amazon", "icims")
 
 ID = r"[a-z0-9][a-z0-9-]{0,39}"
@@ -315,6 +316,7 @@ SCHEMA = Obj({
         "workers": Int(24, 1, 64),
         "timeout": Int(25, 5, 120),
         "simplify_feed": Bool(True),            # SimplifyJobs New-Grad listings
+        "interval_minutes": Int(30, 10, 1440),  # how often the app fetches
     }),
     "companies": Obj({
         # Boards the user added on top of companies.json, per source.
@@ -344,6 +346,16 @@ SCHEMA = Obj({
     }),
     "queue": QUEUE,
     "ui": Obj({"advanced": Bool(False)}),
+    # The first-run steps in the dashboard. Scheduled fetches wait until
+    # they are done or skipped; `step` is where a closed window picks up.
+    "setup": Obj({
+        "done": Bool(False),
+        "step": Str("welcome", choices=SETUP_STEPS),
+    }),
+    "app": Obj({
+        "check_updates": Bool(True),            # once a day, against the project's GitHub releases
+        "skip_version": Str("", 40),            # an update the user said not to offer again
+    }),
     # Messages for the user about changes made to their settings, shown once
     # in the dashboard until dismissed.
     "notices": List(Str(max_len=500), [], 20),
@@ -419,7 +431,17 @@ def _v2(data: dict, home: Path) -> dict:
     return data
 
 
-MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2}
+def _v3(data: dict, home: Path) -> dict:
+    """Setup steps arrived. Anyone already using It gets easier has done
+    what they cover, so only a new install is shown them."""
+    used = any(k in data for k in ("paths", "radar", "companies", "roles", "scoring", "tailoring", "queue", "ui")) \
+        or (home / "jobs.db").exists() or (home / "resume" / "master.tex").exists()
+    if used:
+        data["setup"] = {**(data.get("setup") if isinstance(data.get("setup"), dict) else {}), "done": True}
+    return data
+
+
+MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3}
 
 
 def migrate(data: dict, home: Path) -> tuple[dict, bool]:

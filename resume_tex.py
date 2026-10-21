@@ -26,6 +26,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import texengine
+
 ROOT = Path(__file__).resolve().parent
 SKILL_BOUNDARY = "(?<![A-Za-z0-9+#])(?:{})(?![A-Za-z0-9+#])"
 _TAXONOMY = json.loads((ROOT / "skills.json").read_text(encoding="utf-8"))
@@ -608,18 +610,27 @@ def engine_for(tex: str) -> str:
 
 
 def compile_pdf(tex: str, out_pdf: Path | None = None, timeout: int = 120) -> int:
-    """Compile and return the page count. Shell escape is always off."""
+    """Compile and return the page count. Shell escape is always off. An
+    installed TeX is used when there is one, else Tectonic (texengine.py)."""
     engine = engine_for(tex)
-    if not shutil.which(engine):
-        raise CompileError(f"{engine} is not installed")
+    found = texengine.pick(engine)
+    if not found:
+        raise CompileError(f"{engine} is not installed. Install a TeX distribution, or let It gets easier "
+                           "download Tectonic under Settings, App.")
+    kind, exe = found
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "resume.tex"
-        src.write_text(tex, encoding="utf-8")
+        if kind == "tex":
+            src.write_text(tex, encoding="utf-8")
+            cmd, env = [exe, "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", "resume.tex"], None
+        else:
+            engine = "Tectonic"
+            src.write_text(texengine.PDFTEX_SHIM + tex, encoding="utf-8")
+            cmd, env = [exe, "-X", "compile", "--untrusted", "--keep-logs", "resume.tex"], texengine.tectonic_env()
+            timeout = max(timeout, 600)     # the first compile fetches the packages the resume uses
         try:
-            proc = subprocess.run(
-                [engine, "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", "resume.tex"],
-                cwd=tmp, capture_output=True, text=True, timeout=timeout,
-                encoding="utf-8", errors="replace")
+            proc = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True, timeout=timeout,
+                                  encoding="utf-8", errors="replace", env=env)
         except subprocess.TimeoutExpired as e:
             raise CompileError(f"{engine} timed out") from e
         log = (Path(tmp) / "resume.log").read_text(encoding="utf-8", errors="replace") \
