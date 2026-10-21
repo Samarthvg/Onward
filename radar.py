@@ -1,4 +1,4 @@
-"""It gets easier: pulls entry-level US software engineering postings straight from
+"""Onward: pulls entry-level US software engineering postings straight from
 company applicant tracking systems, keeps a SQLite history, and renders a
 static dashboard of the freshest roles.
 

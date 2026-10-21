@@ -1,9 +1,9 @@
 ; Inno Setup 6 script for the Windows installer. packaging/build.py passes the
 ; /D values below; to build by hand from the repository root:
-;   iscc /DAppVersion=0.1.0 "/DSourceDir=dist\It gets easier" packaging\windows\installer.iss
+;   iscc /DAppVersion=0.1.0 "/DSourceDir=dist\Onward" packaging\windows\installer.iss
 ;
 ; Installs for the current user only (no administrator prompt) into
-; %LOCALAPPDATA%\Programs\It gets easier, adds a Start menu entry, and starts
+; %LOCALAPPDATA%\Programs\Onward, adds a Start menu entry, and starts
 ; the app, which turns on Start at login itself. Run again over an older
 ; version, it upgrades in place; the app's updater runs it with
 ; /SILENT /RELAUNCH=1 so the new version starts by itself afterwards.
@@ -18,19 +18,19 @@
 ; then uncomment the SignTool line. packaging/README.md has the details.
 
 #ifndef AppName
-  #define AppName "It gets easier"
+  #define AppName "Onward"
 #endif
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
 #ifndef SourceDir
-  #define SourceDir "..\..\dist\It gets easier"
+  #define SourceDir "..\..\dist\Onward"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\..\dist"
 #endif
 #ifndef OutputName
-  #define OutputName "it-gets-easier-" + AppVersion + "-windows-setup"
+  #define OutputName "onward-" + AppVersion + "-windows-setup"
 #endif
 #ifndef IconFile
   #define IconFile "..\..\build\icon.ico"

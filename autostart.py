@@ -1,9 +1,9 @@
-"""Start It gets easier when the user logs in, and retire the old scheduled tasks.
+"""Start Onward when the user logs in, and retire the old scheduled tasks.
 
 Per user, no administrator rights needed:
   Windows  a value under HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run
   macOS    ~/Library/LaunchAgents/<bundle id>.plist
-  Linux    $XDG_CONFIG_HOME/autostart/it-gets-easier.desktop (~/.config/autostart)
+  Linux    $XDG_CONFIG_HOME/autostart/onward.desktop (~/.config/autostart)
 
 Before the app existed, two Windows scheduled tasks did its job: "JobRadar"
 ran radar.py every 30 minutes and "JobRadar Helper" started server.py at

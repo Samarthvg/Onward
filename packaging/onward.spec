@@ -1,9 +1,9 @@
-# PyInstaller spec for the app: python -m PyInstaller packaging/it-gets-easier.spec
+# PyInstaller spec for the app: python -m PyInstaller packaging/onward.spec
 # (packaging/build.py runs this, then wraps the result into the installer).
 #
-# Windows: dist/It gets easier/ (a folder, which the Inno Setup installer installs)
-# macOS:   dist/It gets easier.app
-# Linux:   dist/it-gets-easier/ (a folder, which build.py turns into an AppImage)
+# Windows: dist/Onward/ (a folder, which the Inno Setup installer installs)
+# macOS:   dist/Onward.app
+# Linux:   dist/onward/ (a folder, which build.py turns into an AppImage)
 
 import sys
 from pathlib import Path

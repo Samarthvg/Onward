@@ -1,4 +1,4 @@
-"""It gets easier, the app: the dashboard's helper, timed job searches and a
+"""Onward, the app: the dashboard's helper, timed job searches and a
 tray icon, in one process that starts when the user logs in.
 
     python app.py              tray icon (the installed app runs this)
@@ -120,7 +120,7 @@ class App:
             wait_for_port(server.HOST, server.PORT, 15)
             every = self.store.section("radar")["interval_minutes"]
             self.store.update({"notices": self.store.section("notices") + [
-                "It gets easier now runs as an app with a tray icon, so the old JobRadar scheduled tasks were "
+                "Onward now runs as an app with a tray icon, so the old JobRadar scheduled tasks were "
                 f"removed. It searches for jobs every {every} minutes while you're logged in."]}, strict=False)
         self.first_launch()
         if removed and not self.login.enabled():
@@ -130,7 +130,7 @@ class App:
         except OSError as e:
             server.log(f"could not bind {server.HOST}:{server.PORT}: {e}")
             server.APP_STATE["port_conflict"] = (f"Another program is using port {server.PORT}, so the dashboard "
-                                                 "can't open. Quit any other copy of It gets easier and start it again.")
+                                                 "can't open. Quit any other copy of Onward and start it again.")
             httpd = None
         if httpd:
             threading.Thread(target=httpd.serve_forever, name="http", daemon=True).start()

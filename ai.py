@@ -359,7 +359,7 @@ def budget_message(provider: str, budget: float, used: float, cost: float) -> st
     name = pricing.PROVIDER_NAMES[provider]
     month = datetime.now().strftime("%B")
     if budget <= 0:
-        return (f"Your {name} API budget is $0, so It gets easier makes no paid {name} calls. "
+        return (f"Your {name} API budget is $0, so Onward makes no paid {name} calls. "
                 "Set a monthly budget in Settings, under AI models, or use your ChatGPT or Claude login.")
     return (f"This would go over your {name} API budget for {month}: ${used:.2f} of ${budget:.2f} is used and "
             f"this run would cost about ${cost:.2f}. Raise the budget in Settings, under AI models, "

@@ -93,7 +93,7 @@ UNSUPPORTED = [
     (re.compile(r"https?://[^/]*(?:linkedin\.com|indeed\.com|glassdoor\.com)/", re.I),
      "Job sites like LinkedIn, Indeed and Glassdoor aren't company boards. Paste the company's own careers page."),
     (re.compile(r"https?://[^/]*(?:jobs\.apple\.com|google\.com|metacareers\.com)/", re.I),
-     "This company's careers site doesn't allow automated reading, so It gets easier leaves it out."),
+     "This company's careers site doesn't allow automated reading, so Onward leaves it out."),
 ]
 
 

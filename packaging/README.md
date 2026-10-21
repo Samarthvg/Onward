@@ -5,9 +5,9 @@ installer format:
 
 | Platform | File                                         | Wrapper                                            |
 | -------- | -------------------------------------------- | -------------------------------------------------- |
-| Windows  | `it-gets-easier-<version>-windows-setup.exe` | [Inno Setup 6](https://jrsoftware.org/isinfo.php)  |
-| macOS    | `it-gets-easier-<version>-macos.dmg`         | `hdiutil`                                          |
-| Linux    | `it-gets-easier-<version>-x86_64.AppImage`   | [appimagetool](https://github.com/AppImage/appimagetool) |
+| Windows  | `onward-<version>-windows-setup.exe` | [Inno Setup 6](https://jrsoftware.org/isinfo.php)  |
+| macOS    | `onward-<version>-macos.dmg`         | `hdiutil`                                          |
+| Linux    | `onward-<version>-x86_64.AppImage`   | [appimagetool](https://github.com/AppImage/appimagetool) |
 
 ## Why PyInstaller
 
@@ -16,7 +16,7 @@ installer format:
   restructured for it. Briefcase is also built around the Toga UI toolkit, which this app doesn't use.
 - **Tray icon.** The app's tray icon is [pystray](https://github.com/moses-palmer/pystray). It uses the Win32
   API through ctypes, AppKit on macOS and Xlib/AppIndicator on Linux, and PyInstaller bundles each of those
-  backends (`it-gets-easier.spec` names them).
+  backends (`onward.spec` names them).
 - **Clean updates.** Neither tool updates an installed app, so updating lives in the app (`updates.py`):
   - It checks GitHub Releases once a day.
   - On Windows it downloads the new installer, verifies its SHA-256 against the release's `SHA256SUMS` (and,

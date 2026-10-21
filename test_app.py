@@ -252,23 +252,23 @@ class AutostartTests(unittest.TestCase):
     def test_macos_launch_agent(self):
         a = autostart.Autostart(platform="darwin", home=self.home)
         self.assertFalse(a.enabled())
-        a.enable(["/Applications/It gets easier.app/Contents/MacOS/It gets easier"])
+        a.enable(["/Applications/Onward.app/Contents/MacOS/Onward"])
         import plistlib
         data = plistlib.loads(a.plist_path().read_bytes())
         self.assertEqual((data["Label"], data["RunAtLoad"]), (appinfo.BUNDLE_ID, True))
         self.assertTrue(a.enabled())
-        self.assertIn("It gets easier.app", a.command())
+        self.assertIn("Onward.app", a.command())
         a.disable()
         self.assertFalse(a.enabled())
 
     def test_linux_autostart_entry(self):
         with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": ""}):
             a = autostart.Autostart(platform="linux", home=self.home)
-            a.enable(["/home/me/It gets easier.AppImage"])
-            self.assertEqual(a.desktop_path(), self.home / ".config" / "autostart" / "it-gets-easier.desktop")
+            a.enable(["/home/me/My Apps/Onward.AppImage"])
+            self.assertEqual(a.desktop_path(), self.home / ".config" / "autostart" / "onward.desktop")
             text = a.desktop_path().read_text()
-            self.assertIn("Exec='/home/me/It gets easier.AppImage'", text)
-            self.assertIn("Name=It gets easier", text)
+            self.assertIn("Exec='/home/me/My Apps/Onward.AppImage'", text)
+            self.assertIn("Name=Onward", text)
             a.disable()
             self.assertFalse(a.enabled())
 
@@ -278,11 +278,11 @@ class AutostartTests(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform == "win32", "Windows registry")
     def test_windows_run_key(self):
-        a = autostart.Autostart(name="It gets easier test " + str(os.getpid()))
+        a = autostart.Autostart(name="Onward test " + str(os.getpid()))
         self.addCleanup(a.disable)
         self.assertFalse(a.enabled())
-        a.enable([r"C:\Program Files\It gets easier\It gets easier.exe"])
-        self.assertEqual(a.command(), r'"C:\Program Files\It gets easier\It gets easier.exe"')
+        a.enable([r"C:\Program Files\Onward\Onward.exe"])
+        self.assertEqual(a.command(), r'"C:\Program Files\Onward\Onward.exe"')
         a.disable()
         self.assertFalse(a.enabled())
         a.disable()     # twice is fine
@@ -343,9 +343,9 @@ class AutostartTests(unittest.TestCase):
 class UpdateTests(unittest.TestCase):
     RELEASE = {"tag_name": "v0.4.0", "html_url": "https://github.com/o/r/releases/tag/v0.4.0", "body": "Notes",
                "draft": False, "prerelease": False,
-               "assets": [{"name": "it-gets-easier-0.4.0-windows-setup.exe", "browser_download_url": "https://x/setup.exe",
+               "assets": [{"name": "onward-0.4.0-windows-setup.exe", "browser_download_url": "https://x/setup.exe",
                            "size": 5},
-                          {"name": "it-gets-easier-0.4.0-macos.dmg", "browser_download_url": "https://x/a.dmg", "size": 5},
+                          {"name": "onward-0.4.0-macos.dmg", "browser_download_url": "https://x/a.dmg", "size": 5},
                           {"name": "SHA256SUMS", "browser_download_url": "https://x/SHA256SUMS", "size": 100}]}
 
     def get(self, release):
@@ -374,10 +374,10 @@ class UpdateTests(unittest.TestCase):
             def save(url, path):
                 path.write_bytes(body)
                 return hashlib.sha256(body).hexdigest()
-            sums = f"{'0' * 64}  other.exe\n{good}  it-gets-easier-0.4.0-windows-setup.exe\n".encode()
+            sums = f"{'0' * 64}  other.exe\n{good}  onward-0.4.0-windows-setup.exe\n".encode()
             path = updates.download(up, Path(d), get=lambda *a: sums, save=save)
             self.assertEqual(path.read_bytes(), body)
-            bad = f"{'1' * 64}  it-gets-easier-0.4.0-windows-setup.exe\n".encode()
+            bad = f"{'1' * 64}  onward-0.4.0-windows-setup.exe\n".encode()
             with self.assertRaises(updates.UpdateError):
                 updates.download(up, Path(d), get=lambda *a: bad, save=save)
             self.assertFalse(path.exists(), "a mismatched download is removed")
@@ -608,7 +608,7 @@ class HelperTests(unittest.TestCase):
         code, data = self.call("/api/app")
         self.assertEqual(code, 200)
         self.assertEqual((data["name"], data["setup"]["done"], data["schedule"]["automatic"]),
-                         ("It gets easier", False, False))
+                         ("Onward", False, False))
         self.assertIn("formats", data["tex"])
 
     def test_2_first_search_with_progress(self):

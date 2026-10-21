@@ -9,7 +9,7 @@ voice of drafted answers, and where data files live.
 
 The file is checked against SCHEMA on every load. A value of the wrong type
 falls back to its default (and is reported), numbers outside their range are
-clamped, unknown keys are dropped. Defaults reproduce how It gets easier behaved
+clamped, unknown keys are dropped. Defaults reproduce how Onward behaved
 before settings existed, so an install without a settings file runs exactly
 as before. Each file carries a version; MIGRATIONS bring older files up to
 date when they are loaded.
@@ -451,14 +451,14 @@ def _v2(data: dict, home: Path) -> dict:
         data["tailoring"].pop("ollama_url", None)
         data["tailoring"].pop("ollama_model", None)
     if moved:
-        notices.append("The local Ollama model is no longer part of It gets easier, so tailoring and drafting "
+        notices.append("The local Ollama model is no longer part of Onward, so tailoring and drafting "
                        "that used it now use ChatGPT. You can pick Claude instead in Settings.")
     data["notices"] = notices
     return data
 
 
 def _v3(data: dict, home: Path) -> dict:
-    """Setup steps arrived. Anyone already using It gets easier has done
+    """Setup steps arrived. Anyone already using Onward has done
     what they cover, so only a new install is shown them."""
     used = any(k in data for k in ("paths", "radar", "companies", "roles", "scoring", "tailoring", "queue", "ui")) \
         or (home / "jobs.db").exists() or (home / "resume" / "master.tex").exists()
@@ -568,7 +568,7 @@ class Store:
         data, errors = validate(raw)
         self.warnings += errors
         if newer:
-            self.warnings.append(f"{self.path.name} is from a newer version of It gets easier (version {raw['version']}); "
+            self.warnings.append(f"{self.path.name} is from a newer version of Onward (version {raw['version']}); "
                                  "it is used read-only")
             data["version"] = raw["version"]
         elif migrated and exists:
@@ -590,7 +590,7 @@ class Store:
         with self.lock:
             cur = self.load()
             if cur.get("version", VERSION) > VERSION:
-                raise SettingsError([f"{self.path.name} is from a newer version of It gets easier; not overwriting it"])
+                raise SettingsError([f"{self.path.name} is from a newer version of Onward; not overwriting it"])
             self._write(clean)
             self._data, self._stamp = clean, self._file_stamp()
         return copy.deepcopy(clean)

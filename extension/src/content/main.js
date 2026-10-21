@@ -183,7 +183,7 @@
 
   /* ----------------------------------------------- prepared by the helper */
 
-  // The It gets easier helper prepares good matches ahead of time: a resume
+  // The Onward helper prepares good matches ahead of time: a resume
   // tailored to the job (or a note to use the master) and drafts for the
   // form's own questions. Asked once per page; null when the helper doesn't
   // know this job or isn't running.
@@ -210,7 +210,7 @@
     if (res) parts.push(res.source === "tailored" ? "attached the resume tailored for this job" : "attached your master resume");
     const n = items.filter((i) => i.source === "ai" && i.prepared).length;
     if (n) parts.push(`filled ${n} answer${n === 1 ? "" : "s"} drafted ahead`);
-    return parts.length ? "It gets easier " + parts.join(" and ") + "." : null;
+    return parts.length ? "Onward " + parts.join(" and ") + "." : null;
   }
 
   /** Fills custom questions with the answers the helper drafted ahead, marked for review like any AI answer. */
@@ -247,7 +247,7 @@
 
   // Greenhouse and Lever move to their own confirmation URL; Ashby and
   // Workday replace the form with a message, which only counts in a tab
-  // that showed the form of a job from It gets easier (the background checks that).
+  // that showed the form of a job from Onward (the background checks that).
   const CONFIRM_URL = /\/jobs\/\d+\/confirmation\b|\/job_app\/confirmation\b|^\/[^/]+\/[0-9a-f-]{36}\/thanks\b/;
   const CONFIRM_TEXT = /thanks? (you )?for (applying|your application|submitting)|application (was |has been )?(successfully )?(submitted|received)|(we've|we have) received your application|your application (was|has been) (successfully )?(submitted|received|sent)/i;
   const CONFIRM_SPOTS = "h1, h2, h3, h4, [role=alert], [role=status], [role=dialog], [class*='success'], [class*='confirmation'], [class*='thank'], [data-automation-id*='onfirm']";
@@ -278,7 +278,7 @@
     if (!JR.panel.mount(handlers)) return;
     if (inFrame) JR.panel.update({ frame: true });
     JR.panel.update({ open: true, done: { company: res.company || "", title: res.title || "", next: res.next || null,
-      error: res.error ? "Couldn't mark this application in It gets easier: " + res.error : "" } });
+      error: res.error ? "Couldn't mark this application in Onward: " + res.error : "" } });
   }
 
   /* ------------------------------------------------------- AI answers */
@@ -287,7 +287,7 @@
   const AI_TEXT = new Set(["text", "email", "url", "number", "search", "date", "combo", "prompt", "textarea"]);
 
   async function helperJob(start) {
-    if (!start || start.error) throw new Error((start && start.error) || "The It gets easier helper didn't answer.");
+    if (!start || start.error) throw new Error((start && start.error) || "The Onward helper didn't answer.");
     const end = Date.now() + 15 * 60 * 1000;
     for (;;) {
       await sleep(2000);
@@ -414,7 +414,7 @@
     };
     try {
       const start = await api.runtime.sendMessage({ type: "jr:draftStart", payload });
-      if (!start || start.error) throw new Error((start && start.error) || "The It gets easier helper didn't answer.");
+      if (!start || start.error) throw new Error((start && start.error) || "The Onward helper didn't answer.");
       if (start.prompt) { it.prompt = start.prompt; it.why = "Manual mode: copy the prompt below."; return; }
       if (start.estimate != null) {
         it.why = "Drafting with your " + (BACKEND_NAMES[b] || b) + " key, about " + (start.estimate < 0.01 ? "under 1¢" : "$" + start.estimate.toFixed(2)) + "…";

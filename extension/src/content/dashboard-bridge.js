@@ -1,4 +1,4 @@
-/* Runs on the It gets easier dashboard (http://127.0.0.1:8765) so the options
+/* Runs on the Onward dashboard (http://127.0.0.1:8765) so the options
  * page can import the Apply kit details saved there. It only answers this
  * extension's own messages and only reads; it changes nothing on the page. */
 (function () {

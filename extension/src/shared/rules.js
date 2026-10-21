@@ -60,7 +60,7 @@
     helper: true,              // offer drafting through the local helper
     aiFill: true,              // answer the remaining questions with the helper after filling
   };
-  // openai-api and claude-api bill the user's own key, within the budget set in It gets easier.
+  // openai-api and claude-api bill the user's own key, within the budget set in Onward.
   const DRAFT_BACKENDS = ["chatgpt", "claude-code", "openai-api", "claude-api", "manual"];
 
   // Saved settings over the defaults. A drafting backend that no longer

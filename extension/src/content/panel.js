@@ -175,8 +175,8 @@
       had.length ? el("details", null, el("summary", null, `Already answered (${had.length})`), el("ul", null, had.map(item))) : null,
       el("div", { class: "note" }, "Nothing is submitted. Check every answer, then press Submit yourself. ",
         el("a", { href: "#", onclick: (e) => { e.preventDefault(); handlers.options(); } }, "Edit saved answers")));
-    wrap.append(el("div", { class: "panel", role: "dialog", "aria-label": "It gets easier Autofill" },
-      el("header", null, el("b", null, "It gets easier Autofill"),
+    wrap.append(el("div", { class: "panel", role: "dialog", "aria-label": "Onward Autofill" },
+      el("header", null, el("b", null, "Onward Autofill"),
         el("button", { class: "primary", disabled: view.busy, onclick: () => handlers.fill() }, view.busy ? "Filling…" : view.step ? "Fill this step" : "Fill again"),
         el("button", { class: "x", title: "Close", "aria-label": "Close", onclick: () => { view.open = false; render(); } }, "×")),
       body));
@@ -193,8 +193,8 @@
         el("a", { class: "btn", href: n.apply_url, rel: "noopener" }, "Open next application"))
         : el("div", { class: "note" }, "Nothing else is ready in your apply queue. ",
           el("a", { href: "http://127.0.0.1:8765/#queue", target: "_blank", rel: "noopener" }, "Open the queue")));
-    wrap.append(el("div", { class: "panel", role: "dialog", "aria-label": "It gets easier" },
-      el("header", null, el("b", null, "It gets easier"),
+    wrap.append(el("div", { class: "panel", role: "dialog", "aria-label": "Onward" },
+      el("header", null, el("b", null, "Onward"),
         el("button", { class: "x", title: "Close", "aria-label": "Close", onclick: () => { view.open = false; view.done = null; unmount(); } }, "×")),
       body));
   }

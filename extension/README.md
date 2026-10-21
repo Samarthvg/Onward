@@ -1,4 +1,4 @@
-# It gets easier Autofill
+# Onward Autofill
 
 A browser extension that fills job applications on Greenhouse, Lever, Ashby and Workday with your saved details. It replaces the dashboard's "Fill application" bookmark: on top of the text fields the bookmark fills, it also attaches your resume, picks dropdown, radio and checkbox answers, answers standard questions (work authorization, sponsorship, relocation, how you heard about the job, demographic questions), remembers what you type into other questions, and can draft written answers on your ChatGPT or Claude login.
 
@@ -38,14 +38,14 @@ These can run unsigned extensions permanently: set `xpinstall.signatures.require
 
 ### Site access
 
-The extension asks to read and change data on the four ATS sites, plus `127.0.0.1` and `localhost` for the It gets easier helper and dashboard. Firefox match patterns can't name a port, so access covers every local port, but the extension only talks to port 8765. If the options page shows **Allow access to job sites**, press it.
+The extension asks to read and change data on the four ATS sites, plus `127.0.0.1` and `localhost` for the Onward helper and dashboard. Firefox match patterns can't name a port, so access covers every local port, but the extension only talks to port 8765. If the options page shows **Allow access to job sites**, press it.
 
 ## Set up
 
-Open the options page (Firefox: `about:addons` → It gets easier Autofill → Preferences; Chrome: right-click the toolbar icon → Options).
+Open the options page (Firefox: `about:addons` → Onward Autofill → Preferences; Chrome: right-click the toolbar icon → Options).
 
 - **Resume:** choose your PDF once. It's stored in the extension and attached to each form's resume field. Each site still reads it its own way; check the result.
-- **Profile:** press **Import from dashboard** to copy the Apply kit details from the It gets easier dashboard. The helper must be running; if no dashboard tab is open, the extension opens one in the background. Or press **Copy for extension** in the dashboard's Apply kit and paste the result here. Import only fills empty fields here.
+- **Profile:** press **Import from dashboard** to copy the Apply kit details from the Onward dashboard. The helper must be running; if no dashboard tab is open, the extension opens one in the background. Or press **Copy for extension** in the dashboard's Apply kit and paste the result here. Import only fills empty fields here.
 - **Standard answers:** work authorization, sponsorship now and later, unrestricted authorization, citizenship, relocation, age, how you heard about the job. Each starts as **Ask me each time**, and such questions are left for you until you set an answer.
 - **Voluntary self-identification:** gender, race, veteran, disability and the rest default to **Decline to answer**. If a form has no decline option, the question is left for you.
 
@@ -59,7 +59,7 @@ On an application form, press the **Autofill** button in the bottom-right corner
   - Rows the site already filled, for example from Workday's "Autofill with Resume", are matched to your resume by company or school name and left as they are. If they differ from your resume, the panel shows **Replace with my resume** for that section, with **Undo**.
 - **Remembered answers:** answers you type into questions the extension doesn't know are saved, keyed by the question's wording. The next time the same question appears, short answers are filled in again and long written answers are offered with a **Use saved answer** button. Edit or delete them under **Saved answers** in the options.
 - **AI answers for the rest:** after filling, the questions nothing saved could answer are sent in one batch to the helper on your ChatGPT login (or the backend chosen under Drafting answers). This covers choice questions, short answers and essays. Answers are filled in with an amber outline and an "AI answer, check it" tag. The model uses only your resume, profile and the posting, and leaves questions it can't know (offer deadlines, consents, family ties) for you. Sponsorship, demographic, salary, legal and consent questions are never sent, and neither are work-history or education fields (job title, company, dates, role description, school, degree, field of study, GPA). Turn this off under Drafting answers, or pick the Manual backend.
-- **Drafts:** writing questions ("Why do you want to work here?") get a **Draft an answer** button. The draft goes into the field for you to edit and is never sent anywhere else. Drafting uses the It gets easier helper (`pythonw server.py`), your master resume uploaded in the dashboard, the job description (looked up from the posting's URL in `jobs.db`, otherwise read from the page), and your choice of backend:
+- **Drafts:** writing questions ("Why do you want to work here?") get a **Draft an answer** button. The draft goes into the field for you to edit and is never sent anywhere else. Drafting uses the Onward helper (`pythonw server.py`), your master resume uploaded in the dashboard, the job description (looked up from the posting's URL in `jobs.db`, otherwise read from the page), and your choice of backend:
   - ChatGPT, through `codex` on your ChatGPT login;
   - Claude, through the `claude` CLI on your Claude login;
   - **Manual**, which shows a prompt to paste into any chat.
@@ -68,11 +68,11 @@ On an application form, press the **Autofill** button in the bottom-right corner
 
 ## Apply queue
 
-The It gets easier helper prepares good matches before you open them (see **Apply queue** in the dashboard): after each radar run, new postings at or above your match threshold get a resume tailored to them, or a note that your master resume already fits, plus drafts for the custom questions their form publishes (Greenhouse, Lever and Ashby). When you open one of these forms:
+The Onward helper prepares good matches before you open them (see **Apply queue** in the dashboard): after each radar run, new postings at or above your match threshold get a resume tailored to them, or a note that your master resume already fits, plus drafts for the custom questions their form publishes (Greenhouse, Lever and Ashby). When you open one of these forms:
 
 - The resume field gets the tailored PDF, under your stored resume's file name. If you chose **Use master instead**, the job wasn't prepared, or the helper isn't running, it gets your stored resume as before. The panel says which one it attached.
 - Questions with a drafted answer are filled and marked like any AI answer (amber outline, "AI answer, check it"). The extension's own rules still decide which questions those may be: sponsorship, work authorization, demographic, salary, legal and consent questions only ever take your saved answers.
-- After you press Submit, the ATS's "application received" page marks the job applied in It gets easier, and the panel offers the next job in the queue. Greenhouse and Lever have their own confirmation URLs; for Ashby and Workday the thank-you message only counts in a tab that showed an It gets easier job's form.
+- After you press Submit, the ATS's "application received" page marks the job applied in Onward, and the panel offers the next job in the queue. Greenhouse and Lever have their own confirmation URLs; for Ashby and Workday the thank-you message only counts in a tab that showed an Onward job's form.
 
 ## Safety rules
 

@@ -2,9 +2,9 @@
 
     python packaging/build.py
 
-  Windows  dist/it-gets-easier-<v>-windows-setup.exe   (needs Inno Setup 6: iscc on PATH)
-  macOS    dist/it-gets-easier-<v>-macos.dmg
-  Linux    dist/it-gets-easier-<v>-x86_64.AppImage     (needs appimagetool on PATH)
+  Windows  dist/onward-<v>-windows-setup.exe   (needs Inno Setup 6: iscc on PATH)
+  macOS    dist/onward-<v>-macos.dmg
+  Linux    dist/onward-<v>-x86_64.AppImage     (needs appimagetool on PATH)
 
 and dist/SHA256SUMS, which the update check verifies downloads against.
 Upload both to a GitHub release tagged v<version> (.github/workflows/release.yml
@@ -70,7 +70,7 @@ def version_file() -> None:
 def pyinstaller() -> None:
     shutil.rmtree(DIST, ignore_errors=True)
     run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--distpath", DIST,
-         "--workpath", BUILD / "pyinstaller", ROOT / "packaging" / "it-gets-easier.spec"])
+         "--workpath", BUILD / "pyinstaller", ROOT / "packaging" / "onward.spec"])
 
 
 def sign_windows(path: Path) -> None:

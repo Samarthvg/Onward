@@ -151,7 +151,7 @@ def _contact(part: str) -> str:
 
 
 PREAMBLE = r"""\documentclass[11pt,letterpaper]{article}
-% Made by It gets easier from a PDF or text resume. Edit freely: tailoring
+% Made by Onward from a PDF or text resume. Edit freely: tailoring
 % changes only the bullets, the "| \textit{...}" tool lists and the skills rows.
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}

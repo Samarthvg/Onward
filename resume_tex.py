@@ -743,7 +743,7 @@ def compile_pdf(tex: str, out_pdf: Path | None = None, timeout: int = 120) -> in
     engine = engine_for(tex)
     found = texengine.pick(engine)
     if not found:
-        raise CompileError(f"{engine} is not installed. Install a TeX distribution, or let It gets easier "
+        raise CompileError(f"{engine} is not installed. Install a TeX distribution, or let Onward "
                            "download Tectonic under Settings, App.")
     kind, exe = found
     with tempfile.TemporaryDirectory() as tmp:

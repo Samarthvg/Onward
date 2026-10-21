@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>It gets easier</title>
+<title>Onward</title>
 <style>
   :root {
     --bg: #f6f5f1; --surface: #ffffff; --surface-2: #faf9f6; --text: #1d1d1b; --muted: #6b6a64;
@@ -338,7 +338,7 @@
 <a class="skip" href="#main">Skip to content</a>
 <div class="wrap">
   <header>
-    <h1>It gets easier</h1>
+    <h1>Onward</h1>
     <div class="status" id="status"></div>
     <div class="hbtns">
       <select id="roleSel" aria-label="Role" hidden></select>
@@ -413,7 +413,7 @@
       <div class="row"><button type="button" id="saveAbout">Save</button><span class="note" id="aboutNote"></span></div>
     </div>
     <div class="autofill">
-      <p class="section-h">It gets easier Autofill extension</p>
+      <p class="section-h">Onward Autofill extension</p>
       <p>If you've installed the extension (see <code>extension/README.md</code>), it replaces the bookmark below: it also attaches your resume, picks dropdown answers and remembers answers you type. Open its options and press <b>Import from dashboard</b> while this page is open, or copy your details here and paste them there.</p>
       <div class="row"><button type="button" id="copyForExtension">Copy for extension</button></div>
     </div>
@@ -1730,7 +1730,7 @@ function renderSkills() {
 function addSkill() {
   const r = state.resume; const v = $("addSkill").value.trim(); if (!r || !v) return;
   const hit = SKILLS.find((s) => s.n.toLowerCase() === v.toLowerCase());
-  if (!hit) { toast(`“${v}” isn't a skill It gets easier knows. Pick one from the suggestions as you type, so it can be matched against jobs.`); return; }
+  if (!hit) { toast(`“${v}” isn't a skill Onward knows. Pick one from the suggestions as you type, so it can be matched against jobs.`); return; }
   $("addSkill").value = "";
   editResume(`Added ${hit.n}. Match scores count it now.`, `adding ${hit.n}`, (x) => {
     x.added = [...new Set([...(x.added || []), hit.n])];
@@ -1843,8 +1843,8 @@ const helper = { status: null };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Errors say what to do next: the helper's own message when it sent one.
-const UNREACHABLE = "Can't reach It gets easier on this computer. Check that the app is running (its icon is in the system tray, " +
-  "or start It gets easier again), then try once more.";
+const UNREACHABLE = "Can't reach Onward on this computer. Check that the app is running (its icon is in the system tray, " +
+  "or start Onward again), then try once more.";
 async function api(path, body) {
   const init = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
   let res;
@@ -1852,7 +1852,7 @@ async function api(path, body) {
   let data = null;
   try { data = await res.json(); } catch {}
   if (!res.ok) {
-    const e = new Error((data && data.error) || `Something went wrong in It gets easier (error ${res.status}). ` +
+    const e = new Error((data && data.error) || `Something went wrong in Onward (error ${res.status}). ` +
       "Try again; if it keeps happening, quit and restart the app from its tray icon.");
     e.errors = data && data.errors;
     e.status = res.status;
@@ -2660,7 +2660,7 @@ function rolesCard() {
 
   return el("section", { class: "card", "aria-labelledby": "roleH" },
     el("h3", { id: "roleH", text: "Roles" }),
-    el("p", { text: "A role is a search you set up yourself: the job titles it looks for, the level, where, and words a posting must or must not have. It gets easier keeps every posting at least one of your roles wants. Switch roles, or see them all, at the top of the page." }),
+    el("p", { text: "A role is a search you set up yourself: the job titles it looks for, the level, where, and words a posting must or must not have. Onward keeps every posting at least one of your roles wants. Switch roles, or see them all, at the top of the page." }),
     el("div", { class: "rowline" }, el("label", { for: "rolePick", class: "section-h", text: "Editing" }), pick, addBtn, del),
     cfg.adding ? addRoleForm() : roleForm(saved));
 }
@@ -2868,7 +2868,7 @@ function companiesCard() {
 
   return el("section", { class: "card", "aria-labelledby": "compH" },
     el("h3", { id: "compH", text: "Companies" }),
-    el("p", { text: "It gets easier reads company job boards directly. Paste a careers page or any job posting link to add a company: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Oracle, Eightfold and iCIMS are recognized." }),
+    el("p", { text: "Onward reads company job boards directly. Paste a careers page or any job posting link to add a company: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Oracle, Eightfold and iCIMS are recognized." }),
     el("div", { class: "rowline" }, url, check), out,
     el("div", { class: "field" }, el("p", { class: "section-h", text: `Companies you added (${added.length})` }),
       added.length ? boardList(added) : el("p", { class: "note", text: "None yet. They're read from the next radar run on." })),
@@ -2919,7 +2919,7 @@ function builtinBoards() {
   filter.addEventListener("input", draw);
   draw();
   const off = all.filter((b) => b.removed).length;
-  return el("div", { class: "field" }, el("p", { class: "section-h", text: `Companies included with It gets easier (${all.length}${off ? `, ${off} not tracked` : ""})` }),
+  return el("div", { class: "field" }, el("p", { class: "section-h", text: `Companies included with Onward (${all.length}${off ? `, ${off} not tracked` : ""})` }),
     filter, holder);
 }
 
@@ -3034,7 +3034,7 @@ function aiCard() {
   };
   return el("section", { class: "card", "aria-labelledby": "aiH" },
     el("h3", { id: "aiH", text: "AI models" }),
-    el("p", { text: "ChatGPT and Claude logins run on your existing plan and cost nothing extra. With your own OpenAI or Anthropic API key you pay the provider per use instead; It gets easier shows the cost before each run and stops at your monthly budget. Keys stay on this computer and are never shown again after saving." }),
+    el("p", { text: "ChatGPT and Claude logins run on your existing plan and cost nothing extra. With your own OpenAI or Anthropic API key you pay the provider per use instead; Onward shows the cost before each run and stops at your monthly budget. Keys stay on this computer and are never shown again after saving." }),
     ...blocks.map((b) => b.node),
     el("p", { class: "note", text: `Prices as published by the providers in ${info.prices_as_of}.` }),
     saveBar("Save models and budgets", () => postSettings({ providers: Object.fromEntries(blocks.map((b) =>
@@ -3121,7 +3121,7 @@ function storageCard() {
       field("Job database", inputs.db), field("Resumes and tailored PDFs", inputs.resume_dir), field("Downloaded datasets", inputs.data_dir),
       field("Dashboard page", inputs.dashboard), field("Logs folder", inputs.logs_dir, "Empty means the data folder.")),
     saveBar("Save paths", () => postSettings({ paths: Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value.trim()])) }, "the file locations"),
-      "Saved the file locations. Quit and restart It gets easier from its tray icon to use them.", "the file locations"));
+      "Saved the file locations. Quit and restart Onward from its tray icon to use them.", "the file locations"));
 }
 
 
@@ -3208,11 +3208,11 @@ function nextButton(label, onclick, opts = {}) {
 
 const SETUP_RENDER = {
   welcome(body, next) {
-    body.append(...setupHead("Welcome to It gets easier"),
+    body.append(...setupHead("Welcome to Onward"),
       el("p", { text: "It checks hundreds of company career sites every 30 minutes for entry-level jobs that fit you, " +
         "scores each one against your resume, and can tailor your resume and draft answers for the ones you choose." }),
       el("p", { text: "Everything stays on this computer. It reads public job boards. AI features use your own " +
-        "ChatGPT or Claude sign-in, or your own API key. Nothing about you is sent to It gets easier." }),
+        "ChatGPT or Claude sign-in, or your own API key. Nothing about you is sent to Onward." }),
       el("p", { class: "note", text: "Setup takes about five minutes. If you close this page, it picks up where you left off." }));
     return nextButton("Get started", next);
   },
@@ -3349,7 +3349,7 @@ const SETUP_RENDER = {
       ["manual", "No AI connection", "Copy a prompt into any chat and paste the answer back. Free, a little more work."],
     ].filter(Boolean);
     const isApi = (x) => keyed.some(([b]) => b === x);
-    const pick = radios("How should It gets easier use AI?", "setup-ai", choices, isApi(t.backend) ? "api" : t.backend);
+    const pick = radios("How should Onward use AI?", "setup-ai", choices, isApi(t.backend) ? "api" : t.backend);
     const detail = el("div", { class: "setup-out" });
     const check = el("button", { type: "button", text: "Check again", onclick: async () => {
       check.disabled = true;
@@ -3507,7 +3507,7 @@ function drawTailoring(box, r) {
   if (setup.outline) { drawOutline(box, state.resume.name); return; }
   box.replaceChildren(el("div", { class: "found" },
     el("b", { text: "Tailored resumes (optional)" }),
-    el("p", { style: "margin:0", text: "To make a version of this resume for each job, It gets easier needs it as a LaTeX file. " +
+    el("p", { style: "margin:0", text: "To make a version of this resume for each job, Onward needs it as a LaTeX file. " +
       "It can make one with a plain, clean layout from what it read. You check it once." }),
     tex && !tex.active ? texOffer(setup.app) : null,
     el("div", { class: "rowline" }, start, el("span", { class: "note", text: "You can skip this and do it later." }))));
@@ -3567,14 +3567,14 @@ function texOffer(app, after) {
       if (after) after();
     } else {
       box.replaceChildren(
-        el("p", { style: "margin:0", text: `No LaTeX program is installed on this computer. It gets easier can download Tectonic ${dl.version}, ` +
+        el("p", { style: "margin:0", text: `No LaTeX program is installed on this computer. Onward can download Tectonic ${dl.version}, ` +
           `a free program that makes PDFs from LaTeX (about ${mb(dl.size)} MB, from Tectonic's GitHub releases). The first resume it makes ` +
           "also downloads the LaTeX packages it needs, about 50 MB, from Tectonic's servers. Only those files are downloaded; your resume stays here." }),
         d.state === "error" ? el("div", { class: "errbox", text: d.error }) : null,
         el("div", { class: "rowline" }, el("button", { type: "button", class: "primary", text: "Download Tectonic", onclick: async () => {
           try { await api("/api/app/tectonic", {}); } catch (e) { fail(e); return; }
           watch();
-        } }), el("span", { class: "note", text: "Already have TeX Live or MiKTeX? Restart It gets easier after installing and it's found." })));
+        } }), el("span", { class: "note", text: "Already have TeX Live or MiKTeX? Restart Onward after installing and it's found." })));
     }
   };
   const watch = () => {
@@ -3609,7 +3609,7 @@ function appCard() {
   api("/api/app").then((a) => {
     const tex = a.tex;
     about.replaceChildren(
-      el("p", { class: "note", text: `It gets easier ${a.version}. ` + (a.schedule.next_run ? `Next search ${fmt(a.schedule.next_run)}.`
+      el("p", { class: "note", text: `Onward ${a.version}. ` + (a.schedule.next_run ? `Next search ${fmt(a.schedule.next_run)}.`
         : a.schedule.automatic ? "" : "Timed searches run while the app (its tray icon) is running.") }),
       el("div", { class: "field" }, el("label", { class: "section-h", text: "PDF engine for tailored resumes" }),
         el("p", { class: "note", text: tex.active === "tex" ? `Your TeX installation: ${tex.tex.xelatex || tex.tex.pdflatex}`

@@ -32,7 +32,7 @@ class Tmp(unittest.TestCase):
 
 
 class DefaultsTests(Tmp):
-    """Defaults are how It gets easier behaved before settings existed."""
+    """Defaults are how Onward behaved before settings existed."""
 
     def test_defaults_match_the_old_constants(self):
         d = config.defaults()
@@ -233,7 +233,7 @@ class MigrationTests(Tmp):
         self.assertEqual(s["queue"]["threshold"], 70)
         (notice,) = s["notices"]
         self.assertIn("ChatGPT", notice)
-        self.assertIn("It gets easier", notice)
+        self.assertIn("Onward", notice)
         self.assertEqual(st.warnings, [])
         st.update({"notices": []})         # dismissed in the dashboard
         self.assertEqual(self.store().load()["notices"], [], "shown once")

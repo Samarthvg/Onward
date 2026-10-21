@@ -1,5 +1,5 @@
 /* Background: the toolbar button and shortcut, and the only code that talks
- * to the local It gets easier helper (server.py on 127.0.0.1:8765). Content
+ * to the local Onward helper (server.py on 127.0.0.1:8765). Content
  * scripts can't reach it themselves because of the page's CORS rules. */
 "use strict";
 
@@ -20,7 +20,7 @@ async function helper(path, body) {
   try {
     res = await fetch(HELPER + path, init);
   } catch (e) {
-    throw new Error("The It gets easier helper isn't running. Start it with: pythonw server.py");
+    throw new Error("The Onward helper isn't running. Start it with: pythonw server.py");
   }
   let data = null;
   try { data = await res.json(); } catch (e) {}
@@ -28,7 +28,7 @@ async function helper(path, body) {
   return data;
 }
 
-// The job (from It gets easier) that each tab's form belongs to, so the "application
+// The job (from Onward) that each tab's form belongs to, so the "application
 // received" page can be tied to it even when its URL is different
 // (Workday, embedded forms). Session storage survives the service worker
 // being stopped; it is cleared when the browser closes.

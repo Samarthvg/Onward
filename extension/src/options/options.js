@@ -257,7 +257,7 @@ $("pasteImport").addEventListener("click", () => {
     $("pasteText").value = "";
     $("pasteBox").hidden = true;
   } catch (e) {
-    $("importMsg").textContent = "That isn't an It gets easier export. In the dashboard's Apply kit, press Copy for extension and paste the result.";
+    $("importMsg").textContent = "That isn't an Onward export. In the dashboard's Apply kit, press Copy for extension and paste the result.";
   }
 });
 
@@ -316,7 +316,7 @@ $("exportAll").addEventListener("click", async () => {
   const all = await api.storage.local.get(null);
   delete all.resume;
   const blob = new Blob([JSON.stringify({ jobradar: "autofill-backup", version: 1, data: all }, null, 1)], { type: "application/json" });
-  const a = el("a", { href: URL.createObjectURL(blob), download: "it-gets-easier-autofill-backup.json" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: "onward-autofill-backup.json" });
   document.body.append(a);
   a.click();
   a.remove();
@@ -338,7 +338,7 @@ $("importAll").addEventListener("change", async (e) => {
     await load();
     saved("Backup imported");
   } catch (err) {
-    saved("That file isn't an It gets easier Autofill backup.");
+    saved("That file isn't an Onward Autofill backup.");
   }
 });
 

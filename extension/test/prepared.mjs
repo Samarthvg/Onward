@@ -23,7 +23,7 @@ await env.ctx.route(/^http:\/\/127\.0\.0\.1:8765\/api\/(prepared|applied)/, asyn
   if (!ok) return route.fulfill({ status: 403, contentType: "application/json", body: '{"error":"forbidden"}' });
   if (url.pathname === "/api/prepared") {
     helper.lookups.push(url.searchParams.get("url"));
-    if (!helper.prepared) return route.fulfill({ status: 404, contentType: "application/json", body: '{"error":"It gets easier doesn\'t know this job"}' });
+    if (!helper.prepared) return route.fulfill({ status: 404, contentType: "application/json", body: '{"error":"Onward doesn\'t know this job"}' });
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(helper.prepared) });
   }
   helper.applied.push(JSON.parse(req.postData() || "{}"));

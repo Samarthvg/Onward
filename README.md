@@ -1,4 +1,4 @@
-# It gets easier
+# Onward
 
 Finds fresh entry-level job postings straight from company hiring systems, scores them against your resume,
 tailors your resume for the ones you pick, and fills in applications through a browser extension. It runs on
@@ -8,10 +8,10 @@ your own computer, and your resume and details stay there.
 
 Download the installer for your computer from the [latest release](../../releases/latest):
 
-- **Windows:** `it-gets-easier-<version>-windows-setup.exe`. Run it. It installs for your user only (no
-  administrator rights needed) and adds It gets easier to the Start menu.
-- **macOS:** `it-gets-easier-<version>-macos.dmg`. Open it and drag It gets easier to Applications.
-- **Linux:** `it-gets-easier-<version>-x86_64.AppImage`. Make it executable (`chmod +x`) and run it.
+- **Windows:** `onward-<version>-windows-setup.exe`. Run it. It installs for your user only (no
+  administrator rights needed) and adds Onward to the Start menu.
+- **macOS:** `onward-<version>-macos.dmg`. Open it and drag Onward to Applications.
+- **Linux:** `onward-<version>-x86_64.AppImage`. Make it executable (`chmod +x`) and run it.
 
 The app sits in the system tray (the menu bar on macOS) and starts when you log in. The first time, it opens the
 dashboard in your browser on a few setup steps: your resume, your details, the jobs you want, how AI should help,
@@ -35,11 +35,11 @@ Windows it can install the update from the tray menu; on macOS and Linux it open
 
 ## Uninstall
 
-- **Windows:** Settings > Apps > Installed apps > It gets easier > Uninstall. It removes the program, the Start
+- **Windows:** Settings > Apps > Installed apps > Onward > Uninstall. It removes the program, the Start
   menu entry and the login item, then asks whether to delete your data too (No keeps it).
 - **macOS:** quit from the menu bar icon, turn off Start at login there first (or delete
-  `~/Library/LaunchAgents/io.github.itgetseasier.plist`), then move It gets easier from Applications to the Trash.
-- **Linux:** quit from the tray, delete `~/.config/autostart/it-gets-easier.desktop` and the AppImage.
+  `~/Library/LaunchAgents/io.github.onward.plist`), then move Onward from Applications to the Trash.
+- **Linux:** quit from the tray, delete `~/.config/autostart/onward.desktop` and the AppImage.
 
 To remove your data as well, delete the data folder below.
 
@@ -68,8 +68,8 @@ keeps using that folder. Inside it:
 Your browser keeps the dashboard's view settings, the resume text used for match scores and your Apply kit
 details for `127.0.0.1:8765`. The extension keeps its own copy of your details and resume in the browser.
 
-The installed program is in `%LOCALAPPDATA%\Programs\It gets easier` (Windows) or `/Applications` (macOS); the
-login item is the `It gets easier` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, the
+The installed program is in `%LOCALAPPDATA%\Programs\Onward` (Windows) or `/Applications` (macOS); the
+login item is the `Onward` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, the
 LaunchAgent above, or the autostart file above.
 
 What leaves your computer:
@@ -83,7 +83,7 @@ What leaves your computer:
 - Whatever you send to the AI provider you chose: your resume, your details and the posting.
 - Phone notifications, if you set up an ntfy topic.
 
-Nothing is sent to It gets easier itself.
+Nothing is sent to Onward itself.
 
 ## Running from source
 
