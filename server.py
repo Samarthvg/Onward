@@ -671,6 +671,11 @@ class Handler(BaseHTTPRequestHandler):
                                     # Recent applied/dismissed, so the dashboard's own marks catch up.
                                     "done": PREP.items(("applied", "dismissed"), since=time.time() - 14 * 86400)})
 
+        if path == "/api/resume/entries":
+            if not self._origin_ok(allow_extension=True):
+                return self._err(HTTPStatus.FORBIDDEN, "Only the It gets easier extension can ask for this")
+            return self._resume_entries((q.get("url") or [""])[0][:2000])
+
         if path in ("/api/prepared", "/api/queue/next"):
             if not self._origin_ok(allow_extension=True):
                 return self._err(HTTPStatus.FORBIDDEN, "Only the It gets easier extension can ask for this")
@@ -1020,6 +1025,28 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"job": {"key": job["key"], "company": job["company"], "title": job["title"]},
                                 **p, "resume": {"name": pdf.name, "data": base64.b64encode(pdf.read_bytes()).decode()}
                                 if pdf else None})
+
+    def _resume_entries(self, page_url: str):
+        """Work history and education from the master resume behind the job
+        at page_url (its role's own master when it has one), for filling
+        Work Experience and Education sections field by field."""
+        job = job_by_url(page_url) if page_url else None
+        path = MASTER
+        if job:
+            conn = db()
+            try:
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
+                row = conn.execute("SELECT roles FROM jobs WHERE key = ?", (job["key"],)).fetchone() if "roles" in cols else None
+            finally:
+                conn.close()
+            if row and row[0]:
+                path = PREP.master_for(json.loads(row[0]))
+        if not path.exists():
+            return self._err(HTTPStatus.NOT_FOUND, "Upload your master .tex resume in the dashboard first")
+        try:
+            return self._json(200, rt.history(rt.parse(path.read_text(encoding="utf-8"))))
+        except ValueError as e:
+            return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, f"Couldn't read your resume: {e}")
 
     def _applied(self, data: dict):
         """The extension saw the ATS's "application received" page."""

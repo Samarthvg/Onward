@@ -1,0 +1,65 @@
+% Fake resume in the same LaTeX layout as a real master resume: each entry
+% header is a tabular* whose first row is "Company - Location & Dates" and
+% whose second row is "Role | \textit{tech}" (work) or "\textit{Degree} & GPA"
+% (education). Used by test_resume_history.py and the extension's mocks.
+\documentclass[letterpaper,10pt]{article}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries}{}{0pt}{}[\titlerule]
+\setlist[itemize]{leftmargin=.6cm, topsep=0pt, itemsep=0pt}
+\begin{document}
+\begin{center}
+  {\Large \textbf{Testy McTestface}}\\
+  testy.mctestface@example.com
+\end{center}
+
+\section*{EDUCATION}
+\begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
+\href{https://example.edu/}{\textbf{College of Computing, Example State University}} - Boston, USA & Jan 2024 - May 2026 \\
+\textit{Master of Science in Computer Science} & \small{GPA: 3.8/4.0}
+\end{tabular*}
+\noindent \textbf{Courses:} Algorithms, Database Systems, Machine Learning
+\begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
+\href{https://example.ac.in/}{\textbf{Example Institute of Technology}} - Gujarat, India  & Aug 2019 - Jun 2022 \\
+\textit{Bachelor of Technology in Computer Engineering} & \small{GPA: 3.5/4.0}\\
+\end{tabular*}
+
+\section*{TECHNICAL SKILLS}
+\begin{tabular}{@{}p{3cm}@{}p{15cm}@{}}
+\textbf{Languages:} & Python, Java, TypeScript, JavaScript, SQL \\
+\textbf{Web:} & Node.js, Express.js, React.js, Vue.js, Angular \\
+\end{tabular}
+
+\section*{WORK EXPERIENCE}
+\begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
+\href{https://example-labs.test/}{\textbf{Example Labs}} - Dallas, TX & Jul 2025 - Jan 2026\\
+Full Stack Developer Intern | \textit{Vue.js, Node.js, PouchDB, REST}
+\end{tabular*}
+\begin{itemize}
+    \item Built offline-first estimate screens in \textbf{Vue.js} backed by PouchDB sync, used by 40 field staff.
+    \item Extended \textbf{REST} endpoints in Node.js \& Express for quote approvals, with unit tests.
+    \item Completed an internal \textbf{\href{https://example.test/badge}{Generative AI certification}} course.
+\end{itemize}
+
+\begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
+\href{https://example-solutions.test/}{\textbf{Example Solutions Pvt Ltd}} - Gujarat, India & Jun 2022 - Aug 2023\\
+Full stack Developer | \textit{React.js, Angular, Node.js, MongoDB}
+\end{tabular*}
+\begin{itemize}
+    \item Shipped React.js and Angular dashboards for 3 client products, cutting page load time by 30\%.
+    \item Wrote Node.js microservices over MongoDB with 85\% test coverage.
+\end{itemize}
+
+\textbf{Example Startup} \hfill Sep 2023 - Present \\
+\textit{Software Engineer (part-time)}
+\begin{itemize}
+    \item Maintain the billing service in Python.
+\end{itemize}
+
+\section*{PROJECTS}
+\textbf{Turbofan Life Estimation} | \textit{Python, PyTorch} \hfill Feb 2025
+\begin{itemize}
+    \item Trained an LSTM on NASA C-MAPSS data to predict remaining useful life.
+\end{itemize}
+\end{document}

@@ -124,6 +124,106 @@ function Agreement() {
 
 const YN = ["Yes", "No"];
 
+// What Workday's own "Autofill with Resume" parser leaves behind: the first
+// job and school mostly right, one description mangled to ".js", a wrong GPA.
+Object.assign(S, {
+  "workExperience-1--jobTitle": "Full Stack Developer Intern", "workExperience-1--companyName": "Example Labs",
+  "workExperience-1--location": "Dallas, TX", "workExperience-1--roleDescription": ".js",
+  "workExperience-1--startDate-dateSectionMonth-input": "07", "workExperience-1--startDate-dateSectionYear-input": "2025",
+  "workExperience-1--endDate-dateSectionMonth-input": "01", "workExperience-1--endDate-dateSectionYear-input": "2026",
+  "education-1--schoolName": "Example State University", "education-1--gradeAverage": "4",
+});
+
+function Area({ id, aid, label, maxLength }) {
+  const [v, setV] = useState(S[id] || "");
+  const [committed, setCommitted] = useState(S[id] || "");
+  S[id] = committed;
+  return (
+    <Field id={id} aid={aid} label={label}>
+      <textarea id={id} data-automation-id={aid} maxLength={maxLength} value={v}
+        onChange={(e) => setV(e.target.value)} onBlur={(e) => setCommitted(e.target.value)} />
+    </Field>
+  );
+}
+
+function Check({ id, aid, label }) {
+  const [v, setV] = useState(S[id] || false);
+  S[id] = v;
+  return (
+    <div data-automation-id={"formField-" + aid}>
+      <input type="checkbox" id={id} data-automation-id={aid} checked={v} onChange={(e) => setV(e.target.checked)} />
+      <label htmlFor={id}>{label}</label>
+    </div>
+  );
+}
+
+/** Workday's date widget: separate month and year spinbuttons under one label. */
+function DateParts({ id, aid, label, month = true }) {
+  const part = (p, name, size) => {
+    const pid = `${id}-dateSection${p}-input`;
+    const [v, setV] = useState(S[pid] || "");
+    const [committed, setCommitted] = useState(S[pid] || "");
+    S[pid] = committed;
+    return <input id={pid} role="spinbutton" aria-label={name} data-automation-id={`dateSection${p}-input`} size={size} value={v}
+      onChange={(e) => setV(e.target.value.replace(/\D/g, "").slice(0, size))} onBlur={(e) => setCommitted(e.target.value)} />;
+  };
+  return (
+    <div data-automation-id={"formField-" + aid}>
+      <label>{label}</label>
+      <div data-automation-id="dateInputWrapper">{month ? part("Month", "Month", 2) : null}{part("Year", "Year", 4)}</div>
+    </div>
+  );
+}
+
+function WorkHistory() {
+  const [jobs, setJobs] = useState(S.__jobs || 1);
+  const [schools, setSchools] = useState(S.__schools || 1);
+  S.__jobs = jobs;
+  S.__schools = schools;
+  const nums = (k) => Array.from({ length: k }, (_, i) => i + 1);
+  return (
+    <>
+      <div data-automation-id="workExperienceSection" role="group" aria-labelledby="workExperience-heading">
+        <h3 id="workExperience-heading">Work Experience</h3>
+        {nums(jobs).map((n) => {
+          const p = `workExperience-${n}--`;
+          return (
+            <div key={n} data-automation-id={`workExperience-${n}`}>
+              <h4>Work Experience {n}</h4>
+              <Text id={p + "jobTitle"} aid="jobTitle" label="Job Title" required />
+              <Text id={p + "companyName"} aid="companyName" label="Company" required />
+              <Text id={p + "location"} aid="location" label="Location" />
+              <Check id={p + "currentlyWorkHere"} aid="currentlyWorkHere" label="I currently work here" />
+              <DateParts id={p + "startDate"} aid="startDate" label="From" />
+              <DateParts id={p + "endDate"} aid="endDate" label="To" />
+              <Area id={p + "roleDescription"} aid="roleDescription" label="Role Description" maxLength={2000} />
+            </div>
+          );
+        })}
+        <button type="button" data-automation-id="Add" aria-label="Add Work Experience" onClick={() => setJobs(jobs + 1)}>Add Another</button>
+      </div>
+      <div data-automation-id="educationSection" role="group" aria-labelledby="education-heading">
+        <h3 id="education-heading">Education</h3>
+        {nums(schools).map((n) => {
+          const p = `education-${n}--`;
+          return (
+            <div key={n} data-automation-id={`education-${n}`}>
+              <h4>Education {n}</h4>
+              <Text id={p + "schoolName"} aid="schoolName" label="School or University" required />
+              <ListButton id={p + "degree"} aid="degree" label="Degree" options={["High School Diploma", "Bachelor's Degree", "Master's Degree", "Doctorate"]} />
+              <Prompt id={p + "fieldOfStudy"} aid="fieldOfStudy" label="Field of Study" options={["Computer Engineering", "Computer Science", "Mathematics"]} />
+              <Text id={p + "gradeAverage"} aid="gradeAverage" label="Overall Result (GPA)" />
+              <DateParts id={p + "firstYearAttended"} aid="firstYearAttended" label="From" month={false} />
+              <DateParts id={p + "lastYearAttended"} aid="lastYearAttended" label="To (Actual or Expected)" month={false} />
+            </div>
+          );
+        })}
+        <button type="button" data-automation-id="Add" aria-label="Add Education" onClick={() => setSchools(schools + 1)}>Add Another</button>
+      </div>
+    </>
+  );
+}
+
 function Step({ n }) {
   if (n === 0) return (
     <>
@@ -144,6 +244,7 @@ function Step({ n }) {
   );
   if (n === 1) return (
     <>
+      <WorkHistory />
       <Resume />
       <Text id="socialNetworkAccounts--linkedInAccount" aid="linkedInAccount" inputAid="linkedinQuestion" label="LinkedIn" />
       <Text id="webAddress-1--url" aid="url" inputAid="website" label="URL" />

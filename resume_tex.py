@@ -328,6 +328,119 @@ def summary(res: Resume) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Work history and education, for filling application forms field by field
+
+MONTHS = {m: i for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+_MON = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+DATE_RANGE = re.compile(
+    rf"(?:(?P<sm>{_MON})\s+)?(?P<sy>(?:19|20)\d\d)\s*(?:-+|–|—|to)\s*"
+    rf"(?:(?:(?P<em>{_MON})\s+)?(?P<ey>(?:19|20)\d\d)|(?P<cur>present|current|now|ongoing|today))", re.I)
+EDUCATION = re.compile(r"educat|academic", re.I)
+TABULAR = re.compile(r"\\begin\{tabular\*?\}.*?\\end\{tabular\*?\}", re.S)
+
+
+def _month(s: str | None) -> int | None:
+    return MONTHS.get(s[:3].lower()) if s else None
+
+
+def _dates(text: str) -> dict:
+    m = DATE_RANGE.search(text)
+    if not m:
+        return {"start": None, "end": None, "current": False}
+    current = bool(m.group("cur"))
+    return {"start": {"month": _month(m.group("sm")), "year": int(m.group("sy"))},
+            "end": None if current else {"month": _month(m.group("em")), "year": int(m.group("ey"))},
+            "current": current}
+
+
+def _rows(header: str) -> list[list[str]]:
+    """Table rows of an entry header, each split into cells (LaTeX source)."""
+    body = header
+    m = TABULAR.search(header)
+    if m:
+        # Skip the width and column spec, e.g. {\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}.
+        i = header.index("}", m.start()) + 1
+        while i < len(header) and header[i] == "{":
+            i = _brace_end(header, i)
+        body = header[i:header.rindex("\\end{tabular", 0, m.end())]
+    rows = re.split(r"(?<!\\)\\\\(?:\[[^\]]*\])?", body)
+    out = []
+    for row in rows:
+        if not plain(row).strip():
+            continue
+        cells = re.split(r"(?<!\\)&|\\hfill\b", row)
+        out.append([c.strip() for c in cells])
+    return out
+
+
+def _name_and_place(cell: str) -> tuple[str, str]:
+    """"\\href{..}{\\textbf{Company}} - Dallas, TX" -> ("Company", "Dallas, TX")."""
+    bold = re.search(r"\\textbf\{", cell)
+    if bold:
+        end = _brace_end(cell, bold.end() - 1)
+        name = plain(cell[bold.end():end - 1])
+        rest = plain(cell[end:])
+    else:
+        text = plain(cell)
+        name, _, rest = text.rpartition(" - ") if " - " in text else (text, "", "")
+    place = rest.strip().lstrip("-–—|,").strip().rstrip("}").strip()
+    return name.strip(), place
+
+
+def _entry_header(res: Resume, e: Entry) -> str:
+    block = res.tex[e.span.start:e.span.end]
+    cut = block.find("\\begin{itemize}")
+    return block[:cut] if cut >= 0 else block
+
+
+def history(res: Resume) -> dict:
+    """The resume's jobs and schools as form fields: company, title,
+    location, dates and the job's bullets as plain text; school, degree,
+    field of study, GPA and years. Nothing is invented: a value the resume
+    doesn't state is left empty."""
+    work = []
+    for e in res.entries:
+        if e.kind != "experience":
+            continue
+        rows = _rows(_entry_header(res, e))
+        company, location, title = "", "", ""
+        if rows:
+            company, location = _name_and_place(rows[0][0])
+        if len(rows) > 1:
+            title = plain(rows[1][0].split("|")[0]).strip()
+        work.append({"company": company, "location": location, "title": title,
+                     **_dates(plain(_entry_header(res, e))),
+                     "bullets": [plain(b.tex) for b in e.bullets]})
+
+    education = []
+    tex = res.tex
+    sections = [(m.start(), m.end(), m.group(1)) for m in SECTION.finditer(tex)]
+    for i, (s, e_, title) in enumerate(sections):
+        if not EDUCATION.search(title):
+            continue
+        end = sections[i + 1][0] if i + 1 < len(sections) else len(tex)
+        for tm in TABULAR.finditer(tex, e_, end):
+            rows = _rows(tm.group(0))
+            if not rows:
+                continue
+            full, location = _name_and_place(rows[0][0])
+            # "Khoury College of Computer Sciences, Northeastern University":
+            # school lists on forms carry the university.
+            parts = [p.strip() for p in full.split(",")]
+            school = next((p for p in reversed(parts) if re.search(r"universit|institut|polytechnic", p, re.I)), full)
+            degree_text = plain(rows[1][0]) if len(rows) > 1 else ""
+            dm = re.match(r"^(.*?)\s+in\s+(.+)$", degree_text)
+            degree, field_ = (dm.group(1), dm.group(2)) if dm else (degree_text, "")
+            gpa = re.search(r"GPA\s*:?\s*([0-9.]+)(?:\s*/\s*([0-9.]+))?", plain(tm.group(0)), re.I)
+            education.append({"school": school, "school_full": full, "location": location, "degree": degree.strip(),
+                              "field": field_.strip(), "gpa": gpa.group(1) if gpa else "",
+                              "gpa_scale": (gpa.group(2) or "") if gpa else "",
+                              **_dates(plain(tm.group(0)))})
+    return {"work": work, "education": education}
+
+
+# --------------------------------------------------------------------------
 # Validation of model output
 
 ALLOWED_CMDS = {"textbf", "textit", "emph", "href", "textasciitilde", "underline"}

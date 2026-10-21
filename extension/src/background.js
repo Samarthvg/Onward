@@ -89,6 +89,10 @@ if (api.commands && api.commands.onCommand) {
 
 const HANDLERS = {
   /* The resume and answers the helper prepared for this form's job. */
+  async "jr:history"(msg) {
+    // Jobs and schools from the master resume, for Work Experience and Education sections.
+    return helper("/api/resume/entries?url=" + encodeURIComponent(clip(msg.url, 2000)));
+  },
   async "jr:prepared"(msg, sender) {
     const url = clip(msg.url, 2000);
     let data;

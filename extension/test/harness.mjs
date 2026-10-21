@@ -6,6 +6,7 @@ import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const EXT = resolve(here, "..");
@@ -24,6 +25,17 @@ export const ROUTES = [
   [/^https:\/\/mockco\.wd5\.myworkdayjobs\.com\//, "workday.html"],
 ];
 
+let historyJson = null;
+export function fixtureHistory() {
+  if (!historyJson) {
+    const repo = resolve(here, "..", "..");
+    historyJson = execFileSync("python", ["-c",
+      "import json, resume_tex as rt; print(json.dumps(rt.history(rt.parse(open('fixtures/history_master.tex', encoding='utf-8').read()))))"],
+      { cwd: repo, encoding: "utf8" });
+  }
+  return historyJson;
+}
+
 export async function launch({ headless = true, mocks = true, ext = EXT } = {}) {
   const profileDir = mkdtempSync(join(tmpdir(), "jr-ext-"));
   const ctx = await chromium.launchPersistentContext(profileDir, {
@@ -35,6 +47,11 @@ export async function launch({ headless = true, mocks = true, ext = EXT } = {}) 
       const url = route.request().url();
       for (const [re, file] of ROUTES) {
         if (re.test(url)) return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: readFileSync(join(DIST, file)) });
+      }
+      // Work history comes from a fake resume in the same LaTeX layout, read
+      // by the real parser, never from the user's own master resume.
+      if (url.startsWith("http://127.0.0.1:8765/api/resume/entries")) {
+        return route.fulfill({ status: 200, contentType: "application/json", body: fixtureHistory() });
       }
       if (url.startsWith("http://127.0.0.1:8765/")) return route.continue();   // the local helper
       // The mocks need nothing else; keep tests off the network.

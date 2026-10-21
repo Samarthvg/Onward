@@ -288,6 +288,51 @@
     return "";
   }
 
+  /* ----------------------------------------------- work history fields */
+
+  // Field names inside repeating Work Experience / Education rows, read from
+  // ids and automation ids first ("workExperience-2--jobTitle",
+  // "dateSectionMonth-input" under formField-startDate, Greenhouse
+  // "company-name--0"), then from specific label wording.
+  const HISTORY_ATTR = [
+    ["description", /role ?description|job ?description|responsibilit|duties/],
+    ["current", /currently ?work|current(ly)?[ _-]?(role|job|employ|attend)|i ?currently|work ?here/],
+    ["startMonth", /(start|from|begin)[\w-]*month|month[\w-]*(start|from)|startdate[\w-]*datesectionmonth|startdate.*\bmonth\b/],
+    ["startYear", /(start|from|begin|first)[\w-]*year|year[\w-]*(start|from)|startdate[\w-]*datesectionyear|firstyearattended|startdate.*\byear\b/],
+    ["endMonth", /(end|to|until)[\w-]*month|month[\w-]*(end|to)\b|enddate[\w-]*datesectionmonth|enddate.*\bmonth\b/],
+    ["endYear", /(end|to|until|last|grad)[\w-]*year|year[\w-]*(end|to)\b|enddate[\w-]*datesectionyear|lastyearattended|enddate.*\byear\b/],
+    ["startDate", /start[\w-]*date|from[\w-]*date|startdate/],
+    ["endDate", /end[\w-]*date|to[\w-]*date|enddate/],
+    ["title", /job[\w-]*title|position[\w-]*title|(^|[\s_-])title([\s_-]|$)/],
+    ["company", /company|employer|organi[sz]ation/],
+    ["location", /location|(^|[\s_-])city([\s_-]|$)/],
+    ["school", /school|university|institution|college/],
+    ["degree", /degree/],
+    ["field", /field[\w-]*of[\w-]*study|fieldofstudy|discipline|major/],
+    ["gpa", /\bgpa\b|grade[\w-]*average|gradeaverage|overall ?result/],
+  ];
+  const HISTORY_LABEL = [
+    ["description", /^(role|job|position) description|^(your )?(main )?responsibilities|^description( of (your )?(role|duties))?$/],
+    ["current", /^i currently work here|^currently (work|employed|attending) here|^current (role|position|job)$/],
+    ["startDate", /^(start|from) date|^date started|^dates? of employment/],
+    ["endDate", /^(end|to) date|^date (ended|left)/],
+    ["title", /^(job|position) title$|^title$/],
+    ["company", /^(company|employer)( name)?$|^name of (your )?(current |previous |last )?(company|employer)/],
+    ["school", /^(school|university|college|institution)( name)?$/],
+    ["degree", /^degree( (type|name|level|earned))?$/],
+    ["field", /^(field of study|major|discipline|area of study)$/],
+    ["gpa", /\bgpa\b|grade point average|^overall result/],
+  ];
+
+  /** The work or education field a control holds, or null. */
+  function historyField(label, attrs) {
+    const a = String(attrs || "").toLowerCase();
+    if (a) for (const [f, re] of HISTORY_ATTR) if (re.test(a)) return f;
+    const t = normQ(label);
+    for (const [f, re] of HISTORY_LABEL) if (re.test(t)) return f;
+    return null;
+  }
+
   /* --------------------------------------------------------- option choice */
 
   const DECLINE_RE = /decline|prefer not|not (wish|want) to|don ?t (wish|want) to|do not (wish|want) to|choose not to|rather not|not to (say|answer|disclose|identify|self identify)|wish not to|no answer|not specified|undisclosed/;
@@ -370,6 +415,6 @@
   root.JR = root.JR || {};
   root.JR.rules = {
     PROFILE_FIELDS, STANDARD_ANSWERS, EEO_ANSWERS, DECLINE, DEFAULT_ANSWERS, DEFAULT_PROFILE, DEFAULT_SETTINGS, DRAFT_BACKENDS, withDefaults,
-    US_STATES, CHOICE_KINDS, TEXT_KINDS, clean, normQ, classify, answerFor, pickOption, asText, alternatives, DECLINE_RE,
+    US_STATES, CHOICE_KINDS, TEXT_KINDS, clean, normQ, classify, answerFor, pickOption, asText, alternatives, DECLINE_RE, historyField,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

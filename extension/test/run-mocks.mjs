@@ -25,7 +25,12 @@ const GH_WANT = {
   country: "United States", phone: "555-0100", location: "Boston, Massachusetts, United States", resume: RESUME, cover_letter: "",
   question_1: "https://www.linkedin.com/in/testy-mctestface-example", question_2: "https://testy.example.com", question_3: "LinkedIn",
   question_4: "Yes", question_5: "Yes", question_6: null, question_7: null, question_8: "", why: "",
-  "school--0": "Northeastern University", "degree--0": "Bachelor's Degree",
+  // Education rows come from the (fixture) master resume's first school, not the profile.
+  "school--0": "Example State University", "degree--0": "Master's Degree",
+  // So do employment rows: the first job, with months picked from a select.
+  "company-name--0": "Example Labs", "title--0": "Full Stack Developer Intern",
+  "start-date-month--0": "7", "start-date-year--0": "2025", "end-date-month--0": "1", "end-date-year--0": "2026",
+  "current-role--0": false,
   "4024620002": "Decline To Self Identify", "4024625002": ["Decline To Self Identify"], "4024623002": "I don't wish to answer",
   "4024624002": "I do not want to answer", "4024621002": null, consent: false,
 };
@@ -128,10 +133,44 @@ await test("workday: fills each step only when asked, never presses Next", async
   const panel = page.locator("#jobradar-autofill .panel");
   await panel.locator("button", { hasText: "Fill this step" }).waitFor({ timeout: 5000 });
   await runFill(page);
-  expectState("workday step 2", await page.evaluate(() => window.__mockState()), {
+  const DESC2 = "Shipped React.js and Angular dashboards for 3 client products, cutting page load time by 30%.\n" +
+    "Wrote Node.js microservices over MongoDB with 85% test coverage.";
+  const DESC1 = "Built offline-first estimate screens in Vue.js backed by PouchDB sync, used by 40 field staff.\n" +
+    "Extended REST endpoints in Node.js & Express for quote approvals, with unit tests.\n" +
+    "Completed an internal Generative AI certification course.";
+  const w = (n, f) => `workExperience-${n}--${f}`;
+  let st = await page.evaluate(() => window.__mockState());
+  expectState("workday step 2", st, {
     resume: RESUME, "socialNetworkAccounts--linkedInAccount": "https://www.linkedin.com/in/testy-mctestface-example",
     "webAddress-1--url": "https://testy.example.com",
+    // Two rows added for the resume's other jobs, filled from their own entries.
+    __jobs: 3, __schools: 2,
+    [w(2, "jobTitle")]: "Full stack Developer", [w(2, "companyName")]: "Example Solutions Pvt Ltd", [w(2, "location")]: "Gujarat, India",
+    [w(2, "startDate-dateSectionMonth-input")]: "06", [w(2, "startDate-dateSectionYear-input")]: "2022",
+    [w(2, "endDate-dateSectionMonth-input")]: "08", [w(2, "endDate-dateSectionYear-input")]: "2023",
+    [w(2, "currentlyWorkHere")]: false, [w(2, "roleDescription")]: DESC2,
+    [w(3, "companyName")]: "Example Startup", [w(3, "currentlyWorkHere")]: true, [w(3, "endDate-dateSectionYear-input")]: "",
+    [w(3, "roleDescription")]: "Maintain the billing service in Python.",
+    // The parser's row keeps its values, garbled description included, until the user asks.
+    [w(1, "jobTitle")]: "Full Stack Developer Intern", [w(1, "roleDescription")]: ".js",
+    "education-1--schoolName": "Example State University", "education-1--degree": "Master's Degree",
+    "education-1--fieldOfStudy": ["Computer Science"], "education-1--gradeAverage": "4",
+    "education-1--firstYearAttended-dateSectionYear-input": "2024", "education-1--lastYearAttended-dateSectionYear-input": "2026",
+    "education-2--schoolName": "Example Institute of Technology", "education-2--degree": "Bachelor's Degree",
+    "education-2--fieldOfStudy": ["Computer Engineering"], "education-2--gradeAverage": "3.5",
   });
+  expect("workday: Add pressed, never Next", (await page.evaluate(() => window.__navClicks)) === 1);
+  const sec = panel.locator(".sec");
+  expect("workday: both sections offer Replace", (await sec.count()) === 2, await panel.innerText());
+  await sec.filter({ hasText: "Work Experience" }).locator("button", { hasText: "Replace with my resume" }).click();
+  await sec.filter({ hasText: "replaced" }).first().waitFor({ timeout: 5000 });
+  await page.locator("body").click({ position: { x: 5, y: 5 } });   // let Workday's fields commit on blur
+  st = await page.evaluate(() => window.__mockState());
+  expectState("workday replace", st, { [w(1, "roleDescription")]: DESC1, "education-1--gradeAverage": "4" });
+  await sec.filter({ hasText: "Work Experience" }).locator("button", { hasText: "Undo" }).click();
+  await sec.filter({ hasText: "Work Experience" }).locator("button", { hasText: "Replace with my resume" }).waitFor({ timeout: 5000 });
+  expectState("workday undo", await page.evaluate(() => window.__mockState()), { [w(1, "roleDescription")]: ".js" });
+  expect("workday: AI never asked about history fields", !/Role Description[\s\S]*AI answer/.test(await panel.innerText()));
   await next();
   await runFill(page);
   expectState("workday step 3", await page.evaluate(() => window.__mockState()), { q1: "Yes", q2: "Yes", q3: "Yes", q4: "" });

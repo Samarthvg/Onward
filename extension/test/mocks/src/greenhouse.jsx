@@ -11,7 +11,7 @@ import { exposeState } from "./common.js";
 
 const YES_NO = [{ value: 0, label: "No" }, { value: 1, label: "Yes" }];
 const COUNTRIES = ["Canada", "India", "Mexico", "United Kingdom", "United States", "United States Minor Outlying Islands"].map((c, i) => ({ value: i, label: c }));
-const SCHOOLS = ["Boston College", "Boston University", "Northeastern University", "Northwestern University", "Tufts University"];
+const SCHOOLS = ["Boston College", "Boston University", "Example State University", "Northeastern University", "Northwestern University", "Tufts University"];
 const DEGREES = ["High School", "Associate's Degree", "Bachelor's Degree", "Master's Degree", "Doctor of Philosophy (Ph.D.)"].map((d, i) => ({ value: i, label: d }));
 const GENDER = ["Male", "Female", "Decline To Self Identify"].map((d, i) => ({ value: i, label: d }));
 const RACE = ["American Indian or Alaskan Native", "Asian", "Black or African American", "Hispanic or Latino", "White", "Two or More Races", "Decline To Self Identify"].map((d, i) => ({ value: i, label: d }));
@@ -96,6 +96,33 @@ function Location() {
   );
 }
 
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function MonthSelect({ id, label }) {
+  const [v, setV] = useState("");
+  S[id] = v;
+  return (
+    <div className="field-wrapper">
+      <label htmlFor={id} className="label">{label}</label>
+      <select id={id} value={v} onChange={(e) => setV(e.target.value)}>
+        <option value="">Month</option>
+        {MONTH_NAMES.map((m, i) => <option key={m} value={String(i + 1)}>{m}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function CurrentRole({ id }) {
+  const [v, setV] = useState(false);
+  S[id] = v;
+  return (
+    <div className="checkbox">
+      <input type="checkbox" id={id} checked={v} onChange={(e) => setV(e.target.checked)} />
+      <label htmlFor={id}>Current role</label>
+    </div>
+  );
+}
+
 function Consent() {
   const [v, setV] = useState(false);
   S.consent = v;
@@ -145,6 +172,16 @@ function App() {
         <h3>Education</h3>
         <GhSelect id="school--0" label="School" async />
         <GhSelect id="degree--0" label="Degree" options={DEGREES} />
+      </div>
+      <div className="employment--form">
+        <h3>Employment</h3>
+        <TextField id="company-name--0" label="Company name" />
+        <TextField id="title--0" label="Title" />
+        <MonthSelect id="start-date-month--0" label="Start date month" />
+        <TextField id="start-date-year--0" label="Start date year" />
+        <MonthSelect id="end-date-month--0" label="End date month" />
+        <TextField id="end-date-year--0" label="End date year" />
+        <CurrentRole id="current-role--0" />
       </div>
       <div className="eeoc">
         <h3>Voluntary Self-Identification</h3>

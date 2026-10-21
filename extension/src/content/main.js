@@ -22,6 +22,10 @@
   const lastSaved = new Map();        // memory key -> value last written
   const stepsFilled = new Set();
   let stepSig = "";
+  let sections = [];                  // Work Experience / Education sections that differ from the resume
+
+  /** Work-history and education fields are the resume's to answer, never the AI's. */
+  const notForAI = (q) => !!(q.history || R.historyField(q.label, q.attrs));
 
   /* ------------------------------------------------------------- storage */
 
@@ -99,7 +103,7 @@
     // Custom question: offer what the user answered last time.
     const k = memKey(q.label);
     const m = k && mem[k];
-    const canDraft = !!(cls.writing && store.settings.helper && (q.kind === "textarea" || q.kind === "text"));
+    const canDraft = !!(cls.writing && store.settings.helper && (q.kind === "textarea" || q.kind === "text") && !notForAI(q));
     if (m && m.a) {
       if (cls.writing || q.kind === "textarea") {
         return Object.assign(base, { status: "needs", why: "write this one, or reuse a saved answer", offer: m, canDraft });
@@ -122,15 +126,37 @@
     try {
       await load();
       ensureStyle();
-      const qs = JR.sites.collect(document, site);
+      sections = [];
+      let qs = JR.sites.collect(document, site);
+
+      // Work Experience and Education rows come straight from the master resume.
+      const items = [];
+      let hist = null;
+      if (store.settings.helper && JR.history.rows(qs).length) {
+        JR.panel.update({ status: "Filling work history and education from your resume…" });
+        hist = await api.runtime.sendMessage({ type: "jr:history", url: location.href }).catch(() => null);
+        if (hist && !hist.error && (hist.work || hist.education)) {
+          const r = await JR.history.fill(qs, hist, {
+            recollect: () => JR.sites.collect(document, site), allowAdd: !!site.workday, ours: filledByUs });
+          qs = r.qs;
+          for (const it of r.items) { if (it.status === "filled") mark(it.q, "filled"); items.push(it); }
+          sections = Object.entries(r.diffs).filter(([, d]) => d.some((x) => x.canReplace))
+            .map(([type, d]) => ({ type, label: JR.history.SECTION_NAME[type], diffs: d, undo: null }));
+          for (const [type, n] of Object.entries(r.extra)) {
+            if (n > 0) items.push({ q: qs[0], label: JR.history.SECTION_NAME[type], status: "needs", history: type,
+              why: `your resume has ${n} more ${type === "work" ? "job" : "school"}${n === 1 ? "" : "s"} than this form shows; add ${n === 1 ? "a row" : "rows"} and press Fill again` });
+          }
+        } else hist = null;
+      }
+
       const keys = qs.map((q) => memKey(q.label)).filter(Boolean);
       const mem = keys.length ? await api.storage.local.get(keys) : {};
       const ctx = {};
       const prep = store.settings.helper ? await getPrepared() : null;
       if (qs.some((q) => q.kind === "file")) ctx.resume = resumeFor(prep, (await api.storage.local.get("resume")).resume || null);
 
-      const items = [];
       for (const q of qs) {
+        if (hist && q.history) continue;   // filled above
         const cls = classify(q.label, q.kind, q.attrs, q.section);
         q.cls = cls;
         const it = await answerOne(q, cls, mem, ctx);
@@ -147,7 +173,7 @@
       const n = items.filter((i) => i.status === "filled").length;
       const left = items.filter((i) => i.status === "needs").length;
       stepsFilled.add(stepSig);
-      JR.panel.update({ busy: false, step: "", items, prepared: preparedLine(prep, items),
+      JR.panel.update({ busy: false, step: "", items, sections, prepared: preparedLine(prep, items),
         status: `Filled ${n} field${n === 1 ? "" : "s"}.` + (left ? ` ${left} need${left === 1 ? "s" : ""} you.` : " Review, then submit yourself.") });
       return summary();
     } finally {
@@ -199,7 +225,7 @@
     };
     for (const it of items) {
       const q = it.q;
-      if (it.status !== "needs" || !q.cls || q.cls.cat !== "custom" || it.offer || q.single || q.kind === "file") continue;
+      if (it.status !== "needs" || !q.cls || q.cls.cat !== "custom" || it.offer || q.single || q.kind === "file" || notForAI(q)) continue;
       const a = find(it.label);
       if (!a || W.get(q)) continue;
       const picks = a.choices && a.choices.length ? a.choices : a.answer ? [a.answer] : [];
@@ -282,7 +308,7 @@
     const cands = [];
     for (const it of items) {
       const q = it.q;
-      if (it.status !== "needs" || !q.cls || q.cls.cat !== "custom" || it.offer || q.single || q.kind === "file") continue;
+      if (it.status !== "needs" || !q.cls || q.cls.cat !== "custom" || it.offer || q.single || q.kind === "file" || notForAI(q)) continue;
       let kind = q.kind === "textarea" ? "textarea" : AI_TEXT.has(q.kind) ? "text" : q.kind === "checkbox" ? "multi" : "choice";
       let opts = [];
       if (kind === "choice" || kind === "multi") {
@@ -438,6 +464,35 @@
       JR.panel.render();
     },
     draft,
+    /** "Replace with my resume": overwrite what the page put in this section, keeping Undo. */
+    async replaceSection(sec) {
+      if (running || sec.undo) return;
+      running = true;
+      sec.busy = true;
+      JR.panel.render();
+      try {
+        sec.undo = await JR.history.replace(sec.diffs, filledByUs);
+        for (const u of sec.undo) mark(u.d.q, "filled");
+      } finally {
+        sec.busy = false;
+        running = false;
+        JR.panel.render();
+      }
+    },
+    async undoSection(sec) {
+      if (running || !sec.undo) return;
+      running = true;
+      sec.busy = true;
+      JR.panel.render();
+      try {
+        await JR.history.restore(sec.undo, filledByUs);
+        sec.undo = null;
+      } finally {
+        sec.busy = false;
+        running = false;
+        JR.panel.render();
+      }
+    },
     async copy(text, btn) {
       try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
       catch (e) { btn.textContent = "Select the text and press Ctrl+C"; }

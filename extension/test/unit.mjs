@@ -128,6 +128,27 @@ check("preferred name falls back to first name", () => assert.equal(R.answerFor(
 check("languages split", () => assert.deepEqual(R.alternatives({ cat: "profile", key: "languages" }, "English, Hindi"), ["English", "Hindi"]));
 check("English by default", () => assert.equal(R.DEFAULT_PROFILE.languages, "English"));
 
+// Work history fields: grouped and filled from the resume, never sent to the AI
+const hf = (label, attrs, want) => check(`historyField ${label || attrs}`, () => assert.equal(R.historyField(label, attrs), want));
+hf("Job Title", "workExperience-2--jobTitle", "title");
+hf("Company", "workExperience-2--companyName companyName", "company");
+hf("Role Description", "workExperience-1--roleDescription roleDescription", "description");
+hf("I currently work here", "workExperience-1--currentlyWorkHere currentlyWorkHere", "current");
+hf("Month", "workExperience-1--startDate-dateSectionMonth-input dateSectionMonth-input startDate", "startMonth");
+hf("Year", "workExperience-1--endDate-dateSectionYear-input dateSectionYear-input endDate", "endYear");
+hf("From", "education-1--firstYearAttended-dateSectionYear-input dateSectionYear-input firstYearAttended", "startYear");
+hf("Field of Study", "education-1--fieldOfStudy searchBox fieldOfStudy", "field");
+hf("Overall Result (GPA)", "education-1--gradeAverage gradeAverage", "gpa");
+hf("Start date month", "start-date-month--0", "startMonth");
+hf("Title", "title--0", "title");
+hf("Current role", "current-role--0", "current");
+hf("What is your GPA?", "question_77", "gpa");
+hf("Role description", "", "description");
+hf("Why do you want to work at our company?", "question_12", null);
+hf("Describe a project you're proud of", "question_13", null);
+hf("How many years of experience do you have?", "cards[a][field2]", null);
+hf("LinkedIn", "socialNetworkAccounts--linkedInAccount linkedinQuestion", null);
+
 // Option matching
 const pick = (v, opts, want) => check(`pick ${v} from ${opts.join("|")}`, () => assert.equal(R.pickOption(v, opts), want));
 pick("yes", ["No", "Yes"], 1);

@@ -39,6 +39,7 @@
     details > summary { cursor: pointer; color: #4a473f; margin-top: 10px; }
     a { color: #2f5a8a; }
     .prep { margin: 0 0 8px; padding: 6px 8px; border-radius: 6px; background: #eef3ec; color: #2f5a2a; }
+    .sec { margin: 0 0 8px; padding: 6px 8px; border-radius: 6px; background: #fbefd5; color: #5e3b00; }
     .next { margin-top: 8px; padding: 8px 10px; border: 1px solid #d9d6cc; border-radius: 8px; display: grid; gap: 6px; }
     a.btn { display: inline-block; text-decoration: none; border-radius: 6px; padding: 5px 10px; background: #2f6b3a; color: #fff; font-weight: 600; width: fit-content; }
     a.btn:hover { background: #255830; }
@@ -54,7 +55,7 @@
       .tag { background: #2f4429; color: #cfe6c6; } .tag.amber { background: #4a3a17; color: #f5d797; }
       textarea { background: #1b1b19; color: #ecebe6; border-color: #4d4b43; }
       a { color: #8fb6e8; }
-      .prep { background: #2a3626; color: #cfe6c6; } .next { border-color: #44423b; }
+      .prep { background: #2a3626; color: #cfe6c6; } .sec { background: #4a3a17; color: #f5d797; } .next { border-color: #44423b; }
       a.btn { color: #fff; }
     }
   `;
@@ -117,6 +118,9 @@
         it.source === "remembered" ? el("span", { class: "tag amber" }, "saved answer") : null,
         it.source === "draft" ? el("span", { class: "tag amber" }, "draft, edit it") : null,
         it.source === "ai" ? el("span", { class: "tag amber" }, "AI answer, check it") : null));
+    } else if (it.differs) {
+      kids.push(el("div", { class: "v" }, "On the form: " + short(it.value, 100)),
+        el("div", { class: "v" }, "Your resume: " + short(it.resume, 100)));
     } else {
       if (it.why) kids.push(el("div", { class: "why" }, sentence(it.why)));
       const row = [];
@@ -133,6 +137,18 @@
       }
     }
     return el("li", null, kids);
+  }
+
+  /** A Work Experience / Education section the page filled differently from the resume. */
+  function sectionBox(sec) {
+    const n = sec.diffs.filter((d) => d.canReplace).length;
+    const text = sec.undo
+      ? `${sec.label}: replaced ${sec.undo.length} field${sec.undo.length === 1 ? "" : "s"} with your resume.`
+      : `${sec.label}: ${n} field${n === 1 ? "" : "s"} already filled differently from your resume.`;
+    return el("div", { class: "sec" }, el("div", null, text),
+      el("div", { class: "row" }, sec.undo
+        ? el("button", { disabled: sec.busy, onclick: () => handlers.undoSection(sec) }, "Undo")
+        : el("button", { disabled: sec.busy, onclick: () => handlers.replaceSection(sec) }, sec.busy ? "Replacing…" : "Replace with my resume")));
   }
 
   function render() {
@@ -153,6 +169,7 @@
     const body = el("div", { class: "body" },
       el("div", { class: "status" }, view.status),
       view.prepared ? el("div", { class: "prep" }, view.prepared) : null,
+      (view.sections || []).map(sectionBox),
       needs.length ? [el("h3", null, `Needs you (${needs.length})`), el("ul", null, needs.map(item))] : null,
       filled.length ? [el("h3", null, `Filled (${filled.length})`), el("ul", null, filled.map(item))] : null,
       had.length ? el("details", null, el("summary", null, `Already answered (${had.length})`), el("ul", null, had.map(item))) : null,

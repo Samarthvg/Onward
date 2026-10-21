@@ -58,6 +58,7 @@
         "src/content/sites.js",
         "src/content/widgets.js",
         "src/content/panel.js",
+        "src/content/history.js",
         "src/content/main.js"
       ],
       "all_frames": true,
