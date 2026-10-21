@@ -14,6 +14,7 @@ import bisect
 import csv
 import email.utils
 import gzip
+import os
 import math
 import html
 import json
@@ -31,7 +32,13 @@ from datetime import datetime, timezone
 from typing import Callable
 from pathlib import Path
 
+import config
+import filters
 import reqparse
+# Title and location rules live in filters.py with the search profiles.
+from filters import (ENTRY_HINT, ENGINEER_WORD, NON_US, NOT_ENTRY, NOT_SWE, REMOTE, STRONG_SWE,  # noqa: F401
+                     SWE_TITLE, US_CITIES, US_MARKER, US_STATE_NAMES, US_STATES, is_entry_title,
+                     is_swe_title, us_location)
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "jobs.db"
@@ -86,42 +93,58 @@ class Job:
     # Key the job had as a bare SimplifyJobs listing, when it was then read
     # from its own posting (whose title and location give it a new key).
     listing_key: str = ""
+    country: str = ""               # the source's own country field, when it sends one
+    pay_min: float | None = None    # yearly pay the posting states
+    pay_max: float | None = None
+    profiles: str = "[]"            # JSON list of the search profiles that want it
+
+
+# --------------------------------------------------------------------------
+# Settings
+#
+# The constants above are the defaults; configure() sets them from the
+# user's settings.json, along with their search profiles.
+
+SEARCH = filters.Search()
+SETTINGS: dict = config.defaults()
+
+
+def configure(store: config.Store) -> None:
+    global DB_PATH, DASHBOARD_PATH, LOG_PATH, H1B_DIR, DASHBOARD_DAYS, STALE_AFTER_DAYS, PURGE_AFTER_DAYS
+    global WORKERS, TIMEOUT, ORACLE_DATE_FACET, SEARCH, SETTINGS
+    s = SETTINGS = store.load()
+    DB_PATH = store.path_for("db")
+    DASHBOARD_PATH = store.path_for("dashboard")
+    LOG_PATH = store.path_for("logs_dir") / "radar.log"
+    H1B_DIR = store.path_for("data_dir")
+    r = s["radar"]
+    DASHBOARD_DAYS, STALE_AFTER_DAYS, PURGE_AFTER_DAYS = r["dashboard_days"], r["stale_after_days"], r["purge_after_days"]
+    WORKERS, TIMEOUT = r["workers"], r["timeout"]
+    ORACLE_DATE_FACET = 7 if DASHBOARD_DAYS <= 7 else 30
+    SEARCH = filters.Search(s["profiles"], s["role_families"], s["companies"]["blocked"])
+
+
+def load_companies(settings: dict) -> dict:
+    """companies.json, plus the boards the user added, minus the ones they
+    removed or whose company they blocked."""
+    companies = json.loads(COMPANIES_PATH.read_text(encoding="utf-8"))
+    c = settings["companies"]
+    for src, toks in c["added"].items():
+        companies[src] = list(dict.fromkeys(list(companies.get(src, [])) + toks))
+    companies.setdefault("display_names", {}).update(c["display_names"])
+    removed = set(c["removed"])
+    blocked = {filters.norm_company(b) for b in c["blocked"]}
+    names = companies["display_names"]
+    for src, toks in companies.items():
+        if src in FETCHERS:
+            companies[src] = [t for t in toks if f"{src}:{t}" not in removed
+                              and filters.norm_company(names.get(t) or t) not in blocked]
+    return companies
 
 
 # --------------------------------------------------------------------------
 # Filters
 
-SWE_TITLE = re.compile(
-    r"\b(software|sde|swe|developer|back[- ]?end|front[- ]?end|full[- ]?stack|"
-    r"platform|infrastructure|mobile|ios|android|devops|site reliability|sre|"
-    r"machine learning|ml|ai|data|founding|forward deployed|"
-    r"distributed systems|cloud|security|web|application|compiler|embedded software)\b",
-    re.I,
-)
-ENGINEER_WORD = re.compile(r"\b(engineer|engineering|developer|sde|swe|programmer)\b", re.I)
-NOT_SWE = re.compile(
-    r"\b(sales|solutions?|support|customer|field|hardware|mechanical|electrical|"
-    r"manufacturing|technician|recruit\w*|account|marketing|designer|analyst|"
-    r"quality assurance|qa|validation|test engineer|network engineer|process|"
-    r"civil|chemical|rf|optical|facilities|propulsion|avionics|structures|"
-    r"scientist|mission|integration|deployment strategist|softgoods|textile|industrial design|"
-    r"product design|mechanical design)\b",
-    re.I,
-)
-NOT_ENTRY = re.compile(
-    r"\b(senior|sr\.?|staff|principal|lead|manager|management|director|head|vp|"
-    r"vice president|architect|distinguished|fellow|chief|ii|iii|iv|v|"
-    r"[2-6]|l[4-9]|e[4-9]|ic[3-9]|level [2-9]|intern|internship|co-?op|"
-    r"apprentice|phd|postdoc|contract(or)?|part[- ]time|tech lead|expert|experienced|"
-    r"internships?|smts|lmts|pmts|mts [2-6])\b",
-    re.I,
-)
-ENTRY_HINT = re.compile(
-    r"\b(new grad\w*|new college|graduate|entry[- ]level|junior|jr\.?|"
-    r"early[- ]career|university|campus|associate|i|1|level 1|l3|e3|ic1|ic2|"
-    r"20(2[6-8]) start)\b",
-    re.I,
-)
 YOE = re.compile(
     r"\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s*\+?\s*(?:\(\d+\)\s*)?"
     r"(?:-|to|–)?\s*(?:\d{1,2}\s*)?\+?\s*(?:or more\s+)?(?:additional\s+)?years?"
@@ -168,94 +191,6 @@ YES_SPONSOR = re.compile(
     r"|\bwe (?:will |can |do )?sponsor (?:h-?1b|visas?|work visas?)",
     re.I,
 )
-
-US_STATES = (
-    "AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT "
-    "NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC"
-).split()
-US_STATE_NAMES = [
-    "alabama", "alaska", "arizona", "arkansas", "california", "colorado", "connecticut",
-    "delaware", "florida", "georgia", "hawaii", "idaho", "illinois", "indiana", "iowa",
-    "kansas", "kentucky", "louisiana", "maine", "maryland", "massachusetts", "michigan",
-    "minnesota", "mississippi", "missouri", "montana", "nebraska", "nevada",
-    "new hampshire", "new jersey", "new mexico", "north carolina", "north dakota", "ohio",
-    "oklahoma", "oregon", "pennsylvania", "rhode island", "south carolina", "south dakota",
-    "tennessee", "texas", "utah", "vermont", "virginia", "washington", "west virginia",
-    "wisconsin", "wyoming",
-]
-US_CITIES = [
-    "san francisco", "sf", "bay area", "new york", "nyc", "seattle", "boston", "austin",
-    "chicago", "los angeles", "denver", "atlanta", "palo alto", "mountain view",
-    "menlo park", "sunnyvale", "san jose", "santa clara", "redmond", "bellevue",
-    "kirkland", "san diego", "portland", "pittsburgh", "philadelphia", "miami", "dallas",
-    "houston", "phoenix", "salt lake city", "raleigh", "durham", "nashville",
-    "minneapolis", "detroit", "ann arbor", "washington dc", "arlington", "reston",
-    "mclean", "baltimore", "columbus", "boulder", "irvine", "san mateo", "redwood city",
-    "foster city", "south san francisco", "oakland", "berkeley", "brooklyn", "jersey city",
-    "hoboken", "stamford", "cambridge, ma", "somerville", "waltham", "hawthorne",
-    "el segundo", "costa mesa", "culver city", "santa monica", "playa vista",
-]
-US_MARKER = re.compile(
-    r"\b(united states|usa|u\.s\.a?\.?|us|america|amer|north america|"
-    + "|".join(re.escape(s) for s in US_STATE_NAMES + US_CITIES)
-    + r")\b|,\s*(" + "|".join(US_STATES) + r")\b",
-    re.I,
-)
-NON_US = re.compile(
-    r"\b(canada|toronto|vancouver|montreal|ontario|quebec|london|uk|united kingdom|"
-    r"england|scotland|ireland|dublin|india|bangalore|bengaluru|hyderabad|pune|"
-    r"chennai|mumbai|delhi|gurgaon|gurugram|noida|germany|berlin|munich|hamburg|"
-    r"france|paris|singapore|japan|tokyo|australia|sydney|melbourne|brazil|"
-    r"são paulo|sao paulo|mexico|poland|warsaw|krakow|netherlands|amsterdam|spain|"
-    r"madrid|barcelona|israel|tel aviv|emea|apac|latam|europe|china|beijing|"
-    r"shanghai|shenzhen|korea|seoul|taiwan|taipei|philippines|manila|argentina|"
-    r"buenos aires|colombia|bogota|romania|bucharest|switzerland|zurich|geneva|"
-    r"sweden|stockholm|denmark|copenhagen|portugal|lisbon|italy|milan|czech|prague|"
-    r"ukraine|serbia|belgrade|costa rica|chile|santiago|uae|dubai|abu dhabi|"
-    r"new zealand|hong kong|vietnam|indonesia|jakarta|malaysia|thailand|bangkok|"
-    r"turkey|istanbul|egypt|nigeria|kenya|south africa|finland|helsinki|norway|"
-    r"oslo|austria|vienna|belgium|brussels|hungary|budapest|greece|estonia|"
-    r"lithuania|latvia|bulgaria|croatia|luxembourg|saudi|qatar|pakistan|"
-    r"bangladesh|sri lanka|peru|uruguay)\b",
-    re.I,
-)
-REMOTE = re.compile(r"\b(remote|anywhere|distributed|work from home|wfh)\b", re.I)
-
-
-STRONG_SWE = re.compile(
-    r"\b(software|sde|swe|developer|back[- ]?end|front[- ]?end|full[- ]?stack)\b", re.I)
-
-
-def is_swe_title(title: str) -> bool:
-    if not ENGINEER_WORD.search(title):
-        return False
-    if STRONG_SWE.search(title):
-        return not re.search(r"\b(sales|solutions?|support|test|qa)\s+engineer|\b(marketing|recruit\w*)\b",
-                             title, re.I)
-    return bool(SWE_TITLE.search(title) and not NOT_SWE.search(title))
-
-
-def is_entry_title(title: str) -> bool:
-    if ENTRY_HINT.search(title) and re.search(r"new grad|entry|junior|early career|university", title, re.I):
-        return True
-    return not NOT_ENTRY.search(title)
-
-
-def us_location(location: str, country: str | None) -> bool:
-    if country:
-        c = country.strip().lower()
-        if c in {"us", "usa", "united states", "united states of america"}:
-            return True
-        if c and not REMOTE.search(location):
-            return False
-    has_us = bool(US_MARKER.search(location))
-    if has_us:
-        return True
-    if NON_US.search(location):
-        return False
-    # Bare "Remote" with no country is treated as eligible.
-    return bool(REMOTE.search(location))
-
 
 def min_years(text: str) -> int | None:
     years = []
@@ -360,13 +295,15 @@ def build_job(*, company, title, location, country, remote, url, source,
               posted_field, posted_raw, sponsor_hint=None) -> Job | None:
     title = (title or "").strip()
     location = (location or "").strip()
-    if not title or not is_swe_title(title) or not is_entry_title(title):
-        return None
-    if not us_location(location, country):
+    company = (company or "").strip()
+    if not title or not SEARCH.title_wanted(title) or not SEARCH.location_wanted(location, country, remote):
         return None
     yoe = min_years(description)
     entry = bool(ENTRY_HINT.search(title))
-    if yoe is not None and yoe >= 3 and not entry:
+    pay = filters.pay_range(description)
+    profiles = SEARCH.matching(filters.Facts(company, title, location, country, bool(remote or REMOTE.search(location)),
+                                             description or "", yoe, entry, pay))
+    if not profiles:
         return None
     spons, note = sponsorship(description)
     # "e.g." / "i.e." would end the sentence early for the [^.] window.
@@ -375,7 +312,7 @@ def build_job(*, company, title, location, country, remote, url, source,
         spons, note = sponsor_hint
     return Job(
         key=norm_key(company, title, location),
-        company=company.strip(),
+        company=company,
         title=title,
         location=location or ("Remote" if remote else ""),
         remote=bool(remote or REMOTE.search(location)),
@@ -394,6 +331,10 @@ def build_job(*, company, title, location, country, remote, url, source,
         posted_raw=str(posted_raw) if posted_raw is not None else "",
         skills=json.dumps(extract_skills(title, description), separators=(",", ":")),
         description=(description or "")[:20000],
+        country=(country or "").strip()[:60],
+        pay_min=pay[0] if pay else None,
+        pay_max=pay[1] if pay else None,
+        profiles=json.dumps(profiles),
     )
 
 
@@ -766,6 +707,23 @@ def _sections(*parts: tuple[str, str | None]) -> str:
 # LinkedIn's user agreement forbids scraping, so its job pages are skipped too.
 NO_AUTOMATED_ACCESS = ("jobs.apple.com", "google.com", "metacareers.com", "facebook.com", "linkedin.com")
 
+ISO3 = {"US": "USA", "CA": "CAN", "GB": "GBR", "IE": "IRL", "DE": "DEU", "FR": "FRA", "NL": "NLD", "ES": "ESP",
+        "IN": "IND", "SG": "SGP", "JP": "JPN", "AU": "AUS", "IL": "ISR", "PL": "POL", "MX": "MEX", "BR": "BRA"}
+
+
+def country_param(name: str, codes: dict[str, str] | None = None) -> dict[str, str]:
+    """A search source's country filter, when every profile wants one
+    country; otherwise none, and the profiles filter the results."""
+    only = SEARCH.only_country()
+    value = (codes or {}).get(only) if codes is not None else filters.COUNTRIES[only][0] if only else None
+    return {name: value} if only and value else {}
+
+
+def skipped_commitments(always: set[str], intern: set[str]) -> set[str]:
+    """Employment types a board fetcher drops before reading postings:
+    part-time and contract always, internships unless a profile wants them."""
+    return always if SEARCH.wants_level("intern") else always | intern
+
 
 def _greenhouse_posting(token: str, j: dict) -> dict:
     first = parse_iso(j.get("first_published"))
@@ -829,7 +787,7 @@ def fetch_lever(token: str) -> list[Job]:
     out = []
     for j in data:
         cats = j.get("categories") or {}
-        if (cats.get("commitment") or "").lower() in {"intern", "internship", "part-time", "contract"}:
+        if (cats.get("commitment") or "").lower() in skipped_commitments({"part-time", "contract"}, {"intern", "internship"}):
             continue
         job = build_job(company=display_name(token), **_lever_posting(token, j))
         if job:
@@ -865,7 +823,7 @@ def fetch_ashby(token: str) -> list[Job]:
     for j in data.get("jobs", []):
         if j.get("isListed") is False:
             continue
-        if (j.get("employmentType") or "") in {"Intern", "PartTime", "Contract", "Temporary"}:
+        if (j.get("employmentType") or "") in skipped_commitments({"PartTime", "Contract", "Temporary"}, {"Intern"}):
             continue
         job = build_job(company=display_name(token), **_ashby_posting(token, j))
         if job:
@@ -938,7 +896,7 @@ def fetch_workday(token: str) -> list[Job]:
             if days is not None and days > DASHBOARD_DAYS:
                 continue
             title = p.get("title") or ""
-            if not (is_swe_title(title) and is_entry_title(title)):
+            if not SEARCH.title_wanted(title):
                 continue
             path = p.get("externalPath") or ""
             posting = cached_posting(f"{base}/{site}{path}", lambda: _workday_posting(
@@ -999,7 +957,9 @@ def fetch_smartrecruiters(token: str) -> list[Job]:
     cutoff = time.time() - DASHBOARD_DAYS * 86400
     out: list[Job] = []
     for page in range(SR_MAX_PAGES):
-        data = get_json(f"{SR_API}/{token}/postings?country=us&limit={SR_PAGE}&offset={page * SR_PAGE}")
+        only = SEARCH.only_country()
+        country = f"country={only.lower()}&" if only else ""
+        data = get_json(f"{SR_API}/{token}/postings?{country}limit={SR_PAGE}&offset={page * SR_PAGE}")
         content = data.get("content") or []
         total = data.get("totalFound") or 0
         # An unknown identifier answers 200 with nothing in it, the same as a
@@ -1009,7 +969,7 @@ def fetch_smartrecruiters(token: str) -> list[Job]:
         for p in content:
             released = parse_iso(p.get("releasedDate"))
             title = p.get("name") or ""
-            if (released and released < cutoff) or not (is_swe_title(title) and is_entry_title(title)):
+            if (released and released < cutoff) or not SEARCH.title_wanted(title):
                 continue
             pid = p.get("id")
             posting = cached_posting(f"https://jobs.smartrecruiters.com/{token}/{pid}", lambda: _smartrecruiters_posting(
@@ -1101,8 +1061,8 @@ def fetch_oracle(token: str) -> list[Job]:
             title = r.get("Title") or ""
             locs = [r.get("PrimaryLocation") or ""] + [s.get("Name") or "" for s in r.get("secondaryLocations") or []]
             country = r.get("PrimaryLocationCountry") if len(locs) == 1 else None
-            if not (is_swe_title(title) and is_entry_title(title)
-                    and us_location(" / ".join(l for l in locs if l), country)):
+            if not (SEARCH.title_wanted(title)
+                    and SEARCH.location_wanted(" / ".join(l for l in locs if l), country)):
                 continue
             rid = str(r.get("Id"))
             posting = cached_posting(_oracle_page(host, site, rid), lambda: _oracle_posting(host, number, rid, site))
@@ -1153,9 +1113,11 @@ def fetch_eightfold(token: str) -> list[Job]:
     "apply.careers.microsoft.com|microsoft.com|filter_profession=software engineering".
     Eightfold's public search (robots.txt allows /api/pcsx) returns ten
     postings a page, newest first when sorted by timestamp."""
-    host, domain, *filters = token.split("|")
-    query = urllib.parse.urlencode([("domain", domain), ("query", ""), ("location", "United States"),
-                                    ("sort_by", "timestamp")] + [tuple(f.split("=", 1)) for f in filters])
+    host, domain, *extra = token.split("|")
+    only = SEARCH.only_country()
+    query = urllib.parse.urlencode([("domain", domain), ("query", "")]
+                                   + ([("location", filters.COUNTRIES[only][0])] if only else [])
+                                   + [("sort_by", "timestamp")] + [tuple(f.split("=", 1)) for f in extra])
     company = DISPLAY_NAMES.get(token) or domain.split(".")[0].title()
     cutoff = time.time() - DASHBOARD_DAYS * 86400
     out: list[Job] = []
@@ -1166,8 +1128,8 @@ def fetch_eightfold(token: str) -> list[Job]:
             ts = p.get("postedTs")
             title = p.get("name") or ""
             location = " / ".join(p.get("locations") or [])
-            if ((ts and ts < cutoff) or not (is_swe_title(title) and is_entry_title(title))
-                    or not us_location(location, None)):
+            if ((ts and ts < cutoff) or not SEARCH.title_wanted(title)
+                    or not SEARCH.location_wanted(location)):
                 continue
             pid = str(p.get("id"))
             posting = cached_posting(f"https://{host}/careers/job/{pid}", lambda: _eightfold_posting(host, pid))
@@ -1222,7 +1184,7 @@ def fetch_amazon(category: str) -> list[Job]:
     cutoff = time.time() - DASHBOARD_DAYS * 86400
     out: list[Job] = []
     for page in range(AMAZON_MAX_PAGES):
-        query = urllib.parse.urlencode({"category[]": category, "country": "USA", "sort": "recent",
+        query = urllib.parse.urlencode({"category[]": category, **country_param("country", ISO3), "sort": "recent",
                                         "result_limit": AMAZON_PAGE, "offset": page * AMAZON_PAGE})
         data = get_json(f"{AMAZON_SEARCH}?{query}")
         jobs = data.get("jobs") or []
@@ -1288,7 +1250,8 @@ def _fetch_jibe(host: str) -> list[Job]:
     out: list[Job] = []
     for page in range(1, JIBE_MAX_PAGES + 1):
         query = urllib.parse.urlencode({"page": page, "limit": JIBE_PAGE, "sortBy": "posted_date",
-                                        "descending": "true", "internal": "false", "country": "United States"})
+                                        "descending": "true", "internal": "false",
+                                        **country_param("country")})
         data = get_json(f"https://{host}/api/jobs?{query}")
         jobs = [item.get("data") or {} for item in data.get("jobs") or []]
         last = None
@@ -1318,7 +1281,7 @@ def _fetch_icims_portal(host: str) -> list[Job]:
         if not m or (modified and modified < cutoff):
             continue
         slug_title = urllib.parse.unquote(m.group(2)).replace("-", " ")
-        if not (is_swe_title(slug_title) and is_entry_title(slug_title)):
+        if not SEARCH.title_wanted(slug_title):
             continue
         page = html.unescape(loc)
         posting = cached_posting(page, lambda: jsonld_posting(f"{page}?in_iframe=1", "icims", page))
@@ -1486,8 +1449,8 @@ def fetch_simplify(_: str = "") -> list[Job]:
     cutoff = time.time() - DASHBOARD_DAYS * 86400
     listings = [j for j in data
                 if j.get("active") and j.get("is_visible", True) and (j.get("date_posted") or 0) >= cutoff
-                and is_swe_title(j.get("title") or "") and is_entry_title(j.get("title") or "")
-                and us_location(" / ".join(j.get("locations") or []), None)]
+                and SEARCH.title_wanted(j.get("title") or "")
+                and SEARCH.location_wanted(" / ".join(j.get("locations") or []))]
     with ThreadPoolExecutor(max_workers=SIMPLIFY_WORKERS) as pool:
         results = list(pool.map(_simplify_job, listings))
     tally: dict[str, int] = {}
@@ -1561,10 +1524,12 @@ class FetchResult:
     attempted: list[str]
 
 
-def fetch_all(companies: dict[str, list[str]], skip: set[str] = frozenset()) -> FetchResult:
+def fetch_all(companies: dict[str, list[str]], skip: set[str] = frozenset(),
+              simplify: bool = True) -> FetchResult:
     tasks = [(src, tok) for src, toks in companies.items() if src in FETCHERS
              for tok in dict.fromkeys(toks) if f"{src}:{tok}" not in skip]
-    tasks.append(("simplify", ""))
+    if simplify:
+        tasks.append(("simplify", ""))
     res = FetchResult([], [], [], [], [f"{src}:{tok}" for src, tok in tasks])
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         futures = {
@@ -1678,6 +1643,12 @@ MIGRATIONS = {
     # server.py can score jobs exactly as the dashboard does.
     "kw": "TEXT NOT NULL DEFAULT ''",
     "degree": "TEXT NOT NULL DEFAULT ''",
+    # Search profiles (filters.py): the source's country field, stated pay,
+    # and the profiles that want the job (JSON list, refreshed every render).
+    "country": "TEXT NOT NULL DEFAULT ''",
+    "pay_min": "REAL",
+    "pay_max": "REAL",
+    "profiles": "TEXT NOT NULL DEFAULT '[]'",
 }
 
 
@@ -1730,11 +1701,11 @@ def store(conn: sqlite3.Connection, jobs: list[Job], now: float) -> int:
         """INSERT INTO jobs (key, company, title, location, remote, url, source, posted_at,
                              posted_exact, sponsorship, sponsor_note, min_yoe, entry_hint,
                              first_seen, last_seen, apply_url, verify_url, posted_field,
-                             posted_raw, skills, description, no_opt)
+                             posted_raw, skills, description, no_opt, country, pay_min, pay_max, profiles)
            VALUES (:key, :company, :title, :location, :remote, :url, :source, :posted_at,
                    :posted_exact, :sponsorship, :sponsor_note, :min_yoe, :entry_hint,
                    :now, :now, :apply_url, :verify_url, :posted_field, :posted_raw, :skills,
-                   :description, :no_opt)
+                   :description, :no_opt, :country, :pay_min, :pay_max, :profiles)
            ON CONFLICT(key) DO UPDATE SET
                url = excluded.url, source = excluded.source,
                posted_at = excluded.posted_at, posted_exact = excluded.posted_exact,
@@ -1742,6 +1713,8 @@ def store(conn: sqlite3.Connection, jobs: list[Job], now: float) -> int:
                apply_url = excluded.apply_url, verify_url = excluded.verify_url,
                sponsorship = excluded.sponsorship, sponsor_note = excluded.sponsor_note,
                no_opt = excluded.no_opt, min_yoe = excluded.min_yoe, skills = excluded.skills,
+               country = excluded.country, pay_min = excluded.pay_min, pay_max = excluded.pay_max,
+               profiles = excluded.profiles,
                description = CASE WHEN excluded.description != '' THEN excluded.description
                                   ELSE jobs.description END,
                last_seen = excluded.last_seen""",
@@ -1754,7 +1727,7 @@ def store(conn: sqlite3.Connection, jobs: list[Job], now: float) -> int:
 DASHBOARD_COLS = [
     "key", "company", "title", "location", "remote", "url", "source", "posted_at", "posted_exact",
     "sponsorship", "sponsor_note", "no_opt", "min_yoe", "entry_hint", "first_seen", "apply_url",
-    "verify_url", "posted_field", "posted_raw", "skills",
+    "verify_url", "posted_field", "posted_raw", "skills", "country", "pay_min", "pay_max",
 ]
 
 
@@ -1858,7 +1831,16 @@ def load_for_dashboard(conn: sqlite3.Connection, now: float, prev_run: float | N
         # the posting's requirement lines, plus the degree it asks for.
         d["kw"] = reqparse.keywords(desc, d["title"], find_skills, term_rx) if d["has_jd"] else []
         d["degree"] = reqparse.degree(desc) if d["has_jd"] else None
-        out.append(d)
+        # Tagged again with the current profiles, so a changed profile shows
+        # on the next render without refetching. Jobs no profile wants stay
+        # stored (a profile may want them again) but are not shown.
+        pay = filters.pay_range(desc)       # rows stored before pay was read have none saved
+        d["pay_min"], d["pay_max"] = pay or (None, None)
+        d["profiles"] = SEARCH.matching(filters.Facts(
+            d["company"], d["title"], d["location"], d.pop("country") or None, bool(d["remote"]), desc,
+            d["min_yoe"], bool(d["entry_hint"]), pay))
+        if d["profiles"]:
+            out.append(d)
     return out
 
 
@@ -1866,9 +1848,12 @@ def save_scoring(conn: sqlite3.Connection, rows: list[dict], stats: dict, now: f
     """Checklists and keyword weights as the dashboard got them, for the
     helper's preparation queue (server.py scores with match.py)."""
     with conn:
-        conn.executemany("UPDATE jobs SET kw = ?, degree = ? WHERE key = ?",
-                         [(json.dumps(r["kw"]), json.dumps(r["degree"]) if r["degree"] else "", r["key"])
-                          for r in rows])
+        conn.executemany("UPDATE jobs SET kw = ?, degree = ?, profiles = ? WHERE key = ?",
+                         [(json.dumps(r["kw"]), json.dumps(r["degree"]) if r["degree"] else "",
+                           json.dumps(r["profiles"]), r["key"]) for r in rows])
+        # Jobs no current profile wants lose their tags, so the queue skips them.
+        conn.execute("UPDATE jobs SET profiles = '[]' WHERE profiles != '[]' "
+                     "AND key NOT IN (SELECT value FROM json_each(?))", (json.dumps([r["key"] for r in rows]),))
         conn.execute("INSERT OR REPLACE INTO corpus (id, updated, skill_w, term_w) VALUES (1, ?, ?, ?)",
                      (now, json.dumps(stats["skill_w"]), json.dumps(stats["term_w"])))
 
@@ -2005,9 +1990,69 @@ def render(jobs: list[dict], meta: dict) -> None:
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     payload = json.dumps({"jobs": jobs, "meta": meta}, separators=(",", ":")).replace("</", "<\\/")
     page = template.replace("/*__DATA__*/null", payload)
-    tmp = DASHBOARD_PATH.with_suffix(".tmp")
+    DASHBOARD_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # The helper re-renders after a settings change while a scheduled run may
+    # be rendering too; each writes its own temp file.
+    tmp = DASHBOARD_PATH.with_name(f"{DASHBOARD_PATH.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     tmp.write_text(page, encoding="utf-8")
     tmp.replace(DASHBOARD_PATH)
+
+
+def public_settings(s: dict) -> dict:
+    """The part of settings.json the dashboard page carries: profiles for the
+    switcher and visa badges, scoring weights, tailoring defaults. No paths
+    or notification topics."""
+    families = {k: f.label for k, f in filters.BUILTIN_FAMILIES.items()}
+    families.update({f["id"]: f["label"] for f in s["role_families"]})
+    return {"profiles": s["profiles"], "active_profile": s["active_profile"], "scoring": s["scoring"],
+            "tailoring": {k: s["tailoring"][k] for k in ("backend", "draft_backend")}, "families": families}
+
+
+def needs_visa_data(s: dict) -> bool:
+    return any(p["visa"]["status"] != "authorized" for p in s["profiles"])
+
+
+def build_dashboard(conn: sqlite3.Connection, h1b: "H1BIndex", run: dict) -> list[dict]:
+    """Scores, tags and renders the stored jobs. run: started, generated,
+    previous_run, first_run, boards, failed, missing, new."""
+    stats = corpus_stats(conn)
+    rows = load_for_dashboard(conn, run["started"], run["previous_run"], h1b, stats)
+    save_scoring(conn, rows, stats, run["generated"])
+    render(rows, {
+        **{k: run[k] for k in ("generated", "previous_run", "first_run", "boards", "failed", "missing", "new")},
+        "h1b_years": h1b.years,
+        "skills": json.loads(SKILLS_PATH.read_text(encoding="utf-8")),
+        "skill_w": stats["skill_w"],
+        "term_w": {t: stats["term_w"][t] for t in {k[0] for r in rows for k in r["kw"]} if t in stats["term_w"]},
+        "settings": public_settings(SETTINGS),
+    })
+    return rows
+
+
+def rerender(store_: config.Store | None = None) -> int:
+    """Rebuilds dashboard.html from stored jobs without fetching, so changed
+    settings (profiles, visa, scoring) show at once. Returns jobs shown."""
+    configure(store_ or config.store())
+    companies = load_companies(SETTINGS)
+    DISPLAY_NAMES.update(companies.pop("display_names", {}))
+    h1b = H1BIndex.load(companies.pop("h1b_aliases", {})) if needs_visa_data(SETTINGS) else H1BIndex()
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    try:
+        with conn:
+            migrate(conn)
+        last = conn.execute("SELECT id, started, finished, boards, failed, new FROM runs "
+                            "ORDER BY id DESC LIMIT 1").fetchone()
+        if not last:
+            return 0
+        prev = conn.execute("SELECT MAX(finished) FROM runs WHERE id < ?", (last[0],)).fetchone()[0]
+        first_run = conn.execute("SELECT MIN(started) FROM runs").fetchone()[0]
+        with conn:
+            rows = build_dashboard(conn, h1b, {
+                "started": last[1], "generated": last[2], "previous_run": prev, "first_run": first_run,
+                "boards": last[3], "failed": last[4], "missing": 0, "new": last[5] if prev is not None else 0})
+        return len(rows)
+    finally:
+        conn.close()
 
 
 # --------------------------------------------------------------------------
@@ -2060,22 +2105,33 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="list board tokens that 404")
     ap.add_argument("--update-h1b", action="store_true", help="re-download USCIS H-1B data")
+    ap.add_argument("--render", action="store_true", help="rebuild the dashboard from stored jobs, no fetching")
     args = ap.parse_args()
 
+    settings = config.store()
+    configure(settings)
+    for d in {DB_PATH.parent, LOG_PATH.parent, DASHBOARD_PATH.parent}:
+        d.mkdir(parents=True, exist_ok=True)
+    for w in settings.warnings:
+        log(f"settings: {w}")
+    if args.render:
+        log(f"rendered {rerender(settings)} jobs")
+        return 0
+
     have_h1b = any((H1B_DIR / f"h1b_datahubexport-{y}.csv").exists() for y in H1B_YEARS)
-    if args.update_h1b or not have_h1b:
+    if args.update_h1b or (not have_h1b and needs_visa_data(SETTINGS)):
         update_h1b()
         if args.update_h1b:
             return 0
 
-    companies = json.loads(COMPANIES_PATH.read_text(encoding="utf-8"))
+    companies = load_companies(SETTINGS)
     DISPLAY_NAMES.update(companies.pop("display_names", {}))
     h1b_aliases = companies.pop("h1b_aliases", {})
     started = time.time()
     cooling = load_state(started)
     if args.check:
         cooling = {}        # --check tries every board, cooling down or not
-    res = fetch_all(companies, set(cooling))
+    res = fetch_all(companies, set(cooling), simplify=SETTINGS["radar"]["simplify_feed"])
     jobs = dedupe(res.jobs)
     missing, failed = res.missing, res.failed
 
@@ -2095,8 +2151,8 @@ def main() -> int:
         print(f"{len(jobs)} matching jobs")
         return 0
 
-    h1b = H1BIndex.load(h1b_aliases)
-    conn = sqlite3.connect(DB_PATH)
+    h1b = H1BIndex.load(h1b_aliases) if needs_visa_data(SETTINGS) else H1BIndex()
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     try:
         migrate(conn)
         prev, first_run = conn.execute("SELECT MAX(finished), MIN(started) FROM runs").fetchone()
@@ -2104,30 +2160,20 @@ def main() -> int:
             new = store(conn, jobs, started)
             save_state(conn, res, started)
             finished = time.time()
-            boards = sum(len(set(v)) for k, v in companies.items() if k in FETCHERS) + 1
+            boards = (sum(len(set(v)) for k, v in companies.items() if k in FETCHERS)
+                      + int(SETTINGS["radar"]["simplify_feed"]))
             conn.execute(
                 "INSERT INTO runs (started, finished, boards, failed, matched, new) VALUES (?,?,?,?,?,?)",
                 (started, finished, boards, len(failed) + len(missing), len(jobs), new),
             )
-        stats = corpus_stats(conn)
-        rows = load_for_dashboard(conn, started, prev, h1b, stats)
-        save_scoring(conn, rows, stats, finished)
+        with conn:
+            build_dashboard(conn, h1b, {
+                "started": started, "generated": finished, "previous_run": prev, "first_run": first_run or started,
+                "boards": boards, "failed": len(failed), "missing": len(missing),
+                "new": new if prev is not None else 0})
     finally:
         conn.close()
 
-    render(rows, {
-        "generated": finished,
-        "previous_run": prev,
-        "first_run": first_run or started,
-        "boards": boards,
-        "failed": len(failed),
-        "missing": len(missing),
-        "new": new if prev is not None else 0,
-        "h1b_years": h1b.years,
-        "skills": json.loads(SKILLS_PATH.read_text(encoding="utf-8")),
-        "skill_w": stats["skill_w"],
-        "term_w": {t: stats["term_w"][t] for t in {k[0] for r in rows for k in r["kw"]} if t in stats["term_w"]},
-    })
     log(f"run ok: {len(jobs)} matches, {new} new, {len(failed)} failed, "
         f"{len(missing)} missing boards, {finished - started:.1f}s")
     for f in failed:

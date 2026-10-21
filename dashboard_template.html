@@ -202,6 +202,45 @@
   .prefs input[type=checkbox] { justify-self: start; accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
   .prefs input[type=time] { width: 130px; color-scheme: light dark; }
   .prefs .note { grid-column: 2; margin-top: -4px; }
+  .settings { display: grid; gap: 14px; }
+  .settings-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  .settings-head h2 { font-size: 18px; margin: 0; flex: 1 1 auto; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 16px; display: grid; gap: 14px; }
+  .card h3 { font-size: 15px; margin: 0; }
+  .card > p, .card .lead { margin: 0; color: var(--muted); font-size: 13px; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 22px; align-items: start; }
+  .field { display: grid; gap: 5px; min-width: 0; }
+  .field > label, .field legend { font-size: 13px; font-weight: 600; color: var(--text); padding: 0; }
+  .field .note { margin: 0; }
+  .field.wide { grid-column: 1 / -1; }
+  fieldset.field { border: 0; margin: 0; padding: 0; min-width: 0; }
+  .checks { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
+  .checks label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .checks input, .radios input { accent-color: var(--accent); }
+  .radios { display: grid; gap: 6px; font-size: 13px; }
+  .radios label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+  .radios label span { color: var(--muted); display: block; }
+  .radios label b { font-weight: 500; color: var(--text); }
+  .rowline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .rowline > input[type=text], .rowline > input[type=url], .rowline > select { flex: 1 1 220px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 4px 2px 9px; border-radius: 999px; background: var(--chip); }
+  .tag button { border: 0; background: transparent; padding: 0 5px; font-size: 14px; line-height: 1; color: var(--muted); border-radius: 999px; }
+  .tag button:hover { color: var(--text); }
+  .found { padding: 10px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); display: grid; gap: 8px; font-size: 13px; }
+  .boards { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+  .boards li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 6px 10px; border-top: 1px solid var(--line); font-size: 13px; }
+  .boards li:first-child { border-top: 0; }
+  .boards li.off { color: var(--muted); }
+  .boards li.off .bname { text-decoration: line-through; }
+  .boards .bname { font-weight: 500; }
+  .boards .src { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; flex: 1 1 160px; }
+  .boards button { font-size: 12px; padding: 3px 9px; }
+  .savebar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  .adv[hidden] { display: none; }
+  .okline { color: var(--ok); font-size: 13px; }
+  [hidden] { display: none !important; }
+
   .toast {
     position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg);
     padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none;
@@ -209,6 +248,7 @@
   .toast.show { opacity: 1; }
 
   @media (max-width: 600px) {
+    .fields { grid-template-columns: 1fr; }
     .prefs { grid-template-columns: 1fr; }
     .prefs .note { grid-column: 1; }
     .controls { position: static; }
@@ -231,6 +271,7 @@
       <span class="viewtabs" id="viewTabs" hidden>
         <button type="button" data-view="jobs" aria-pressed="true">All jobs</button>
         <button type="button" data-view="queue" aria-pressed="false">Apply queue <span class="qcount" id="qcount" hidden></span></button>
+        <button type="button" data-view="settings" aria-pressed="false">Settings</button>
       </span>
       <button type="button" id="openKit">Apply kit</button>
     </div>
@@ -241,9 +282,11 @@
     <div class="qhead" id="qhead"></div>
     <ul class="list" id="qlist"></ul>
   </section>
+  <section id="settingsView" hidden aria-labelledby="settingsTitle"></section>
   <div id="jobsView">
 
   <div class="controls">
+    <select id="searchSel" aria-label="Search profile" hidden></select>
     <div class="seg" id="window" role="group" aria-label="Posted within">
       <button type="button" data-h="1">1h</button>
       <button type="button" data-h="6">6h</button>
@@ -262,8 +305,8 @@
       <option value="65">65%+ match</option>
       <option value="80">80%+ match</option>
     </select>
-    <label class="toggle"><input type="checkbox" id="h1bOnly"> H-1B sponsors only</label>
-    <label class="toggle"><input type="checkbox" id="nosp"> Hide no sponsorship / no OPT</label>
+    <label class="toggle" id="h1bOnlyLbl"><input type="checkbox" id="h1bOnly"> H-1B sponsors only</label>
+    <label class="toggle" id="nospLbl"><input type="checkbox" id="nosp"> <span id="nospText">Hide no sponsorship / no OPT</span></label>
     <label class="toggle"><input type="checkbox" id="remote"> Remote only</label>
     <label class="toggle"><input type="checkbox" id="hidedone"> Hide applied/dismissed</label>
   </div>
@@ -477,6 +520,10 @@ function (P, root) {
 
 <script>
 const DATA = /*__DATA__*/null;
+// The user's search profiles (settings.json); a dashboard from before them has one.
+const SETTINGS = DATA.meta.settings || { profiles: [{ id: "default", name: "Jobs", visa: { status: "opt", hide_no_sponsorship: false } }],
+  active_profile: "default", tailoring: { backend: "chatgpt" }, families: {} };
+const profileById = (id) => SETTINGS.profiles.find((p) => p.id === id) || SETTINGS.profiles[0];
 const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
@@ -486,14 +533,18 @@ const store = {
   del(k) { try { localStorage.removeItem("jr:" + k); } catch {} },
 };
 
+// Visa filters are kept per profile: one search may need sponsorship, another not.
+const searchKey = (k, id) => (id === "default" ? k : `${k}:${id}`);
+const initialSearch = profileById(store.get("search", SETTINGS.active_profile)).id;
 const state = {
+  search: initialSearch,
   hours: store.get("hours", 24),
   q: "",
   sort: store.get("sort", "new"),
   minMatch: store.get("minMatch", 0),
   remote: store.get("remote", false),
-  nosp: store.get("nosp", false),
-  h1bOnly: store.get("h1bOnly", false),
+  nosp: store.get(searchKey("nosp", initialSearch), !!(profileById(initialSearch).visa || {}).hide_no_sponsorship),
+  h1bOnly: store.get(searchKey("h1bOnly", initialSearch), false),
   hidedone: store.get("hidedone", false),
   marks: store.get("marks", {}),        // url -> "applied" | "dismissed"
   opened: {},                           // url -> true once Apply was clicked this session
@@ -540,6 +591,10 @@ function resumeSkills() {
 const SKILL_W = DATA.meta.skill_w || {};
 const TERM_W = DATA.meta.term_w || {};
 const TAXONOMY = new Set(DATA.meta.skills.map((s) => s.n));
+// Weights from settings.json "scoring"; match.py uses the same ones.
+const SCORING = Object.assign({ experience_weight: 0.4, prior_keywords: 3, prior_credit: 0.5, years_penalty: 0.35,
+  min_experience_fit: 0.15, unstated_years_fit: 0.85, unknown_keyword_weight: 0.8 },
+  (DATA.meta.settings && DATA.meta.settings.scoring) || {});
 
 const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
 const MON = "(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\\.?";
@@ -598,9 +653,9 @@ function degreeFit(req, have) {
 
 function expFit(job, years) {
   const min = job.min_yoe;
-  if (min == null) return { v: job.entry_hint ? 1 : 0.85, label: job.entry_hint ? "entry level" : "years not stated" };
+  if (min == null) return { v: job.entry_hint ? 1 : SCORING.unstated_years_fit, label: job.entry_hint ? "entry level" : "years not stated" };
   if (years >= min) return { v: 1, ok: true, label: `asks ${min}+ yrs, you have ~${years}` };
-  return { v: Math.max(0.15, 1 - (min - years) * 0.35), ok: false, label: `asks ${min}+ yrs, you have ~${years}` };
+  return { v: Math.max(SCORING.min_experience_fit, 1 - (min - years) * SCORING.years_penalty), ok: false, label: `asks ${min}+ yrs, you have ~${years}` };
 }
 
 function termRegex(t) {
@@ -614,7 +669,7 @@ function scoreJob(job, have, ctx) {
   if (!job.has_jd || !kw.length) return { pct: null, items: [], noJd: !job.has_jd };
   let W = 0, M = 0;
   const items = kw.map(([k, w, kind]) => {
-    const weight = w * (SKILL_W[k] ?? TERM_W[k] ?? 0.8);
+    const weight = w * (SKILL_W[k] ?? TERM_W[k] ?? SCORING.unknown_keyword_weight);
     const ok = TAXONOMY.has(k) ? have.has(k) : ctx.hasTerm(k);
     W += weight;
     if (ok) M += weight;
@@ -624,10 +679,10 @@ function scoreJob(job, have, ctx) {
   // checklist gets the weight of 3 average keywords at 50% mixed in: short
   // lists drift toward the middle, long ones barely move.
   const thin = kw.length < 4;
-  const prior = 3 * (W / kw.length);
-  const cov = (M + 0.5 * prior) / (W + prior);
+  const prior = SCORING.prior_keywords * (W / kw.length);
+  const cov = (M + SCORING.prior_credit * prior) / (W + prior);
   const exp = expFit(job, ctx.years);
-  const pct = Math.round(100 * cov * (0.6 + 0.4 * exp.v));
+  const pct = Math.round(100 * cov * (1 - SCORING.experience_weight + SCORING.experience_weight * exp.v));
   const count = (kinds) => {
     const xs = items.filter((i) => kinds.includes(i.kind));
     return { have: xs.filter((i) => i.ok).length, of: xs.length };
@@ -778,7 +833,18 @@ function h1bTier(h) {
   if (total >= 5) return "some";
   return "rare";
 }
+// Which visa signals the shown profile wants: sponsorship and H-1B history
+// unless the user is free to work; OPT refusals only for someone on OPT.
+function visa() {
+  const status = (profileById(state.search).visa || {}).status || "opt";
+  return { sponsor: status !== "authorized", opt: status === "opt" };
+}
+function payLabel(j) {
+  const k = (x) => (x >= 1000 ? Math.round(x / 1000) + "k" : String(Math.round(x)));
+  return j.pay_min === j.pay_max ? k(j.pay_min) : `${k(j.pay_min)}\u2013${k(j.pay_max)}`;
+}
 function isSponsor(j) {
+  if (!visa().sponsor) return false;
   if (j.sponsorship === "no") return false;
   const t = h1bTier(j.h1b);
   return t === "strong" || t === "some" || j.sponsorship === "yes";
@@ -852,6 +918,7 @@ function evidence(j) {
   }
 
   const h = j.h1b;
+  if (!visa().sponsor) return ev;
   if (h) {
     const yrs = Object.entries(h.years).sort((a, b) => b[0] - a[0])
       .map(([y, v]) => `FY${y}: ${n(v.initial)} new, ${n(v.continuing)} continuing`).join(" · ");
@@ -876,12 +943,14 @@ function render() {
   const now = Date.now() / 1000;
   const q = state.q.trim().toLowerCase();
   const hasResume = !!state.resume;
+  const V = visa();
 
   let jobs = DATA.jobs.filter((j) => {
+    if (j.profiles && !j.profiles.includes(state.search)) return false;
     if (now - when(j) > state.hours * 3600) return false;
     if (state.remote && !j.remote) return false;
-    if (state.nosp && (j.sponsorship === "no" || j.no_opt)) return false;
-    if (state.h1bOnly && !isSponsor(j)) return false;
+    if (V.sponsor && state.nosp && (j.sponsorship === "no" || (V.opt && j.no_opt))) return false;
+    if (V.sponsor && state.h1bOnly && !isSponsor(j)) return false;
     if (state.hidedone && state.marks[j.url]) return false;
     if (hasResume && state.minMatch > 0) {
       const sc = scores.get(j);
@@ -905,7 +974,7 @@ function render() {
   for (const j of jobs) {
     const mark = state.marks[j.url];
     const sc = scores.get(j);
-    const tier = h1bTier(j.h1b);
+    const tier = V.sponsor ? h1bTier(j.h1b) : null;
 
     const right = el("div", { class: "right" });
     if (sc && sc.pct != null) {
@@ -938,9 +1007,10 @@ function render() {
     } else if (tier === "rare") {
       badges.append(el("span", { class: "badge", title: `USCIS FY${j.h1b.year}: ${j.h1b.employer}`, text: "Rare H-1B filer" }));
     }
-    if (j.sponsorship === "no") badges.append(el("span", { class: "badge no", title: j.sponsor_note, text: "No sponsorship / clearance" }));
-    if (j.no_opt) badges.append(el("span", { class: "badge no", title: j.sponsor_note, text: "No STEM OPT / I-983" }));
-    if (j.sponsorship === "yes") badges.append(el("span", { class: "badge yes", title: j.sponsor_note, text: "Posting says it sponsors" }));
+    if (V.sponsor && j.sponsorship === "no") badges.append(el("span", { class: "badge no", title: j.sponsor_note, text: "No sponsorship / clearance" }));
+    if (V.opt && j.no_opt) badges.append(el("span", { class: "badge no", title: j.sponsor_note, text: "No STEM OPT / I-983" }));
+    if (V.sponsor && j.sponsorship === "yes") badges.append(el("span", { class: "badge yes", title: j.sponsor_note, text: "Posting says it sponsors" }));
+    if (j.pay_min) badges.append(el("span", { class: "badge", title: "Yearly pay the posting states", text: "Pay " + payLabel(j) }));
     if (j.remote) badges.append(el("span", { class: "badge", text: "Remote" }));
     if (j.entry_hint) badges.append(el("span", { class: "badge", text: "Entry level" }));
     if (j.min_yoe != null) badges.append(el("span", { class: "badge", text: j.min_yoe + "+ yrs" }));
@@ -1008,7 +1078,7 @@ function render() {
       });
     }
 
-    const det = el("details", { class: "evidence" }, el("summary", { text: "Why is this new? Proof and H-1B details" }));
+    const det = el("details", { class: "evidence" }, el("summary", { text: V.sponsor ? "Why is this new? Proof and H-1B details" : "Why is this new? Proof" }));
     det.addEventListener("toggle", () => { if (det.open && det.childNodes.length === 1) det.append(evidence(j)); }, { once: false });
 
     badges.append(actions);
@@ -1021,7 +1091,9 @@ function render() {
   }
 
   const label = { 1: "hour", 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[state.hours];
-  $("count").textContent = `${jobs.length} role${jobs.length === 1 ? "" : "s"} posted in the last ${label}`;
+  const many = SETTINGS.profiles.length > 1;
+  $("count").textContent = `${jobs.length} role${jobs.length === 1 ? "" : "s"} posted in the last ${label}` +
+    (many ? ` for \u201c${profileById(state.search).name}\u201d` : "");
 
   const m = DATA.meta;
   $("status").replaceChildren(
@@ -1030,11 +1102,35 @@ function render() {
     m.failed ? ` · ${m.failed} boards unreachable` : "");
 
   renderResumeBar();
+  renderSearchControls();
   for (const b of $("window").querySelectorAll("button")) b.setAttribute("aria-pressed", String(+b.dataset.h === state.hours));
   $("sort").value = state.sort;
   $("minMatch").value = String(state.minMatch);
   $("sort").disabled = !hasResume;
   $("minMatch").disabled = !hasResume;
+}
+
+function renderSearchControls() {
+  const V = visa(), sel = $("searchSel");
+  sel.hidden = SETTINGS.profiles.length < 2;
+  if (sel.options.length !== SETTINGS.profiles.length) {
+    sel.replaceChildren(...SETTINGS.profiles.map((p) => el("option", { value: p.id, text: p.name })));
+  }
+  sel.value = state.search;
+  $("h1bOnlyLbl").hidden = !V.sponsor;
+  $("nospLbl").hidden = !V.sponsor;
+  $("nospText").textContent = V.opt ? "Hide no sponsorship / no OPT" : "Hide no sponsorship";
+}
+
+function switchSearch(id) {
+  state.search = profileById(id).id;
+  store.set("search", state.search);
+  state.nosp = store.get(searchKey("nosp", state.search), !!(profileById(state.search).visa || {}).hide_no_sponsorship);
+  state.h1bOnly = store.get(searchKey("h1bOnly", state.search), false);
+  $("nosp").checked = state.nosp;
+  $("h1bOnly").checked = state.h1bOnly;
+  render();
+  refreshStatus();
 }
 
 function masterLine() {
@@ -1048,6 +1144,7 @@ function masterLine() {
   const tagged = m.entries.filter((e) => e.tagged.length).length;
   return el("div", { class: "note", style: "flex-basis:100%" },
     "Master resume for tailoring: ", el("b", { text: m.name || "master.tex" }),
+    m.own ? ` (for \u201c${profileById(state.search).name}\u201d)` : "",
     ` · ${m.entries.length} entries · ${m.pages || "?"} page${m.pages === 1 ? "" : "s"}`,
     tagged ? ` · ${tagged} with hidden skill tags` : " · no hidden skill tags yet",
     m.error ? el("span", { style: "color:var(--warn)", text: " · " + m.error }) : null);
@@ -1231,7 +1328,7 @@ async function api(path, body) {
 
 async function refreshStatus() {
   if (!HELPER) return;
-  try { helper.status = await api("/api/status"); } catch { helper.status = null; }
+  try { helper.status = await api("/api/status?profile=" + encodeURIComponent(state.search)); } catch { helper.status = null; }
   renderResumeBar();
 }
 
@@ -1277,7 +1374,7 @@ function tagHelp() {
 
 function renderTailorForm(j, jd, history) {
   const b = (helper.status && helper.status.backends) || {};
-  let chosen = store.get("backend", "chatgpt");
+  let chosen = store.get("backend", SETTINGS.tailoring.backend || "chatgpt");
   const opts = el("div", { class: "opts", role: "radiogroup", "aria-label": "Model" });
   for (const be of BACKENDS) {
     if (be.hidden && be.hidden(b)) continue;
@@ -1304,7 +1401,7 @@ function renderTailorForm(j, jd, history) {
     el("p", { text: "1. Copy the prompt and paste it into ChatGPT, Claude or any chat. 2. Paste its whole reply below. 3. Apply." }),
     el("div", {}, el("button", { type: "button", text: "Copy prompt", onclick: async () => {
       try {
-        const { prompt } = await api("/api/prompt", { key: j.key, jd: jdBox.value, instruction: instr.value });
+        const { prompt } = await api("/api/prompt", { key: j.key, jd: jdBox.value, instruction: instr.value, profile: state.search });
         await navigator.clipboard.writeText(prompt);
         toast("Prompt copied. Paste it into your chat.");
       } catch (e) { toast(e.message); }
@@ -1360,7 +1457,7 @@ async function runTailor(j, opts, btn, out, onAdjust, onDone) {
   out.replaceChildren(progressLine("Starting…"));
   const t0 = Date.now();
   try {
-    const { id } = await api("/api/tailor", { key: j.key, ...opts });
+    const { id } = await api("/api/tailor", { key: j.key, profile: state.search, ...opts });
     for (;;) {
       await sleep(1500);
       const s = await api("/api/tailor/" + id);
@@ -1519,10 +1616,15 @@ async function loadQueue() {
 }
 
 function showView(v) {
-  state.view = v === "queue" && HELPER ? "queue" : "jobs";
-  if ((location.hash === "#queue") !== (state.view === "queue")) history.replaceState(null, "", state.view === "queue" ? "#queue" : location.pathname);
+  state.view = (v === "queue" || v === "settings") && HELPER ? v : "jobs";
+  const hash = state.view === "jobs" ? "" : "#" + state.view;
+  if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname);
+  // Saved settings rebuilt the job list on the helper: load the new one.
+  if (state.view !== "settings" && cfg.rendered) { location.reload(); return; }
   $("queueView").hidden = state.view !== "queue";
-  $("jobsView").hidden = state.view === "queue";
+  $("settingsView").hidden = state.view !== "settings";
+  $("jobsView").hidden = state.view !== "jobs";
+  if (state.view === "settings") openSettings();
   for (const b of $("viewTabs").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.view === state.view));
   clearInterval(queue.timer);
   if (state.view === "queue") { loadQueue(); queue.timer = setInterval(loadQueue, 20000); }
@@ -1701,7 +1803,519 @@ function openPrefs() {
 
 $("closePrefs").addEventListener("click", () => $("prefsDlg").close());
 $("viewTabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) showView(b.dataset.view); });
-window.addEventListener("hashchange", () => showView(location.hash === "#queue" ? "queue" : "jobs"));
+window.addEventListener("hashchange", () => showView(location.hash.slice(1)));
+
+// ---------------------------------------------------------------- settings page
+//
+// Everything in settings.json, grouped: search profiles, companies, resume
+// tailoring, and (behind "Show advanced settings") match scoring, the radar
+// itself and file locations. Each group saves on its own; the helper checks
+// every value and answers with the problems if any are invalid.
+
+const LABELS = {
+  seniority: { intern: "Internship", entry: "New grad / entry level", mid: "Mid level", senior: "Senior and above" },
+  workplace: { onsite: "On-site", hybrid: "Hybrid", remote: "Remote" },
+  visa: {
+    opt: ["On F-1 OPT or STEM OPT", "Shows sponsorship, H-1B history, and postings that refuse OPT."],
+    sponsorship: ["Need visa sponsorship (H-1B or other)", "Shows sponsorship and H-1B history."],
+    authorized: ["Citizen, permanent resident, or otherwise free to work", "No visa badges or filters."],
+  },
+  backends: { chatgpt: "ChatGPT (your ChatGPT plan)", "claude-code": "Claude (your Claude plan)", ollama: "Local model (Ollama)",
+    "claude-api": "Claude API key (billed per use)", manual: "Paste into any chat" },
+  sources: { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", workday: "Workday", smartrecruiters: "SmartRecruiters",
+    oracle: "Oracle", eightfold: "Eightfold", amazon: "Amazon", icims: "iCIMS" },
+};
+const cfg = { data: null, companies: null, pid: null, draft: null, families: null, found: null, boardFilter: "" };
+let uid = 0;
+const nextId = (p) => `${p}-${++uid}`;
+
+function words(text) { return String(text || "").split(",").map((x) => x.trim()).filter(Boolean); }
+
+function field(label, input, note, opts = {}) {
+  input.id = input.id || nextId("f");
+  const help = note ? el("p", { class: "note", id: input.id + "-note", text: note }) : null;
+  if (help) input.setAttribute("aria-describedby", help.id);
+  return el("div", { class: "field" + (opts.wide ? " wide" : "") + (opts.adv ? " adv" : ""), hidden: opts.adv && !advanced() },
+    el("label", { for: input.id, text: label }), input, help);
+}
+
+function checks(legend, options, selected, note, opts = {}) {
+  const box = el("div", { class: "checks" });
+  const inputs = options.map(([value, label]) => {
+    const i = el("input", { type: "checkbox", value });
+    i.checked = selected.includes(value);
+    box.append(el("label", {}, i, label));
+    return i;
+  });
+  const node = el("fieldset", { class: "field" + (opts.wide ? " wide" : "") + (opts.adv ? " adv" : ""), hidden: opts.adv && !advanced() },
+    el("legend", { text: legend }), box, note ? el("p", { class: "note", text: note }) : null);
+  return { node, get: () => inputs.filter((i) => i.checked).map((i) => i.value) };
+}
+
+function radios(legend, name, options, value) {
+  const box = el("div", { class: "radios", role: "radiogroup" });
+  const inputs = options.map(([v, label, desc]) => {
+    const i = el("input", { type: "radio", name, value: v });
+    i.checked = v === value;
+    box.append(el("label", {}, i, el("div", {}, el("b", { text: label }), desc ? el("span", { text: desc }) : null)));
+    return i;
+  });
+  return { node: el("fieldset", { class: "field" }, el("legend", { text: legend }), box),
+    get: () => (inputs.find((i) => i.checked) || {}).value };
+}
+
+const text = (value, placeholder) => el("input", { type: "text", value: Array.isArray(value) ? value.join(", ") : value ?? "", placeholder });
+const number = (value, min, max, step) => el("input", { type: "number", value: String(value), min, max, step: step || "any" });
+function select(options, value) {
+  const s = el("select", {}, ...options.map(([v, label]) => el("option", { value: v, text: label })));
+  s.value = value;
+  return s;
+}
+
+function advanced() { return !!(cfg.data && cfg.data.settings.ui.advanced); }
+
+// The helper reports problems by setting path ("profiles[1].roles: ...");
+// shown with the profile's name and the form's own labels.
+const FIELD_LABELS = { roles: "Roles", seniority: "Level", countries: "Countries", cities: "Cities", workplace: "Work setting",
+  salary_min: "Minimum yearly pay", must_have: "Must mention", exclude: "Leave out postings mentioning",
+  exclude_title: "Leave out titles with", companies_allow: "Only these companies", companies_block: "Never these companies",
+  resume: "Master resume", name: "Profile name", id: "Profile id", status: "Work authorization", label: "Role name",
+  include: "Title words" };
+function humanError(x) {
+  return x.replace(/^profiles\[(\d+)\]\.([\w.]+?)(?:\[\d+\])?:\s*/, (m, i, path) => {
+    const p = cfg.data && cfg.data.settings.profiles[+i];
+    const key = path.split(".").pop();
+    return `${p ? "“" + p.name + "”" : "Profile"}, ${FIELD_LABELS[key] || key}: `;
+  }).replace(/^role_families\[(\d+)\]\.(\w+):\s*/, (m, i, key) => `Custom role ${+i + 1}, ${FIELD_LABELS[key] || key}: `)
+    .replace(/^(\w+)\.(\w+):\s*/, (m, sec, key) => `${sec[0].toUpperCase() + sec.slice(1)} › ${key.replace(/_/g, " ")}: `);
+}
+
+function problems(e) {
+  const list = (e && e.errors) || [];
+  return el("div", { class: "errbox", role: "alert" }, e.message || "Couldn't save.",
+    list.length ? el("ul", { style: "margin:6px 0 0;padding-left:18px" }, ...list.slice(0, 12).map((x) => el("li", { text: humanError(x) }))) : null);
+}
+
+async function postSettings(patch) {
+  const res = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: patch }) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) { const e = new Error((data && data.error) || `Request failed (${res.status})`); e.errors = data && data.errors; throw e; }
+  cfg.data = data;
+  return data;
+}
+
+function saveBar(label, save, status) {
+  const btn = el("button", { type: "button", class: "primary", text: label });
+  const out = el("div", { "aria-live": "polite" });
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    out.replaceChildren(progressLine("Saving…"));
+    try { await save(); out.replaceChildren(el("span", { class: "okline", text: status || "Saved." })); }
+    catch (e) { out.replaceChildren(problems(e)); }
+    finally { btn.disabled = false; }
+  });
+  return el("div", { class: "savebar" }, btn, out);
+}
+
+async function openSettings() {
+  const view = $("settingsView");
+  if (!cfg.data) view.replaceChildren(progressLine("Loading settings…"));
+  try {
+    [cfg.data, cfg.companies] = await Promise.all([api("/api/settings"), api("/api/companies")]);
+  } catch (e) {
+    view.replaceChildren(el("div", { class: "errbox", text: "The local helper isn't responding, so settings can't be changed right now. " + e.message }));
+    return;
+  }
+  if (!cfg.pid || !cfg.data.settings.profiles.some((p) => p.id === cfg.pid)) cfg.pid = state.search;
+  cfg.draft = null;
+  renderSettings();
+}
+
+function renderSettings() {
+  const d = cfg.data, s = d.settings;
+  const adv = el("input", { type: "checkbox", id: "advToggle" });
+  adv.checked = s.ui.advanced;
+  adv.addEventListener("change", async () => {
+    try { await postSettings({ ui: { advanced: adv.checked } }); } catch (e) { toast(e.message); }
+    keepDraft();
+    renderSettings();
+    $("advToggle").focus();
+  });
+  $("settingsView").replaceChildren(el("div", { class: "settings" },
+    el("div", { class: "settings-head" },
+      el("h2", { id: "settingsTitle", text: "Settings" }),
+      el("label", { class: "toggle", for: "advToggle" }, adv, "Show advanced settings")),
+    d.warnings.length ? el("div", { class: "errbox", role: "status" }, "Some saved settings were invalid and fell back to their defaults: ",
+      el("ul", { style: "margin:6px 0 0;padding-left:18px" }, ...d.warnings.slice(0, 8).map((w) => el("li", { text: humanError(w) })))) : null,
+    profilesCard(), companiesCard(), tailoringCard(),
+    advanced() ? scoringCard() : null, advanced() ? radarCard() : null, advanced() ? storageCard() : null,
+    el("p", { class: "note", text: `Saved on this computer in ${d.file}. Nothing here leaves it.` })));
+}
+
+// ---------------------------------------------------------------- profiles
+
+// The profile being edited, with changes not saved yet, survives re-renders.
+let readDraft = null;
+function keepDraft() { if (readDraft) { cfg.draft = readDraft(); } }
+
+function profilesCard() {
+  const d = cfg.data, s = d.settings;
+  const families = cfg.families || s.role_families.map((f) => ({ ...f }));
+  cfg.families = families;
+  const saved = s.profiles.find((p) => p.id === cfg.pid) || s.profiles[0];
+  const p = cfg.draft && cfg.draft.id === saved.id ? cfg.draft : JSON.parse(JSON.stringify(saved));
+  cfg.pid = p.id;
+
+  const pick = select(s.profiles.map((x) => [x.id, x.name + (x.id === s.active_profile ? " (shown first)" : "")]), p.id);
+  pick.id = "profilePick";
+  pick.addEventListener("change", () => { cfg.pid = pick.value; cfg.draft = null; renderSettings(); $("profilePick").focus(); });
+  const add = (copy) => {
+    const ids = new Set(s.profiles.map((x) => x.id));
+    let n = s.profiles.length + 1, id;
+    do { id = `search-${n++}`; } while (ids.has(id));
+    const base = copy ? JSON.parse(JSON.stringify(readDraft())) : JSON.parse(JSON.stringify(d.new_profile));
+    const np = { ...base, id, name: copy ? base.name + " (copy)" : "New search", resume: copy ? base.resume : "" };
+    postSettings({ profiles: [...s.profiles, np] }).then(() => { cfg.pid = id; cfg.draft = null; renderSettings(); toast("Profile added. Edit it below and save."); })
+      .catch((e) => toast(e.message));
+  };
+  const del = el("button", { type: "button", text: "Delete", disabled: s.profiles.length < 2 ? "disabled" : null, onclick: () => {
+    if (!confirm(`Delete the profile “${saved.name}”?`)) return;
+    postSettings({ profiles: s.profiles.filter((x) => x.id !== saved.id) })
+      .then(() => { cfg.pid = null; cfg.draft = null; renderSettings(); afterProfileSave(); }).catch((e) => toast(e.message));
+  } });
+
+  const name = text(p.name, "e.g. Data engineer, any US city");
+  const roleOptions = d.choices.families.filter((f) => f.builtin).map((f) => [f.id, f.label])
+    .concat(families.map((f) => [f.id, f.label || f.id]));
+  const roles = checks("Roles", roleOptions, p.roles, "A posting matches when its title fits any role you pick.", { wide: true });
+  const levels = checks("Level", d.choices.seniority.map((x) => [x, LABELS.seniority[x]]), p.seniority,
+    "Titles without a level (“Software Engineer”) count as entry and mid level. Postings asking 3+ years drop out of entry level.", { wide: true });
+
+  // Countries: chips plus a picker; none means anywhere.
+  let countries = [...p.countries];
+  const cname = (code) => (d.choices.countries.find((c) => c.code === code) || { name: code }).name;
+  const cbox = el("div", { class: "tags", "aria-live": "polite" });
+  const cpick = el("select", { "aria-label": "Add a country" });
+  const drawCountries = () => {
+    cbox.replaceChildren(...(countries.length ? countries.map((c) => el("span", { class: "tag" }, cname(c),
+      el("button", { type: "button", "aria-label": `Remove ${cname(c)}`, text: "×", onclick: () => { countries = countries.filter((x) => x !== c); drawCountries(); } })))
+      : [el("span", { class: "note", text: "Any country" })]));
+    cpick.replaceChildren(el("option", { value: "", text: "Add a country…" }),
+      ...d.choices.countries.filter((c) => !countries.includes(c.code)).map((c) => el("option", { value: c.code, text: c.name })));
+  };
+  cpick.addEventListener("change", () => { if (cpick.value) { countries.push(cpick.value); drawCountries(); cpick.focus(); } });
+  drawCountries();
+  const countryField = el("fieldset", { class: "field" }, el("legend", { text: "Countries" }), cbox, cpick,
+    el("p", { class: "note", text: "Remove them all to search everywhere. A posting that only says “Remote” counts for any country." }));
+
+  const cities = text(p.cities, "e.g. Seattle, Austin, New York");
+  const work = checks("Work setting", d.choices.workplace.map((x) => [x, LABELS.workplace[x]]), p.workplace);
+  const pay = number(p.salary_min || "", 0, 10000000, 1000);
+  pay.placeholder = "No minimum";
+  const visaPick = radios("Work authorization", "visa-" + p.id, d.choices.visa.map((x) => [x, ...LABELS.visa[x]]), p.visa.status);
+  const hideNo = el("input", { type: "checkbox" });
+  hideNo.checked = p.visa.hide_no_sponsorship;
+  const hideNoField = el("label", { class: "toggle" }, hideNo, "Start with “Hide no sponsorship” turned on");
+  const isDefault = el("input", { type: "checkbox" });
+  isDefault.checked = s.active_profile === p.id;
+
+  const must = text(p.must_have, "e.g. Python");
+  const excl = text(p.exclude, "e.g. clearance, PHP");
+  const exclTitle = text(p.exclude_title, "e.g. manager, sales");
+  const allow = text(p.companies_allow, "Leave empty for all companies");
+  const block = text(p.companies_block, "e.g. Acme");
+
+  const known = new Set(roleOptions.map(([id]) => id));
+  readDraft = () => ({
+    ...p, name: name.value.trim(), roles: roles.get().filter((r) => known.has(r)), seniority: levels.get(), countries: [...countries], cities: words(cities.value),
+    workplace: work.get(), salary_min: +pay.value || 0, must_have: words(must.value), exclude: words(excl.value),
+    exclude_title: words(exclTitle.value), companies_allow: words(allow.value), companies_block: words(block.value),
+    visa: { status: visaPick.get() || "opt", hide_no_sponsorship: hideNo.checked },
+  });
+
+  const save = saveBar("Save profile", async () => {
+    const draft = readDraft();
+    const profiles = s.profiles.map((x) => (x.id === draft.id ? draft : x));
+    await postSettings({ profiles, role_families: families, active_profile: isDefault.checked ? draft.id : s.active_profile === draft.id ? s.profiles.find((x) => x.id !== draft.id)?.id || draft.id : s.active_profile });
+    cfg.draft = null;
+    renderSettings();
+    $("profilePick").focus();
+    toast("Saved. Rebuilding the job list with this profile…");
+    afterProfileSave();
+  });
+
+  const adv = advanced();
+  return el("section", { class: "card", "aria-labelledby": "profH" },
+    el("h3", { id: "profH", text: "Search profiles" }),
+    el("p", { text: "Each profile is a saved search. The radar keeps every posting at least one profile wants, and the job list shows one profile at a time (switch at the top of the list)." }),
+    el("div", { class: "rowline" }, el("label", { for: "profilePick", class: "section-h", text: "Editing" }), pick,
+      el("button", { type: "button", text: "New profile", onclick: () => add(false) }),
+      el("button", { type: "button", text: "Duplicate", onclick: () => add(true) }), del),
+    el("div", { class: "fields" },
+      field("Profile name", name),
+      field("Minimum yearly pay", pay, "Only postings that state pay are held to this."),
+      roles.node, levels.node, countryField,
+      field("Cities", cities, "Comma separated. Empty means any city in your countries. Remote postings count for every city."),
+      work.node, visaPick.node,
+      el("div", { class: "field" }, hideNoField, el("label", { class: "toggle" }, isDefault, "Show this profile first"))),
+    adv ? el("div", { class: "fields" },
+      field("Must mention all of", must, "Words the title or description must contain, comma separated."),
+      field("Leave out postings mentioning", excl, "Anywhere in the title or description."),
+      field("Leave out titles with", exclTitle),
+      field("Only these companies", allow, "Comma separated company names."),
+      field("Never these companies", block),
+      customRoles(families),
+      resumeField(p)) : null,
+    save);
+}
+
+function customRoles(families) {
+  const list = el("div", { style: "display:grid;gap:8px" });
+  const draw = () => list.replaceChildren(...families.map((f, i) => {
+    const label = text(f.label, "Role name"), inc = text(f.include, "Title words, e.g. firmware, embedded"), exc = text(f.exclude, "Not with, e.g. hardware");
+    label.setAttribute("aria-label", "Custom role name");
+    inc.setAttribute("aria-label", `${f.label}: title words`);
+    exc.setAttribute("aria-label", `${f.label}: excluded title words`);
+    label.addEventListener("input", () => { f.label = label.value; });
+    inc.addEventListener("input", () => { f.include = words(inc.value); });
+    exc.addEventListener("input", () => { f.exclude = words(exc.value); });
+    return el("div", { class: "rowline" }, label, inc, exc,
+      el("button", { type: "button", text: "Remove", "aria-label": `Remove custom role ${f.label}`, onclick: () => { families.splice(i, 1); draw(); } }));
+  }));
+  draw();
+  const add = el("button", { type: "button", text: "Add a custom role", onclick: () => {
+    const ids = new Set([...Object.keys(SETTINGS.families), ...families.map((f) => f.id)]);
+    let n = 1;
+    while (ids.has(`custom-${n}`)) n++;
+    families.push({ id: `custom-${n}`, label: `Custom role ${n}`, include: [], exclude: [] });
+    draw();
+  } });
+  return el("fieldset", { class: "field wide" }, el("legend", { text: "Custom roles" }),
+    el("p", { class: "note", text: "Roles the built-in list misses. A title matches when it has any of the words and none of the “not with” words. Save the profile, then tick the new role under Roles." }),
+    list, el("div", {}, add));
+}
+
+function resumeField(p) {
+  const meta = (cfg.data.resumes || {})[p.id];
+  const file = el("input", { type: "file", accept: ".tex", "aria-label": "Upload a master resume for this profile" });
+  const status = el("div", { class: "note", "aria-live": "polite", text: meta && meta.own
+    ? `Uses its own master resume: ${meta.name || p.resume}.` : "Uses your main master resume." });
+  file.addEventListener("change", async () => {
+    const f = file.files[0];
+    if (!f) return;
+    status.textContent = "Checking and compiling…";
+    try {
+      const r = await api("/api/master", { name: f.name, tex: await f.text(), profile: p.id });
+      status.textContent = `Saved: ${r.entries.length} entries, ${r.pages} page${r.pages === 1 ? "" : "s"}.`;
+      cfg.data = await api("/api/settings");
+    } catch (e) { status.textContent = e.message; }
+    file.value = "";
+  });
+  const reset = el("button", { type: "button", text: "Use the main master resume", hidden: !(meta && meta.own), onclick: async () => {
+    try {
+      const profiles = cfg.data.settings.profiles.map((x) => (x.id === p.id ? { ...x, resume: "" } : x));
+      await postSettings({ profiles });
+      renderSettings();
+    } catch (e) { toast(e.message); }
+  } });
+  return el("fieldset", { class: "field wide" }, el("legend", { text: "Master resume for this profile" }),
+    el("p", { class: "note", text: "Tailoring for this profile's jobs starts from this .tex. Handy when a data search needs a different resume than a software one." }),
+    el("div", { class: "rowline" }, file, reset), status);
+}
+
+// The job list is rebuilt on the helper; reload once it's done.
+async function afterProfileSave() {
+  const t0 = Date.now() / 1000;
+  for (let i = 0; i < 120; i++) {
+    await sleep(1500);
+    let r;
+    try { r = await api("/api/render"); } catch { return; }
+    if (!r.pending && r.finished >= t0) {
+      if (r.error) { toast("Couldn't rebuild the job list: " + r.error); return; }
+      cfg.rendered = true;
+      toast(`Job list rebuilt: ${r.jobs} jobs across your profiles. Open All jobs to see it.`);
+      return;
+    }
+  }
+}
+
+// ---------------------------------------------------------------- companies
+
+function companiesCard() {
+  const c = cfg.companies;
+  const url = el("input", { type: "url", id: "companyUrl", placeholder: "https://boards.greenhouse.io/acme or a company's careers page" });
+  url.setAttribute("aria-label", "Careers page or job board URL");
+  const out = el("div", { "aria-live": "polite" });
+  const check = el("button", { type: "button", class: "primary", text: "Find board" });
+  const run = async () => {
+    if (!url.value.trim()) { url.focus(); return; }
+    check.disabled = true;
+    out.replaceChildren(progressLine("Looking for the job board and checking it…"));
+    try { cfg.found = await api("/api/companies/lookup", { url: url.value.trim() }); drawFound(out); }
+    catch (e) { out.replaceChildren(el("div", { class: "errbox", text: e.message })); }
+    finally { check.disabled = false; }
+  };
+  check.addEventListener("click", run);
+  url.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
+  if (cfg.found) drawFound(out);
+
+  const added = c.boards.filter((b) => b.origin === "added");
+  const blockIn = text("", "Company name");
+  blockIn.setAttribute("aria-label", "Company to block");
+  const doBlock = () => { if (blockIn.value.trim()) companyAction("block", { name: blockIn.value.trim() }, "Blocked. Its jobs are hidden from now on.", "blockCompany"); };
+  blockIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doBlock(); } });
+
+  return el("section", { class: "card", "aria-labelledby": "compH" },
+    el("h3", { id: "compH", text: "Companies" }),
+    el("p", { text: "Job Radar reads company job boards directly. Paste a careers page or any job posting link to add a company: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Oracle, Eightfold and iCIMS are recognized." }),
+    el("div", { class: "rowline" }, url, check), out,
+    el("div", { class: "field" }, el("p", { class: "section-h", text: `Companies you added (${added.length})` }),
+      added.length ? boardList(added) : el("p", { class: "note", text: "None yet. They're read from the next radar run on." })),
+    el("div", { class: "field" }, el("label", { for: blockIn.id = "blockCompany", text: "Blocked companies" }),
+      el("p", { class: "note", text: "Never fetched and never shown, in every profile." }),
+      el("div", { class: "rowline" }, blockIn, el("button", { type: "button", text: "Block", onclick: doBlock })),
+      el("div", { class: "tags" }, ...c.blocked.map((name) => el("span", { class: "tag" }, name,
+        el("button", { type: "button", "aria-label": `Unblock ${name}`, text: "×", onclick: () => companyAction("unblock", { name }, "Unblocked.", "blockCompany") }))))),
+    advanced() ? builtinBoards() : null);
+}
+
+function drawFound(out) {
+  const f = cfg.found;
+  if (!f.board) { out.replaceChildren(el("div", { class: "errbox", text: f.error })); return; }
+  const where = `${LABELS.sources[f.source] || f.source} board “${f.token}”`;
+  if (!f.ok) { out.replaceChildren(el("div", { class: "errbox", text: `Found a ${where}, but it didn't answer: ${f.error}` })); return; }
+  const name = text(f.name, "Company name");
+  const addBtn = el("button", { type: "button", class: "primary", text: f.tracked ? "Already tracked" : "Add company", disabled: f.tracked ? "disabled" : null });
+  addBtn.addEventListener("click", () => companyAction("add", { source: f.source, token: f.token, name: name.value.trim() },
+    `Added ${name.value.trim() || f.token}. Its jobs show after the next radar run.`, "companyUrl"));
+  out.replaceChildren(el("div", { class: "found" },
+    el("div", {}, el("b", { text: where }), ` · ${n(f.jobs)} open posting${f.jobs === 1 ? "" : "s"} right now`),
+    f.note ? el("div", { class: "note", text: f.note }) : null,
+    el("div", { class: "rowline" }, el("label", { for: name.id = nextId("cn"), text: "Name" }), name, addBtn)));
+}
+
+function boardList(boards) {
+  // Each row's button keeps its id across redraws, so focus stays on the row.
+  const bid = (b) => "board-" + (b.source + "-" + b.token).replace(/[^A-Za-z0-9_-]+/g, "_");
+  return el("ul", { class: "boards" }, ...boards.map((b) => el("li", { class: b.removed ? "off" : "" },
+    el("span", { class: "bname", text: b.name }), el("span", { class: "src", text: `${LABELS.sources[b.source] || b.source} · ${b.token}` }),
+    b.removed
+      ? el("button", { type: "button", id: bid(b), text: "Track again", "aria-label": `Track ${b.name} again`, onclick: () => companyAction("restore", b, "Tracking again from the next run.", bid(b)) })
+      : el("button", { type: "button", id: bid(b), text: b.origin === "added" ? "Remove" : "Stop tracking", "aria-label": `Stop tracking ${b.name}`,
+        onclick: () => companyAction("remove", b, "Removed from the next run on.", b.origin === "added" ? "companyUrl" : bid(b)) }))));
+}
+
+function builtinBoards() {
+  const all = cfg.companies.boards.filter((b) => b.origin === "builtin");
+  const filter = el("input", { type: "search", value: cfg.boardFilter, placeholder: "Filter by name or ATS" });
+  filter.setAttribute("aria-label", "Filter built-in companies");
+  const holder = el("div");
+  const draw = () => {
+    const q = filter.value.trim().toLowerCase();
+    cfg.boardFilter = filter.value;
+    holder.replaceChildren(boardList(all.filter((b) => !q || `${b.name} ${b.source} ${b.token}`.toLowerCase().includes(q))));
+  };
+  filter.addEventListener("input", draw);
+  draw();
+  const off = all.filter((b) => b.removed).length;
+  return el("div", { class: "field" }, el("p", { class: "section-h", text: `Companies Job Radar ships with (${all.length}${off ? `, ${off} not tracked` : ""})` }),
+    filter, holder);
+}
+
+// Runs a company change and redraws; `focus` is the element id that gets
+// keyboard focus back afterwards.
+async function companyAction(action, body, msg, focus) {
+  const back = focus || (document.activeElement && document.activeElement.id);
+  try {
+    cfg.companies = await api("/api/companies/" + action, body);
+    if (action === "add") cfg.found = null;
+    if (msg) toast(msg);
+    keepDraft();
+    renderSettings();
+    const target = back && $(back);
+    if (target) target.focus();
+  } catch (e) { toast(e.message); }
+}
+
+// ---------------------------------------------------------------- tailoring, scoring, radar, storage
+
+function tailoringCard() {
+  const t = cfg.data.settings.tailoring, ch = cfg.data.choices;
+  const backend = select(ch.backends.map((b) => [b, LABELS.backends[b] || b]), t.backend);
+  const draft = select(ch.draft_backends.map((b) => [b, LABELS.backends[b] || b]), t.draft_backend);
+  const pages = number(t.target_pages, 1, 3, 1);
+  const ourl = text(t.ollama_url), omodel = text(t.ollama_model), cmodel = text(t.claude_model);
+  const adv = advanced();
+  return el("section", { class: "card", "aria-labelledby": "tailH" },
+    el("h3", { id: "tailH", text: "Resume tailoring and the apply queue" }),
+    el("div", { class: "fields" },
+      field("Tailor with", backend, "The model picked first in the Tailor resume dialog."),
+      field("Draft form answers with", draft, "Used by the browser extension when you don't pick one."),
+      adv ? field("Resume length (pages)", pages) : null,
+      adv ? field("Ollama address", ourl) : null, adv ? field("Ollama model", omodel) : null,
+      adv ? field("Claude API model", cmodel) : null),
+    el("div", { class: "rowline" },
+      el("button", { type: "button", text: "Apply queue settings…", onclick: async () => { await loadQueue(); openPrefs(); } }),
+      el("span", { class: "note", text: "Minimum match, daily model runs, notifications." })),
+    saveBar("Save tailoring", () => postSettings({ tailoring: {
+      backend: backend.value, draft_backend: draft.value, ...(adv ? { target_pages: +pages.value, ollama_url: ourl.value, ollama_model: omodel.value, claude_model: cmodel.value } : {}),
+    } }).then(() => { SETTINGS.tailoring.backend = backend.value; store.del("backend"); })));
+}
+
+function scoringCard() {
+  const w = cfg.data.settings.scoring, dflt = cfg.data.defaults.scoring;
+  const rows = [
+    ["experience_weight", "Experience share of the score", "0 scores keywords only; 1 lets a years shortfall decide it.", 0, 1, 0.05],
+    ["prior_keywords", "Thin-checklist damping", "How many average keywords at partial credit are mixed into every checklist.", 0, 20, 0.5],
+    ["prior_credit", "Credit for those keywords", "", 0, 1, 0.05],
+    ["years_penalty", "Penalty per missing year", "", 0, 1, 0.05],
+    ["min_experience_fit", "Lowest experience factor", "", 0, 1, 0.05],
+    ["unstated_years_fit", "Experience factor when years aren't stated", "", 0, 1, 0.05],
+    ["unknown_keyword_weight", "Weight of a keyword seen in no other posting", "", 0, 3, 0.1],
+  ];
+  const inputs = {};
+  return el("section", { class: "card", "aria-labelledby": "scoreH" },
+    el("h3", { id: "scoreH", text: "Match score" }),
+    el("p", { text: "Score = keyword coverage × an experience factor. The dashboard and the apply queue use these same numbers." }),
+    el("div", { class: "fields" }, ...rows.map(([k, label, note, min, max, step]) =>
+      field(label, inputs[k] = number(w[k], min, max, step), (note ? note + " " : "") + `Default ${dflt[k]}.`))),
+    el("div", { class: "rowline" },
+      saveBar("Save scoring", () => postSettings({ scoring: Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, +i.value])) }),
+        "Saved. Rebuilding the job list…"),
+      el("button", { type: "button", text: "Reset to defaults", onclick: () => { for (const [k, i] of Object.entries(inputs)) i.value = dflt[k]; } })));
+}
+
+function radarCard() {
+  const r = cfg.data.settings.radar;
+  const days = number(r.dashboard_days, 1, 60, 1), stale = number(r.stale_after_days, 1, 30, 1), purge = number(r.purge_after_days, 7, 3650, 1);
+  const workers = number(r.workers, 1, 64, 1), timeout = number(r.timeout, 5, 120, 1);
+  const simplify = el("input", { type: "checkbox" });
+  simplify.checked = r.simplify_feed;
+  return el("section", { class: "card", "aria-labelledby": "radarH" },
+    el("h3", { id: "radarH", text: "Radar" }),
+    el("div", { class: "fields" },
+      field("Show postings up to (days old)", days), field("Closed when unseen for (days)", stale),
+      field("Forget postings after (days)", purge), field("Boards read at once", workers), field("Request timeout (seconds)", timeout),
+      el("div", { class: "field" }, el("label", { class: "toggle" }, simplify, "Read the SimplifyJobs New-Grad list"),
+        el("p", { class: "note", text: "Catches companies no board here covers." }))),
+    saveBar("Save radar settings", () => postSettings({ radar: { dashboard_days: +days.value, stale_after_days: +stale.value,
+      purge_after_days: +purge.value, workers: +workers.value, timeout: +timeout.value, simplify_feed: simplify.checked } }),
+      "Saved. Used from the next radar run."));
+}
+
+function storageCard() {
+  const pth = cfg.data.settings.paths;
+  const inputs = { db: text(pth.db), resume_dir: text(pth.resume_dir), data_dir: text(pth.data_dir), dashboard: text(pth.dashboard), logs_dir: text(pth.logs_dir) };
+  return el("section", { class: "card", "aria-labelledby": "storeH" },
+    el("h3", { id: "storeH", text: "Where files live" }),
+    el("p", {}, "Data folder: ", el("code", { text: cfg.data.home }), ". Relative paths below are inside it. Moving files is up to you; restart the helper after changing these."),
+    el("div", { class: "fields" },
+      field("Job database", inputs.db), field("Resumes and tailored PDFs", inputs.resume_dir), field("Downloaded datasets", inputs.data_dir),
+      field("Dashboard page", inputs.dashboard), field("Logs folder", inputs.logs_dir, "Empty means the data folder.")),
+    saveBar("Save paths", () => postSettings({ paths: Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value.trim()])) }),
+      "Saved. Restart the helper to use them."));
+}
+
 
 // ---------------------------------------------------------------- wiring
 
@@ -1725,9 +2339,11 @@ $("q").addEventListener("input", (e) => { state.q = e.target.value; render(); })
 $("sort").addEventListener("change", (e) => { state.sort = e.target.value; store.set("sort", state.sort); render(); });
 $("minMatch").addEventListener("change", (e) => { state.minMatch = +e.target.value; store.set("minMatch", state.minMatch); render(); });
 for (const id of ["remote", "nosp", "h1bOnly", "hidedone"]) {
+  const key = id === "nosp" || id === "h1bOnly" ? () => searchKey(id, state.search) : () => id;
   $(id).checked = state[id];
-  $(id).addEventListener("change", (e) => { state[id] = e.target.checked; store.set(id, state[id]); render(); });
+  $(id).addEventListener("change", (e) => { state[id] = e.target.checked; store.set(key(), state[id]); render(); });
 }
+$("searchSel").addEventListener("change", (e) => switchSearch(e.target.value));
 
 rescore();
 updateBookmarklet();
@@ -1735,12 +2351,12 @@ render();
 refreshStatus();
 if (HELPER) {
   $("viewTabs").hidden = false;
-  showView(location.hash === "#queue" ? "queue" : "jobs");
+  showView(location.hash.slice(1));
   if (state.view !== "queue") loadQueue();   // the ready count on the tab, and marks from the extension
 }
 // Keep relative times current; reload for fresh data every 10 minutes unless a dialog is open.
 setInterval(render, 60000);
-setInterval(() => { if (!document.querySelector("dialog[open]")) location.reload(); }, 600000);
+setInterval(() => { if (!document.querySelector("dialog[open]") && state.view !== "settings") location.reload(); }, 600000);
 </script>
 </body>
 </html>

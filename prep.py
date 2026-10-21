@@ -23,6 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+import config
 import match
 import notify
 import questions
@@ -66,24 +67,9 @@ def migrate(conn) -> None:
             conn.execute(f"ALTER TABLE prep ADD COLUMN {col} {decl}")
 
 
-DEFAULTS = {
-    "enabled": True,
-    "threshold": 60,            # minimum match score to prepare a job
-    "daily_cap": 25,            # ChatGPT runs per day for the queue (tailoring and drafts each count one)
-    "backend": "chatgpt",
-    "skip_coverage": 85,        # use the master when it already covers this % of the required keywords
-    "needs_sponsorship": True,  # leave out postings that say no sponsorship or no OPT
-    "locations": [],            # substrings of the job location; empty means anywhere
-    "remote_ok": True,          # remote jobs pass the location filter
-    "lookback_hours": 48,       # how far back "newly seen" reaches
-    "draft_answers": True,
-    "notify_desktop": True,
-    "ntfy_server": "https://ntfy.sh",
-    "ntfy_topic": "",
-    "quiet_start": "22:00",
-    "quiet_end": "08:00",
-}
-LIMITS = {"threshold": (0, 100), "daily_cap": (0, 200), "skip_coverage": (0, 100), "lookback_hours": (1, 24 * 14)}
+# The queue's settings are settings.json "queue" (config.QUEUE has each one's
+# meaning and range); they used to live in resume/prep.json.
+DEFAULTS = config.QUEUE.default
 STALE_AFTER = 2 * 86400          # radar.py's STALE_AFTER_DAYS: unseen this long means closed
 MAX_ATTEMPTS = 2
 NOTIFY_EVERY = 30 * 60           # while the queue is still working, at most one toast per half hour
@@ -93,34 +79,9 @@ DASHBOARD_URL = "http://127.0.0.1:8765/#queue"
 
 
 def clean_settings(raw: dict) -> dict:
-    out = dict(DEFAULTS)
-    for k, default in DEFAULTS.items():
-        if k not in raw:
-            continue
-        v = raw[k]
-        if isinstance(default, bool):
-            out[k] = bool(v)
-        elif isinstance(default, int):
-            try:
-                lo, hi = LIMITS[k]
-                out[k] = max(lo, min(hi, int(v)))
-            except (TypeError, ValueError):
-                pass
-        elif isinstance(default, list):
-            items = v if isinstance(v, list) else str(v).split(",")
-            out[k] = [s for s in (str(x).strip()[:80] for x in items[:30]) if s]
-        else:
-            out[k] = str(v).strip()[:200]
-    if out["backend"] not in tailor.DRAFT_BACKENDS:
-        out["backend"] = DEFAULTS["backend"]
-    for k in ("quiet_start", "quiet_end"):
-        if not re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", out[k]):
-            out[k] = DEFAULTS[k]
-    if not re.fullmatch(r"[A-Za-z0-9_-]{0,64}", out["ntfy_topic"]):
-        out["ntfy_topic"] = ""
-    if not re.fullmatch(r"https?://[A-Za-z0-9.:-]+/?", out["ntfy_server"]):
-        out["ntfy_server"] = DEFAULTS["ntfy_server"]
-    return out
+    """Queue settings with anything invalid replaced by its default and
+    numbers clamped to their range."""
+    return config.QUEUE.clean({k: v for k, v in raw.items() if k in config.QUEUE.fields}, "queue", [])
 
 
 def required_coverage(score: dict) -> float:
@@ -169,14 +130,15 @@ def change_summary(result: dict) -> dict:
 
 class Preparer:
     """The queue. `connect` opens jobs.db with this module's SCHEMA and the
-    `tailored` table applied (server.db)."""
+    `tailored` table applied (server.db); `store` holds its settings."""
 
-    def __init__(self, connect: Callable, resume_dir: Path, out_dir: Path, log: Callable[[str], None] = print):
+    def __init__(self, connect: Callable, resume_dir: Path, out_dir: Path, log: Callable[[str], None] = print,
+                 store: config.Store | None = None):
         self.connect = connect
         self.resume_dir = Path(resume_dir)
         self.out_dir = Path(out_dir)
         self.master_path = self.resume_dir / "master.tex"
-        self.settings_path = self.resume_dir / "prep.json"
+        self.store = store or config.store()
         self.scoring_path = self.resume_dir / "scoring.json"
         self.log = log
         self.wake = threading.Event()
@@ -193,18 +155,24 @@ class Preparer:
     # ------------------------------------------------------------ settings
 
     def settings(self) -> dict:
-        try:
-            raw = json.loads(self.settings_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            raw = {}
-        return clean_settings(raw if isinstance(raw, dict) else {})
+        return self.store.section("queue")
 
     def save_settings(self, raw: dict) -> dict:
         with self.lock:
             s = clean_settings({**self.settings(), **raw})
-            self._write(self.settings_path, s)
+            self.store.update({"queue": s})
         self.poke()
         return s
+
+    def weights(self) -> dict:
+        return self.store.section("scoring")
+
+    def master_for(self, profiles: list[str]) -> Path:
+        """The master resume for a job: that of the first of its profiles
+        with a resume of its own, else master.tex."""
+        own = {p["id"]: p["resume"] for p in self.store.load()["profiles"] if p["resume"]}
+        name = next((own[p] for p in profiles if p in own and (self.resume_dir / own[p]).exists()), "")
+        return self.resume_dir / name if name else self.master_path
 
     def save_scoring(self, data: dict) -> None:
         """The dashboard's resume as it scores it (text, skills, the user's
@@ -272,18 +240,26 @@ class Preparer:
         return None
 
     JOB_COLS = ("key", "company", "title", "location", "remote", "sponsorship", "no_opt", "min_yoe",
-                "entry_hint", "kw", "degree", "has_jd", "first_seen", "last_seen", "url", "apply_url", "source")
+                "entry_hint", "kw", "degree", "has_jd", "first_seen", "last_seen", "url", "apply_url", "source",
+                "profiles")
 
     def _job(self, row) -> dict:
         j = dict(zip(self.JOB_COLS, row))
         j["kw"] = json.loads(j["kw"] or "[]")
         j["degree"] = json.loads(j["degree"]) if j["degree"] else None
         j["has_jd"] = bool(j["has_jd"])
+        j["profiles"] = json.loads(j["profiles"] or "[]")
         return j
 
-    def _select(self) -> str:
+    @staticmethod
+    def _tagged(conn) -> bool:
+        """Whether radar.py has tagged jobs with search profiles yet."""
+        return "profiles" in {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
+
+    def _select(self, conn) -> str:
+        profiles = "profiles" if self._tagged(conn) else "'[]'"
         return ("SELECT key, company, title, location, remote, sponsorship, no_opt, min_yoe, entry_hint, kw, degree, "
-                "length(description) > 200, first_seen, last_seen, url, apply_url, source FROM jobs ")
+                f"length(description) > 200, first_seen, last_seen, url, apply_url, source, {profiles} FROM jobs ")
 
     def scan(self, now: float | None = None) -> int:
         """Queue newly seen jobs that qualify. Returns how many were added."""
@@ -304,7 +280,14 @@ class Preparer:
                 self.status = "Upload your master .tex resume to start preparing jobs."
                 return 0
             resume = self.resume()
-            res = rt.parse(self.master_path.read_text(encoding="utf-8"))
+            weights = self.weights()
+            masters: dict[Path, rt.Resume] = {}
+
+            def master_of(j: dict) -> rt.Resume:
+                path = self.master_for(j["profiles"])
+                if path not in masters:
+                    masters[path] = rt.parse(path.read_text(encoding="utf-8"))
+                return masters[path]
             _, skill_w, term_w = corpus
             with conn:
                 # Postings that closed, and queued ones the current settings no longer want.
@@ -314,24 +297,26 @@ class Preparer:
                              "AND job_key NOT IN (SELECT key FROM jobs)", (now,))
                 # Rescore what's in the queue (the resume or keyword weights may have changed),
                 # so it always shows the dashboard's number.
-                for row in conn.execute(self._select() + "WHERE key IN (SELECT job_key FROM prep "
+                for row in conn.execute(self._select(conn) + "WHERE key IN (SELECT job_key FROM prep "
                                         "WHERE state IN ('queued', 'working', 'ready', 'error'))").fetchall():
                     j = self._job(row)
-                    sc = match.score_job(j, resume, skill_w, term_w)
+                    sc = match.score_job(j, resume, skill_w, term_w, weights)
                     conn.execute("UPDATE prep SET score = ? WHERE job_key = ?", (sc["pct"], j["key"]))
                     if sc["pct"] is None or sc["pct"] < s["threshold"] or self.eligible(j, s):
                         conn.execute("DELETE FROM prep WHERE job_key = ? AND state = 'queued'", (j["key"],))
+                # Only jobs one of the user's search profiles wants.
                 rows = conn.execute(
-                    self._select() + "WHERE kw != '' AND first_seen >= ? AND last_seen >= ? "
-                    "AND key NOT IN (SELECT job_key FROM prep)",
+                    self._select(conn) + "WHERE kw != '' AND first_seen >= ? AND last_seen >= ? "
+                    + ("AND profiles != '[]' " if self._tagged(conn) else "")
+                    + "AND key NOT IN (SELECT job_key FROM prep)",
                     (now - s["lookback_hours"] * 3600, now - STALE_AFTER)).fetchall()
                 added = 0
                 for row in rows:
                     j = self._job(row)
-                    sc = match.score_job(j, resume, skill_w, term_w)
+                    sc = match.score_job(j, resume, skill_w, term_w, weights)
                     if sc["pct"] is None or sc["pct"] < s["threshold"] or self.eligible(j, s):
                         continue
-                    decision, reason = decide(sc, res, s)
+                    decision, reason = decide(sc, master_of(j), s)
                     conn.execute("INSERT INTO prep (job_key, state, score, created, updated, decision, reason) "
                                  "VALUES (?, 'queued', ?, ?, ?, ?, ?)", (j["key"], sc["pct"], now, now, decision, reason))
                     added += 1
@@ -388,13 +373,15 @@ class Preparer:
         conn = self.connect()
         self.current = key
         try:
-            row = conn.execute("SELECT j.company, j.title, j.description, j.apply_url, p.decision, p.attempts, p.answers, p.instruction "
-                               "FROM prep p JOIN jobs j ON j.key = p.job_key WHERE p.job_key = ?", (key,)).fetchone()
+            profiles = "j.profiles" if self._tagged(conn) else "'[]'"
+            row = conn.execute("SELECT j.company, j.title, j.description, j.apply_url, p.decision, p.attempts, p.answers, "
+                               f"p.instruction, {profiles} FROM prep p JOIN jobs j ON j.key = p.job_key "
+                               "WHERE p.job_key = ?", (key,)).fetchone()
             if not row:
                 return "done"
-            company, title, jd, apply_url, decision, attempts, drafted, instruction = row
+            company, title, jd, apply_url, decision, attempts, drafted, instruction, tags = row
             self._update(conn, key, state="working", error="")
-            master = self.master_path.read_text(encoding="utf-8")
+            master = self.master_for(json.loads(tags or "[]")).read_text(encoding="utf-8")
             meta = {"company": company, "title": title, "instruction": instruction}
             tailored_id, notes = "", []
             if decision == "tailor":

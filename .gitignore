@@ -1,6 +1,9 @@
 # Personal data: resumes, tailored outputs, saved answers
 resume/
 
+# Personal settings (search profiles, companies, queue)
+settings.json
+
 # Job database and downloaded datasets (rebuilt by radar.py)
 jobs.db
 jobs.db-journal

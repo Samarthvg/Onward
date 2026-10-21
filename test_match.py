@@ -142,7 +142,8 @@ globalThis.Date = class extends RealDate {
   constructor(...a) { if (a.length) super(...a); else super(input.now); }
   static now() { return input.now; }
 };
-const DATA = { meta: { skills: input.skills, skill_w: input.skill_w, term_w: input.term_w } };
+const DATA = { meta: { skills: input.skills, skill_w: input.skill_w, term_w: input.term_w,
+  settings: input.scoring ? { scoring: input.scoring } : undefined } };
 const state = { resume: null };
 __CODE__
 const out = [];
@@ -163,10 +164,23 @@ process.stdout.write(JSON.stringify(out));
 @unittest.skipUnless(shutil.which("node"), "Node.js is needed to run the dashboard's scoring code")
 class ParityTests(unittest.TestCase):
     def test_python_matches_dashboard(self):
+        self.compare(None)
+
+    def test_custom_weights_match_too(self):
+        """settings.json "scoring" changes both scores the same way."""
+        weights = {"experience_weight": 0.7, "prior_keywords": 1.5, "prior_credit": 0.2, "years_penalty": 0.5,
+                   "min_experience_fit": 0.3, "unstated_years_fit": 0.6, "unknown_keyword_weight": 1.7}
+        self.compare(weights)
+        jobs, resumes, skill_w, term_w = fixtures()
+        res = match.Resume(resumes[0]["text"], now_ms=NOW_MS)
+        self.assertNotEqual([match.score_job(j, res, skill_w, term_w)["pct"] for j in jobs],
+                            [match.score_job(j, res, skill_w, term_w, weights)["pct"] for j in jobs])
+
+    def compare(self, weights):
         jobs, resumes, skill_w, term_w = fixtures()
         skills = json.loads((ROOT / "skills.json").read_text(encoding="utf-8"))
         payload = json.dumps({"now": NOW_MS, "skills": skills, "skill_w": skill_w, "term_w": term_w,
-                              "jobs": jobs, "resumes": resumes})
+                              "jobs": jobs, "resumes": resumes, "scoring": weights})
         proc = subprocess.run(["node", "-e", NODE_RUNNER.replace("__CODE__", dashboard_js())],
                               input=payload, capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -180,7 +194,7 @@ class ParityTests(unittest.TestCase):
                 self.assertEqual(res.years, want["years"])
                 self.assertEqual(res.degree, want["degree"])
             for job, w in zip(jobs, want["scores"]):
-                got = match.score_job(job, res, skill_w, term_w)
+                got = match.score_job(job, res, skill_w, term_w, weights)
                 with self.subTest(resume=r["name"], job=job["title"]):
                     self.assertEqual(got["pct"], w["pct"])
                     if w["pct"] is None:

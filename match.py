@@ -18,6 +18,7 @@ import re
 import time
 from datetime import datetime
 
+import config
 import resume_tex as rt
 
 TAXONOMY = {name for name, _ in rt.SKILLS}
@@ -31,6 +32,8 @@ INTERN_LINE = re.compile(r"intern|co-?op|research assistant|teaching assistant|t
 DEGREE_RANK = {"associate": 0, "bachelor": 1, "master": 2, "phd": 3}
 DEGREE_NAME = {"associate": "Associate's", "bachelor": "Bachelor's", "master": "Master's", "phd": "PhD"}
 MS_PER_MONTH = 30.44 * 86400000
+# settings.json "scoring"; the dashboard reads the same values.
+WEIGHTS = config.SCHEMA.fields["scoring"].default
 
 
 def js_round(x: float) -> int:
@@ -110,15 +113,15 @@ def _num(x: float) -> str:
     return str(int(x)) if float(x).is_integer() else str(x)
 
 
-def exp_fit(job: dict, years: float) -> dict:
+def exp_fit(job: dict, years: float, w: dict = WEIGHTS) -> dict:
     mn = job.get("min_yoe")
     if mn is None:
         entry = bool(job.get("entry_hint"))
-        return {"v": 1 if entry else 0.85, "label": "entry level" if entry else "years not stated"}
+        return {"v": 1 if entry else w["unstated_years_fit"], "label": "entry level" if entry else "years not stated"}
     label = f"asks {mn}+ yrs, you have ~{_num(years)}"
     if years >= mn:
         return {"v": 1, "ok": True, "label": label}
-    return {"v": max(0.15, 1 - (mn - years) * 0.35), "ok": False, "label": label}
+    return {"v": max(w["min_experience_fit"], 1 - (mn - years) * w["years_penalty"]), "ok": False, "label": label}
 
 
 def term_regex(t: str) -> re.Pattern:
@@ -149,24 +152,26 @@ class Resume:
         return self._terms[t]
 
 
-def score_job(job: dict, resume: Resume, skill_w: dict, term_w: dict) -> dict:
+def score_job(job: dict, resume: Resume, skill_w: dict, term_w: dict, weights: dict | None = None) -> dict:
+    w_ = {**WEIGHTS, **(weights or {})}
     kw = job.get("kw") or []
     if not job.get("has_jd") or not kw:
         return {"pct": None, "items": [], "noJd": not job.get("has_jd")}
     W = M = 0.0
     items = []
     for k, w, kind in kw:
-        weight = w * (skill_w[k] if k in skill_w else term_w[k] if k in term_w else 0.8)
+        weight = w * (skill_w[k] if k in skill_w else term_w[k] if k in term_w else w_["unknown_keyword_weight"])
         ok = k in resume.have if k in TAXONOMY else resume.has_term(k)
         W += weight
         if ok:
             M += weight
         items.append({"k": k, "kind": kind, "ok": ok, "weight": weight})
     # Short checklists are thin evidence: mix in 3 average keywords at 50%.
-    prior = 3 * (W / len(kw))
-    cov = (M + 0.5 * prior) / (W + prior)
-    exp = exp_fit(job, resume.years)
-    pct = js_round(100 * cov * (0.6 + 0.4 * exp["v"]))
+    prior = w_["prior_keywords"] * (W / len(kw))
+    cov = (M + w_["prior_credit"] * prior) / (W + prior)
+    exp = exp_fit(job, resume.years, w_)
+    ew = w_["experience_weight"]
+    pct = js_round(100 * cov * (1 - ew + ew * exp["v"]))
 
     def count(kinds):
         xs = [i for i in items if i["kind"] in kinds]

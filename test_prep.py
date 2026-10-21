@@ -25,6 +25,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
+import config
 import notify
 import prep
 import questions
@@ -166,6 +167,10 @@ class Base(unittest.TestCase):
         self.resume_dir.mkdir()
         (self.resume_dir / "master.tex").write_text(MASTER, encoding="utf-8")
         self.db_path = self.tmp / "jobs.db"
+        # Settings of its own, so tests never touch the real settings.json.
+        self.store = config.Store(self.tmp / "settings.json")
+        config.use(self.store)
+        self.addCleanup(config.use, None)
         self.patches = [mock.patch.object(server, "DB_PATH", self.db_path)]
         for p in self.patches:
             p.start()
@@ -176,12 +181,14 @@ class Base(unittest.TestCase):
             mock.patch.object(questions, "fetch", lambda url: [dict(q) for q in FORM_QUESTIONS]),
             mock.patch.object(notify, "desktop", lambda *a: self.toasts.append(a) or True),
             mock.patch.object(notify, "ntfy", lambda *a: self.toasts.append(("ntfy",) + a) or True),
-            # Never quiet during these tests unless a test says so.
+            mock.patch.object(server, "STORE", self.store),
+            # Never quiet during these tests unless a test says so (kept last: a test stops it).
             mock.patch.object(notify, "quiet", lambda *a: False),
         ]
         for p in self.patches[1:]:
             p.start()
-        self.prep = prep.Preparer(server.db, self.resume_dir, self.resume_dir / "tailored", log=lambda m: None)
+        self.prep = prep.Preparer(server.db, self.resume_dir, self.resume_dir / "tailored", log=lambda m: None,
+                                  store=self.store)
         self.prep.save_settings({"threshold": 40, "locations": ["Boston"], "remote_ok": True})
         self.prep.save_scoring({"name": "resume.pdf", "text": RESUME_TEXT,
                                 "profile": {"firstName": "Testy", "school": "Example State University"}})
@@ -229,7 +236,7 @@ class QueueTests(Base):
         conn = server.db()
         try:
             _, skill_w, term_w = self.prep.corpus(conn)
-            row = conn.execute(self.prep._select() + "WHERE company = 'Coveredco'").fetchone()
+            row = conn.execute(self.prep._select(conn) + "WHERE company = 'Coveredco'").fetchone()
         finally:
             conn.close()
         import match

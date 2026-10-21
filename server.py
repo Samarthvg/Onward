@@ -29,20 +29,23 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import ats
+import config
+import filters
 import prep
+import radar
 import resume_tex as rt
 import tailor
 
-ROOT = Path(__file__).resolve().parent
 HOST, PORT = "127.0.0.1", 8765
 ORIGINS = {f"http://{HOST}:{PORT}", f"http://localhost:{PORT}"}
-DASHBOARD = ROOT / "dashboard.html"
-RESUME_DIR = ROOT / "resume"
+STORE = config.store()
+DASHBOARD = STORE.path_for("dashboard")
+RESUME_DIR = STORE.path_for("resume_dir")
 MASTER = RESUME_DIR / "master.tex"
-MASTER_META = RESUME_DIR / "master.json"
 OUT_DIR = RESUME_DIR / "tailored"
-DB_PATH = ROOT / "jobs.db"
-LOG_PATH = ROOT / "server.log"
+DB_PATH = STORE.path_for("db")
+LOG_PATH = STORE.path_for("logs_dir") / "server.log"
 MAX_BODY = 2 * 1024 * 1024
 FILE_NAME = re.compile(r"^[A-Za-z0-9_.-]+\.(pdf|tex)$")
 # Browser extensions' own pages; websites can't send these origins. The
@@ -83,7 +86,7 @@ def db() -> sqlite3.Connection:
     return conn
 
 
-PREP = prep.Preparer(db, RESUME_DIR, OUT_DIR, log)
+PREP = prep.Preparer(db, RESUME_DIR, OUT_DIR, log, store=STORE)
 
 
 def job_row(key: str) -> dict | None:
@@ -141,12 +144,121 @@ def job_by_url(page_url: str) -> dict | None:
     return {"company": row[0], "title": row[1], "description": row[2] or "", "url": row[3], "key": row[4]} if row else None
 
 
-def master_meta() -> dict | None:
-    if not MASTER.exists():
-        return None
-    meta = json.loads(MASTER_META.read_text(encoding="utf-8")) if MASTER_META.exists() else {}
+# --------------------------------------------------------------------------
+# Settings and companies
+
+RENDER = {"pending": False, "finished": 0.0, "error": "", "jobs": None}
+RENDER_WAKE = threading.Event()
+
+
+def schedule_render() -> None:
+    """Rebuild dashboard.html from stored jobs (radar.rerender) in the
+    background, so changed profiles show without waiting for the next run.
+    Requests that arrive while one is running coalesce into one more."""
+    RENDER["pending"] = True
+    RENDER_WAKE.set()
+
+
+def _render_loop() -> None:
+    while True:
+        RENDER_WAKE.wait()
+        RENDER_WAKE.clear()
+        try:
+            RENDER.update(jobs=radar.rerender(STORE), error="")
+        except Exception as e:
+            log(f"re-render failed:\n{traceback.format_exc()}")
+            RENDER["error"] = f"{type(e).__name__}: {e}"
+        RENDER.update(finished=time.time(), pending=RENDER_WAKE.is_set())
+
+
+def settings_payload() -> dict:
+    s = STORE.load()
+    families = [{"id": k, "label": f.label, "builtin": True} for k, f in filters.BUILTIN_FAMILIES.items()]
+    families += [{"id": f["id"], "label": f["label"], "builtin": False} for f in s["role_families"]]
+    return {
+        "settings": s, "warnings": STORE.warnings, "home": str(STORE.home), "file": str(STORE.path),
+        "defaults": config.defaults(), "new_profile": config.PROFILE.default,
+        "choices": {
+            "families": families,
+            "countries": [{"code": c, "name": n} for c, (n, _) in filters.COUNTRIES.items()],
+            "seniority": list(config.SENIORITY), "workplace": list(config.WORKPLACE),
+            "visa": list(config.VISA_STATUS), "backends": list(config.TAILOR_BACKENDS),
+            "draft_backends": list(config.DRAFT_BACKENDS), "sources": list(config.SOURCES),
+        },
+        "resumes": {p["id"]: master_meta(p["id"]) for p in s["profiles"]},
+        "render": RENDER,
+    }
+
+
+def set_profile_resume(pid: str, name: str) -> None:
+    with STORE.lock:
+        s = STORE.load()
+        for p in s["profiles"]:
+            if p["id"] == pid:
+                p["resume"] = name
+        STORE.save(s)
+
+
+def _name_key(source: str, token: str) -> str:
+    """The key radar.py looks display names up by for a board."""
+    return token.split(".")[0] if source == "workday" else token
+
+
+GREENHOUSE_BOARD = re.compile(r"greenhouse\.io/(?:embed/job_app\?for=)?([\w-]+)")
+
+
+def seen_names() -> dict[str, str]:
+    """Greenhouse boards name their company in each posting; the names
+    stored jobs carry, by board token."""
+    conn = db()
     try:
-        res = rt.parse(MASTER.read_text(encoding="utf-8"))
+        rows = conn.execute("SELECT company, apply_url FROM jobs WHERE source = 'greenhouse'").fetchall()
+    except sqlite3.Error:
+        return {}
+    finally:
+        conn.close()
+    out = {}
+    for company, url in rows:
+        m = GREENHOUSE_BOARD.search(url or "")
+        if m:
+            out.setdefault(m.group(1), company)
+    return out
+
+
+def company_list() -> dict:
+    builtin = json.loads(radar.COMPANIES_PATH.read_text(encoding="utf-8"))
+    c = STORE.section("companies")
+    names = {**seen_names(), **builtin.get("display_names", {}), **c["display_names"]}
+    removed = set(c["removed"])
+    rows = []
+    for origin, boards in (("builtin", builtin), ("added", c["added"])):
+        for src, toks in boards.items():
+            if src not in config.SOURCES:
+                continue
+            for tok in toks:
+                rows.append({"source": src, "token": tok, "origin": origin, "removed": f"{src}:{tok}" in removed,
+                             "name": names.get(_name_key(src, tok)) or ats.default_name(ats.Board(src, tok))})
+    rows.sort(key=lambda r: (r["name"].lower(), r["source"]))
+    return {"boards": rows, "blocked": c["blocked"]}
+
+
+def master_path(profile: str = "") -> Path:
+    """The master resume a search profile tailors from: its own, when it has
+    one uploaded, else master.tex."""
+    p = STORE.profile(profile) if profile else None
+    own = RESUME_DIR / p["resume"] if p and p["resume"] else None
+    return own if own and own.exists() else MASTER
+
+
+def master_meta(profile: str = "") -> dict | None:
+    path = master_path(profile)
+    if not path.exists():
+        return None
+    meta_path = path.with_suffix(".json")
+    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    meta["own"] = path != MASTER
+    try:
+        res = rt.parse(path.read_text(encoding="utf-8"))
         meta.update(rt.summary(res))
     except ValueError as e:
         meta["error"] = str(e)
@@ -163,7 +275,7 @@ def run_job(jid: str, params: dict) -> None:
 
     update(state="running", started=time.time())
     try:
-        master = MASTER.read_text(encoding="utf-8")
+        master = master_path(params.get("profile", "")).read_text(encoding="utf-8")
         backend = params["backend"]
         meta = {"company": params.get("company", ""), "title": params.get("title", ""),
                 "instruction": params.get("instruction", "")}
@@ -312,7 +424,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, DASHBOARD.read_bytes(), "text/html; charset=utf-8")
 
         if path == "/api/status":
-            return self._json(200, {"backends": tailor.backend_status(), "master": master_meta()})
+            profile = (q.get("profile") or [""])[0][:40]
+            return self._json(200, {"backends": tailor.backend_status(), "master": master_meta(profile)})
+
+        if path == "/api/settings":
+            return self._json(200, settings_payload())
+
+        if path == "/api/companies":
+            return self._json(200, company_list())
+
+        if path == "/api/render":
+            return self._json(200, RENDER)
 
         if path == "/api/about":
             return self._json(200, {"text": tailor.about_me(), "max": tailor.ABOUT_MAX})
@@ -377,6 +499,10 @@ class Handler(BaseHTTPRequestHandler):
         if data is None:
             return
 
+        if path == "/api/settings":
+            return self._settings(data)
+        if path.startswith("/api/companies/"):
+            return self._companies(path.rsplit("/", 1)[-1], data)
         if path == "/api/draft":
             return self._draft(data)
         if path == "/api/answers":
@@ -420,20 +546,28 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/master":
             tex = str(data.get("tex", ""))
+            # With a profile, the resume becomes that search's own master.
+            profile = str(data.get("profile") or "")[:40]
+            if profile and profile not in {p["id"] for p in STORE.load()["profiles"]}:
+                return self._err(HTTPStatus.BAD_REQUEST, "Unknown search profile")
             try:
                 res = rt.parse(tex)
                 pages = rt.compile_pdf(tex)
             except (ValueError, rt.CompileError) as e:
                 return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, f"Couldn't use this resume: {e}")
-            RESUME_DIR.mkdir(exist_ok=True)
-            MASTER.write_text(tex, encoding="utf-8")
-            MASTER_META.write_text(json.dumps({"name": str(data.get("name", "master.tex"))[:200],
-                                               "uploaded": time.time(), "pages": pages}), encoding="utf-8")
+            RESUME_DIR.mkdir(parents=True, exist_ok=True)
+            target = RESUME_DIR / f"master-{profile}.tex" if profile else MASTER
+            target.write_text(tex, encoding="utf-8")
+            target.with_suffix(".json").write_text(json.dumps({"name": str(data.get("name", "master.tex"))[:200],
+                                                               "uploaded": time.time(), "pages": pages}), encoding="utf-8")
+            if profile:
+                set_profile_resume(profile, target.name)
             PREP.poke()
             return self._json(200, {**rt.summary(res), "pages": pages, "name": data.get("name")})
 
         if path in ("/api/tailor", "/api/prompt"):
-            if not MASTER.exists():
+            profile = str(data.get("profile") or "")[:40]
+            if not master_path(profile).exists():
                 return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume first")
             key = str(data.get("key", ""))
             row = job_row(key) or {}
@@ -441,10 +575,11 @@ class Handler(BaseHTTPRequestHandler):
             params = {"key": key, "jd": jd, "company": row.get("company", data.get("company", "")),
                       "title": row.get("title", data.get("title", "")),
                       "backend": str(data.get("backend", "ollama")), "rewrite": bool(data.get("rewrite", True)),
-                      "answer": data.get("answer"), "instruction": tailor.clean_instruction(data.get("instruction"))}
+                      "answer": data.get("answer"), "instruction": tailor.clean_instruction(data.get("instruction")),
+                      "profile": profile}
             if path == "/api/prompt":
                 try:
-                    prompt = tailor.build_manual_prompt(MASTER.read_text(encoding="utf-8"), params, jd)
+                    prompt = tailor.build_manual_prompt(master_path(profile).read_text(encoding="utf-8"), params, jd)
                 except ValueError as e:
                     return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
                 return self._json(200, {"prompt": prompt})
@@ -460,6 +595,73 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(202, {"id": submit(params)})
 
         return self._err(HTTPStatus.NOT_FOUND, "Not found")
+
+    def _settings(self, data: dict):
+        """Saves settings ({"settings": {...}}, whole or in part). Anything
+        invalid rejects the save with the list of problems."""
+        patch = data.get("settings")
+        if not isinstance(patch, dict):
+            return self._err(HTTPStatus.BAD_REQUEST, "Expected {\"settings\": {...}}")
+        patch.pop("version", None)
+        try:
+            STORE.update(patch)
+        except config.SettingsError as e:
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": "Some settings aren't valid", "errors": e.errors})
+        PREP.poke()
+        schedule_render()
+        return self._json(200, settings_payload())
+
+    def _companies(self, action: str, data: dict):
+        c = STORE.section("companies")
+        if action == "lookup":
+            res = ats.lookup(str(data.get("url", ""))[:2000])
+            if res.get("board"):
+                tracked = next((b for b in company_list()["boards"]
+                                if f"{b['source']}:{b['token']}" == res["board"]), None)
+                res["tracked"] = bool(tracked and not tracked["removed"])
+            return self._json(200, res)
+        source, token = str(data.get("source", "")), str(data.get("token", "")).strip()[:300]
+        if action in ("add", "remove", "restore"):
+            if source not in config.SOURCES or not token:
+                return self._err(HTTPStatus.BAD_REQUEST, "Unknown board")
+            board = f"{source}:{token}"
+            if action == "add":
+                # Checked again here: only boards that answer are saved.
+                res = ats.check(ats.Board(source, token))
+                if not res["ok"]:
+                    return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, res["error"])
+                if token not in c["added"].get(source, []) and not any(
+                        b["source"] == source and b["token"] == token and b["origin"] == "builtin"
+                        for b in company_list()["boards"]):
+                    c["added"].setdefault(source, []).append(token)
+                name = str(data.get("name") or "").strip()[:120]
+                if name:
+                    c["display_names"][_name_key(source, token)] = name
+                c["removed"] = [r for r in c["removed"] if r != board]
+            elif action == "remove":
+                if token in c["added"].get(source, []):
+                    c["added"][source] = [t for t in c["added"][source] if t != token]
+                elif board not in c["removed"]:
+                    c["removed"].append(board)
+            else:
+                c["removed"] = [r for r in c["removed"] if r != board]
+        elif action in ("block", "unblock"):
+            name = str(data.get("name", "")).strip()[:120]
+            if not name:
+                return self._err(HTTPStatus.BAD_REQUEST, "No company name")
+            key = filters.norm_company(name)
+            c["blocked"] = [b for b in c["blocked"] if filters.norm_company(b) != key]
+            if action == "block":
+                c["blocked"].append(name)
+        else:
+            return self._err(HTTPStatus.NOT_FOUND, "Not found")
+        try:
+            STORE.update({"companies": c})
+        except config.SettingsError as e:
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": "Couldn't save that", "errors": e.errors})
+        if action in ("block", "unblock"):
+            schedule_render()
+        return self._json(200, company_list())
 
     def _prepared(self, page_url: str):
         """The resume and drafted answers prepared for the job behind an
@@ -542,14 +744,18 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    RESUME_DIR.mkdir(exist_ok=True)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for d in (RESUME_DIR, OUT_DIR, DB_PATH.parent, LOG_PATH.parent):
+        d.mkdir(parents=True, exist_ok=True)
+    STORE.load()
+    for w in STORE.warnings:
+        log(f"settings: {w}")
     try:
         httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     except OSError as e:
         log(f"could not bind {HOST}:{PORT}: {e}")
         return 1
     log(f"serving http://{HOST}:{PORT}")
+    threading.Thread(target=_render_loop, name="render", daemon=True).start()
     PREP.start()
     httpd.serve_forever()
     return 0

@@ -28,14 +28,36 @@ import urllib.request
 from dataclasses import asdict
 from pathlib import Path
 
+import config
 import resume_tex as rt
 
-ROOT = Path(__file__).resolve().parent
-RUNNER_DIR = ROOT / "resume" / ".claude-runner"   # empty cwd so no project files load
-OLLAMA_URL = os.environ.get("JOBRADAR_OLLAMA_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.environ.get("JOBRADAR_OLLAMA_MODEL", "qwen3:8b")
-CLAUDE_MODEL = os.environ.get("JOBRADAR_CLAUDE_MODEL", "claude-opus-5-5")
-TARGET_PAGES = 1
+def _tailoring(key: str, env: str | None = None):
+    """settings.json "tailoring"; the JOBRADAR_* environment variables that
+    predate it still win when set."""
+    return (os.environ.get(env) if env else None) or config.store().section("tailoring")[key]
+
+
+def runner_dir() -> Path:
+    """Empty working folder for the CLI backends, so no project files load."""
+    return config.store().path_for("resume_dir") / ".claude-runner"
+
+
+def ollama_url() -> str:
+    return _tailoring("ollama_url", "JOBRADAR_OLLAMA_URL").rstrip("/")
+
+
+def ollama_model() -> str:
+    return _tailoring("ollama_model", "JOBRADAR_OLLAMA_MODEL")
+
+
+def claude_model() -> str:
+    return _tailoring("claude_model", "JOBRADAR_CLAUDE_MODEL")
+
+
+def target_pages() -> int:
+    return _tailoring("target_pages")
+
+
 MAX_TRIM_STEPS = 15
 
 INSTRUCTIONS = """You tailor a software engineer's resume to one job description by proposing edits to numbered pieces of the resume. Your output is applied by a program and every edit is checked, so follow the rules exactly.
@@ -123,13 +145,13 @@ def _claude_json(prompt: str, schema: dict) -> tuple[dict, str]:
     exe = shutil.which("claude")
     if not exe:
         raise BackendError("The claude command isn't installed.")
-    RUNNER_DIR.mkdir(parents=True, exist_ok=True)
+    runner_dir().mkdir(parents=True, exist_ok=True)
     cmd = [exe, "-p", "--output-format", "json", "--no-session-persistence",
            "--tools", "", "--strict-mcp-config",
            "--system-prompt", "You return only the requested JSON.",
            "--json-schema", json.dumps(schema)]
     try:
-        proc = subprocess.run(cmd, input=prompt, cwd=RUNNER_DIR, capture_output=True,
+        proc = subprocess.run(cmd, input=prompt, cwd=runner_dir(), capture_output=True,
                               text=True, encoding="utf-8", errors="replace", timeout=600)
     except subprocess.TimeoutExpired as e:
         raise BackendError("Claude took too long. Try again.") from e
@@ -157,15 +179,15 @@ def _codex_json(prompt: str, schema: dict) -> tuple[dict, str]:
     exe = shutil.which("codex")
     if not exe:
         raise BackendError("The codex command isn't installed. Run: npm install -g @openai/codex")
-    RUNNER_DIR.mkdir(parents=True, exist_ok=True)
+    runner_dir().mkdir(parents=True, exist_ok=True)
     # Per-run file names: tailoring and drafting can run at the same time.
     stem = f"codex-{os.getpid()}-{time.time_ns()}"
-    schema_path = RUNNER_DIR / f"{stem}.schema.json"
-    out_path = RUNNER_DIR / f"{stem}.json"
+    schema_path = runner_dir() / f"{stem}.schema.json"
+    out_path = runner_dir() / f"{stem}.json"
     schema_path.write_text(json.dumps(schema), encoding="utf-8")
     prompt = "Do not run any commands or read any files. Everything you need is below.\n\n" + prompt
     cmd = [exe, "exec", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
-           "-s", "read-only", "-C", str(RUNNER_DIR), "--color", "never",
+           "-s", "read-only", "-C", str(runner_dir()), "--color", "never",
            "--output-schema", str(schema_path), "-o", str(out_path), "-"]
     try:
         try:
@@ -189,22 +211,22 @@ def _codex_json(prompt: str, schema: dict) -> tuple[dict, str]:
 
 def _ollama_json(system: str, user: str, schema: dict, temperature: float = 0.3) -> tuple[dict, str]:
     body = {
-        "model": OLLAMA_MODEL,
+        "model": ollama_model(),
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         "format": schema,
         "stream": False,
         "think": False,
         "options": {"num_ctx": 16384, "temperature": temperature},
     }
-    req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", data=json.dumps(body).encode(),
+    req = urllib.request.Request(f"{ollama_url()}/api/chat", data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=600) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.URLError as e:
-        raise BackendError(f"Ollama isn't reachable at {OLLAMA_URL}. Start the Ollama app. ({e.reason})") from e
+        raise BackendError(f"Ollama isn't reachable at {ollama_url()}. Start the Ollama app. ({e.reason})") from e
     try:
-        return json.loads(data["message"]["content"]), OLLAMA_MODEL
+        return json.loads(data["message"]["content"]), ollama_model()
     except (KeyError, json.JSONDecodeError) as e:
         raise BackendError("The local model returned malformed output. Try again.") from e
 
@@ -252,7 +274,7 @@ def run_claude_api(res: rt.Resume, job: dict, jd: str) -> tuple[dict, str]:
         # The resume and instructions are identical across jobs, so they sit in a
         # cached system prefix; only the job description varies per request.
         with client.beta.messages.stream(
-            model=CLAUDE_MODEL,
+            model=claude_model(),
             max_tokens=32000,
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
@@ -294,8 +316,11 @@ BACKENDS = {"ollama": run_ollama, "chatgpt": run_chatgpt, "claude-code": run_cla
 # style_problems() checks the result in code, because models drift back to
 # the same stock phrases whatever the prompt says.
 
-ABOUT_PATH = ROOT / "resume" / "about_me.txt"
 ABOUT_MAX = 4000
+
+
+def about_path() -> Path:
+    return config.store().path_for("resume_dir") / "about_me.txt"
 
 VOICE = """How to write it
 - Sound like a real new-grad student talking to a person: plain everyday words, contractions (I'm, I've, it's), a mix of short and longer sentences, and a bit of real personality. It should read like the applicant typed it, not like a cover letter template.
@@ -335,14 +360,14 @@ both few many much do does did done have has had having get got make made one tw
 def about_me() -> str:
     """The applicant's own notes on interests and motivations, if they wrote any."""
     try:
-        return ABOUT_PATH.read_text(encoding="utf-8").strip()[:ABOUT_MAX]
+        return about_path().read_text(encoding="utf-8").strip()[:ABOUT_MAX]
     except OSError:
         return ""
 
 
 def save_about_me(text: str) -> None:
-    ABOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ABOUT_PATH.write_text(text.strip()[:ABOUT_MAX] + "\n", encoding="utf-8")
+    about_path().parent.mkdir(parents=True, exist_ok=True)
+    about_path().write_text(text.strip()[:ABOUT_MAX] + "\n", encoding="utf-8")
 
 
 def style_problems(text: str, company: str = "") -> list[str]:
@@ -640,15 +665,15 @@ def _claude_logged_in(proc) -> bool:
 
 
 def backend_status() -> dict:
-    status = {"ollama": False, "ollama_model": OLLAMA_MODEL,
+    status = {"ollama": False, "ollama_model": ollama_model(),
               "claude_code": _signed_in("claude", ["claude", "auth", "status"], _claude_logged_in),
               "chatgpt": _signed_in("codex", ["codex", "login", "status"],
                                     lambda p: p.returncode == 0 and "logged in" in (p.stdout + p.stderr).lower()),
               "claude_api": bool(os.environ.get("ANTHROPIC_API_KEY"))}
     try:
-        with urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=3) as resp:
+        with urllib.request.urlopen(f"{ollama_url()}/api/tags", timeout=3) as resp:
             names = [m["name"] for m in json.loads(resp.read()).get("models", [])]
-        status["ollama"] = OLLAMA_MODEL in names or f"{OLLAMA_MODEL}:latest" in names
+        status["ollama"] = ollama_model() in names or f"{ollama_model()}:latest" in names
         status["ollama_running"] = True
     except Exception:
         status["ollama_running"] = False
@@ -724,7 +749,7 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
     # then the least relevant project. Work experience is never removed.
     rank = state["rank"]
     for _ in range(MAX_TRIM_STEPS):
-        if pages <= TARGET_PAGES:
+        if pages <= target_pages():
             break
         droppable = []
         for e in res.entries:
