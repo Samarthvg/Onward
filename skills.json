@@ -1,0 +1,1500 @@
+[
+ {
+  "n": "Python",
+  "re": "python"
+ },
+ {
+  "n": "Java",
+  "re": "java(?!\\s*script)"
+ },
+ {
+  "n": "JavaScript",
+  "re": "javascript|ecmascript|es6"
+ },
+ {
+  "n": "TypeScript",
+  "re": "typescript"
+ },
+ {
+  "n": "C++",
+  "re": "c\\+\\+|cpp"
+ },
+ {
+  "n": "C",
+  "re": "C(?=\\s*/\\s*C\\+\\+|,\\s*C\\+\\+| and C\\+\\+| or C\\+\\+)|C programming|ANSI C",
+  "cs": true
+ },
+ {
+  "n": "C#",
+  "re": "c#|csharp"
+ },
+ {
+  "n": "Go",
+  "re": "[Gg]olang|Go(?=\\s*[,/)]|\\s+(?:and|or)\\s+[A-Z]|\\s+(?:programming|language|services|microservices|backend))|(?<=, )Go(?![a-z])|(?<=and )Go(?![a-z])|(?<=or )Go(?![a-z])",
+  "cs": true
+ },
+ {
+  "n": "Rust",
+  "re": "Rust",
+  "cs": true
+ },
+ {
+  "n": "Kotlin",
+  "re": "kotlin"
+ },
+ {
+  "n": "Swift",
+  "re": "Swift(?:UI)?",
+  "cs": true
+ },
+ {
+  "n": "Scala",
+  "re": "scala"
+ },
+ {
+  "n": "Ruby",
+  "re": "Ruby(?: on Rails)?|Rails",
+  "cs": true
+ },
+ {
+  "n": "PHP",
+  "re": "php|laravel"
+ },
+ {
+  "n": "SQL",
+  "re": "sql|t-sql|pl/sql"
+ },
+ {
+  "n": "Bash",
+  "re": "bash|shell scripting|unix shell"
+ },
+ {
+  "n": "R",
+  "re": "R(?=\\s*[,/)]|\\s+(?:and|or)\\s+(?:Python|SQL))|R programming|RStudio",
+  "cs": true
+ },
+ {
+  "n": "MATLAB",
+  "re": "matlab"
+ },
+ {
+  "n": "Elixir",
+  "re": "elixir|erlang"
+ },
+ {
+  "n": "Haskell",
+  "re": "haskell|ocaml|f#"
+ },
+ {
+  "n": "Solidity",
+  "re": "solidity"
+ },
+ {
+  "n": "React",
+  "re": "React(?:\\.js|JS)?(?! Native)|react\\.js|reactjs|MERN",
+  "cs": true,
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "React Native",
+  "re": "react native"
+ },
+ {
+  "n": "Next.js",
+  "re": "next\\.js|nextjs",
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "Vue",
+  "re": "vue(?:\\.js|js)?|nuxt|mevn",
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "Angular",
+  "re": "angular(?:js)?|mean stack",
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "Svelte",
+  "re": "svelte(?:kit)?",
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "Redux",
+  "re": "redux",
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "HTML/CSS",
+  "re": "html5?|css3?|sass|scss|tailwind(?:css)?",
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "Node.js",
+  "re": "node\\.js|nodejs|node(?=\\s*(?:[,/)]|and |or ))|express\\.js|expressjs|nestjs|mern|mean stack|mevn",
+  "implies": [
+   "Backend"
+  ]
+ },
+ {
+  "n": "GraphQL",
+  "re": "graphql|apollo",
+  "implies": [
+   "Backend"
+  ]
+ },
+ {
+  "n": "REST APIs",
+  "re": "restful|rest (?:apis?|services|endpoints)|openapi|swagger",
+  "implies": [
+   "Backend"
+  ]
+ },
+ {
+  "n": "gRPC",
+  "re": "grpc|protobuf|protocol buffers|thrift",
+  "implies": [
+   "Backend"
+  ]
+ },
+ {
+  "n": "WebSockets",
+  "re": "websockets?|socket\\.io"
+ },
+ {
+  "n": "Webpack/Vite",
+  "re": "webpack|vite|babel|esbuild"
+ },
+ {
+  "n": "Django",
+  "re": "django",
+  "implies": [
+   "Backend"
+  ]
+ },
+ {
+  "n": "Flask",
+  "re": "flask",
+  "implies": [
+   "Backend"
+  ]
+ },
+ {
+  "n": "FastAPI",
+  "re": "fastapi",
+  "implies": [
+   "Backend"
+  ]
+ },
+ {
+  "n": "Spring Boot",
+  "re": "spring boot|spring framework|spring mvc|spring cloud",
+  "implies": [
+   "Backend"
+  ]
+ },
+ {
+  "n": "Microservices",
+  "re": "micro-?services?|service-oriented|soa",
+  "implies": [
+   "Backend"
+  ]
+ },
+ {
+  "n": "Distributed Systems",
+  "re": "distributed systems?|distributed computing|raft|paxos"
+ },
+ {
+  "n": "System Design",
+  "re": "system design|systems design|scalab(?:le|ility) (?:systems|architecture)|high availability|fault[- ]toleran(?:t|ce)"
+ },
+ {
+  "n": "Concurrency",
+  "re": "concurren(?:cy|t)|multi-?threading|multithreaded|parallel programming|async(?:hronous)? programming"
+ },
+ {
+  "n": "Caching",
+  "re": "caching|cache|redis|memcached"
+ },
+ {
+  "n": "Message Queues",
+  "re": "kafka|rabbitmq|sqs|pub/?sub|kinesis|message queues?|event[- ]driven|nats|pulsar"
+ },
+ {
+  "n": "Linux",
+  "re": "linux|unix|posix"
+ },
+ {
+  "n": "Networking",
+  "re": "tcp/ip|tcp|udp|http/2|networking|dns|load balanc(?:er|ers|ing)"
+ },
+ {
+  "n": "Operating Systems",
+  "re": "operating systems?|kernel|os internals"
+ },
+ {
+  "n": "Data Structures & Algorithms",
+  "re": "data structures|algorithms?|computer science fundamentals|cs fundamentals"
+ },
+ {
+  "n": "OOP",
+  "re": "object[- ]oriented|oop|design patterns"
+ },
+ {
+  "n": "Security",
+  "re": "application security|appsec|security engineering|cryptograph(?:y|ic)|owasp|penetration testing|threat model(?:ing)?|vulnerability (?:research|management|assessment)|secure coding"
+ },
+ {
+  "n": "Compilers",
+  "re": "compilers?|llvm|mlir"
+ },
+ {
+  "n": "Embedded",
+  "re": "embedded (?:systems|software|c|linux|devices)|firmware|rtos|microcontrollers?"
+ },
+ {
+  "n": "PostgreSQL",
+  "re": "postgres(?:ql)?",
+  "implies": [
+   "SQL"
+  ]
+ },
+ {
+  "n": "MySQL",
+  "re": "mysql|mariadb",
+  "implies": [
+   "SQL"
+  ]
+ },
+ {
+  "n": "MongoDB",
+  "re": "mongo(?:db)?|mern|mean stack|mevn"
+ },
+ {
+  "n": "DynamoDB",
+  "re": "dynamo(?:db)?"
+ },
+ {
+  "n": "Cassandra",
+  "re": "cassandra|scylla"
+ },
+ {
+  "n": "Elasticsearch",
+  "re": "elastic ?search|opensearch|lucene|solr"
+ },
+ {
+  "n": "NoSQL",
+  "re": "nosql"
+ },
+ {
+  "n": "Data Warehousing",
+  "re": "snowflake|bigquery|redshift|data warehous(?:e|ing)|databricks|delta lake|iceberg"
+ },
+ {
+  "n": "Spark",
+  "re": "spark|pyspark"
+ },
+ {
+  "n": "Airflow",
+  "re": "airflow|dagster|prefect"
+ },
+ {
+  "n": "dbt",
+  "re": "dbt"
+ },
+ {
+  "n": "ETL",
+  "re": "etl|elt|data pipelines?"
+ },
+ {
+  "n": "Hadoop",
+  "re": "hadoop|hive|hdfs|mapreduce"
+ },
+ {
+  "n": "Flink",
+  "re": "flink|stream processing|apache beam"
+ },
+ {
+  "n": "Pandas",
+  "re": "pandas|numpy|scipy"
+ },
+ {
+  "n": "AWS",
+  "re": "aws|amazon web services|ec2|s3|lambda|cloudformation|ecs|eks"
+ },
+ {
+  "n": "GCP",
+  "re": "gcp|google cloud(?: platform)?|gke"
+ },
+ {
+  "n": "Azure",
+  "re": "azure"
+ },
+ {
+  "n": "Docker",
+  "re": "docker|containers?|containerization"
+ },
+ {
+  "n": "Kubernetes",
+  "re": "kubernetes|k8s|helm"
+ },
+ {
+  "n": "Terraform",
+  "re": "terraform|pulumi|infrastructure as code|iac|cdk"
+ },
+ {
+  "n": "CI/CD",
+  "re": "ci/cd|ci|cd|continuous integration|continuous delivery|continuous deployment|github actions|jenkins|circleci|gitlab ci"
+ },
+ {
+  "n": "Git",
+  "re": "git|version control"
+ },
+ {
+  "n": "Observability",
+  "re": "observability|prometheus|grafana|datadog|opentelemetry|distributed tracing|splunk|new relic"
+ },
+ {
+  "n": "Serverless",
+  "re": "serverless|cloud functions"
+ },
+ {
+  "n": "SRE",
+  "re": "site reliability|sre|on-?call|incident response"
+ },
+ {
+  "n": "Testing",
+  "re": "unit test(?:s|ing)?|integration test(?:s|ing)?|test-driven|tdd|pytest|jest|junit|cypress|playwright|selenium|automated testing"
+ },
+ {
+  "n": "Machine Learning",
+  "re": "machine learning|ml|scikit-learn|sklearn|xgboost|regression|random forest"
+ },
+ {
+  "n": "Deep Learning",
+  "re": "deep learning|neural networks?|lstm|cnns?|rnns?|convolutional"
+ },
+ {
+  "n": "PyTorch",
+  "re": "pytorch|torch",
+  "implies": [
+   "Deep Learning"
+  ]
+ },
+ {
+  "n": "TensorFlow",
+  "re": "tensorflow|keras|jax",
+  "implies": [
+   "Deep Learning"
+  ]
+ },
+ {
+  "n": "LLMs",
+  "re": "llms?|large language models?|gpt|generative ai|genai|foundation models?|transformers?|openai(?: api)?|anthropic|claude|hugging ?face|Gemini|Llama ?[0-9]?|Mistral"
+ },
+ {
+  "n": "RAG",
+  "re": "rag|retrieval[- ]augmented|vector (?:databases?|search|stores?)|embeddings|pinecone|faiss|weaviate"
+ },
+ {
+  "n": "NLP",
+  "re": "nlp|natural language processing"
+ },
+ {
+  "n": "Computer Vision",
+  "re": "computer vision|opencv|image processing|object detection"
+ },
+ {
+  "n": "MLOps",
+  "re": "mlops|model serving|model deployment|mlflow|kubeflow|sagemaker|vertex ai"
+ },
+ {
+  "n": "Reinforcement Learning",
+  "re": "reinforcement learning|rlhf"
+ },
+ {
+  "n": "CUDA",
+  "re": "cuda|gpu programming|triton"
+ },
+ {
+  "n": "LangChain",
+  "re": "langchain|llamaindex|langgraph"
+ },
+ {
+  "n": "Data Analysis",
+  "re": "data analysis|statistical analysis|statistics|a/b testing"
+ },
+ {
+  "n": "iOS",
+  "re": "ios|xcode|uikit|objective-c"
+ },
+ {
+  "n": "Android",
+  "re": "android|jetpack compose"
+ },
+ {
+  "n": "Flutter",
+  "re": "flutter|dart"
+ },
+ {
+  "n": "Frontend",
+  "re": "front[- ]?end|ui engineering|web applications?"
+ },
+ {
+  "n": "Backend",
+  "re": "back[- ]?end|server[- ]side|api design|api development|building apis"
+ },
+ {
+  "n": "Full Stack",
+  "re": "full[- ]?stack"
+ },
+ {
+  "n": "Agile",
+  "re": "agile|scrum|kanban|jira"
+ },
+ {
+  "n": "Blockchain",
+  "re": "blockchain|web3|ethereum|smart contracts?|crypto(?:currency)?"
+ },
+ {
+  "n": "Game Development",
+  "re": "unity|unreal|game engine|game development"
+ },
+ {
+  "n": "Robotics",
+  "re": "robotics|motion planning|slam|perception"
+ },
+ {
+  "n": "Jenkins",
+  "re": "jenkins",
+  "implies": [
+   "CI/CD"
+  ]
+ },
+ {
+  "n": "GitHub Actions",
+  "re": "github actions",
+  "implies": [
+   "CI/CD",
+   "Git"
+  ]
+ },
+ {
+  "n": "GitLab",
+  "re": "gitlab(?: ci)?",
+  "implies": [
+   "CI/CD",
+   "Git"
+  ]
+ },
+ {
+  "n": "CircleCI",
+  "re": "circleci",
+  "implies": [
+   "CI/CD"
+  ]
+ },
+ {
+  "n": "Kafka",
+  "re": "kafka",
+  "implies": [
+   "Message Queues"
+  ]
+ },
+ {
+  "n": "RabbitMQ",
+  "re": "rabbitmq",
+  "implies": [
+   "Message Queues"
+  ]
+ },
+ {
+  "n": "Redis",
+  "re": "redis",
+  "implies": [
+   "Caching"
+  ]
+ },
+ {
+  "n": "Oracle DB",
+  "re": "Oracle(?: Database| DB|\\s*/\\s*SQL| PL/SQL)?(?! Cloud| Health)|PL/SQL",
+  "cs": true,
+  "implies": [
+   "SQL"
+  ]
+ },
+ {
+  "n": "SQL Server",
+  "re": "sql server|mssql|t-sql",
+  "implies": [
+   "SQL"
+  ]
+ },
+ {
+  "n": "Snowflake",
+  "re": "snowflake",
+  "implies": [
+   "Data Warehousing"
+  ]
+ },
+ {
+  "n": "BigQuery",
+  "re": "bigquery",
+  "implies": [
+   "Data Warehousing"
+  ]
+ },
+ {
+  "n": "Redshift",
+  "re": "redshift",
+  "implies": [
+   "Data Warehousing"
+  ]
+ },
+ {
+  "n": "Databricks",
+  "re": "databricks",
+  "implies": [
+   "Data Warehousing",
+   "Spark"
+  ]
+ },
+ {
+  "n": "Figma",
+  "re": "figma"
+ },
+ {
+  "n": "Jest",
+  "re": "jest",
+  "implies": [
+   "Testing"
+  ]
+ },
+ {
+  "n": "Cypress",
+  "re": "cypress",
+  "implies": [
+   "Testing"
+  ]
+ },
+ {
+  "n": "Playwright",
+  "re": "playwright",
+  "implies": [
+   "Testing"
+  ]
+ },
+ {
+  "n": "Selenium",
+  "re": "selenium",
+  "implies": [
+   "Testing"
+  ]
+ },
+ {
+  "n": "Pytest",
+  "re": "pytest",
+  "implies": [
+   "Testing"
+  ]
+ },
+ {
+  "n": "JUnit",
+  "re": "junit",
+  "implies": [
+   "Testing"
+  ]
+ },
+ {
+  "n": "Datadog",
+  "re": "datadog",
+  "implies": [
+   "Observability"
+  ]
+ },
+ {
+  "n": "Grafana",
+  "re": "grafana",
+  "implies": [
+   "Observability"
+  ]
+ },
+ {
+  "n": "Prometheus",
+  "re": "prometheus",
+  "implies": [
+   "Observability"
+  ]
+ },
+ {
+  "n": "Splunk",
+  "re": "splunk",
+  "implies": [
+   "Observability"
+  ]
+ },
+ {
+  "n": "Express.js",
+  "re": "express\\.js|expressjs|express framework",
+  "implies": [
+   "Node.js",
+   "Backend"
+  ]
+ },
+ {
+  "n": "NestJS",
+  "re": "nestjs|nest\\.js",
+  "implies": [
+   "Node.js",
+   "Backend"
+  ]
+ },
+ {
+  "n": "Tailwind",
+  "re": "tailwind(?:css)?",
+  "implies": [
+   "HTML/CSS",
+   "Frontend"
+  ]
+ },
+ {
+  "n": "Bootstrap",
+  "re": "Bootstrap",
+  "cs": true,
+  "implies": [
+   "HTML/CSS",
+   "Frontend"
+  ]
+ },
+ {
+  "n": "Microfrontends",
+  "re": "micro[- ]?front[- ]?ends?",
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "Storybook",
+  "re": "storybook",
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "Helm",
+  "re": "helm(?: charts?)?",
+  "implies": [
+   "Kubernetes"
+  ]
+ },
+ {
+  "n": "Lambda",
+  "re": "aws lambda|Lambda(?= functions?|,| and)",
+  "cs": true,
+  "implies": [
+   "AWS",
+   "Serverless"
+  ]
+ },
+ {
+  "n": "S3",
+  "re": "S3|amazon s3",
+  "cs": true,
+  "implies": [
+   "AWS"
+  ]
+ },
+ {
+  "n": "Bazel",
+  "re": "bazel",
+  "implies": [
+   "Build Systems"
+  ]
+ },
+ {
+  "n": "Gradle",
+  "re": "gradle",
+  "implies": [
+   "Build Systems"
+  ]
+ },
+ {
+  "n": "Maven",
+  "re": "maven",
+  "implies": [
+   "Build Systems"
+  ]
+ },
+ {
+  "n": "CMake",
+  "re": "cmake",
+  "implies": [
+   "Build Systems"
+  ]
+ },
+ {
+  "n": "Make",
+  "re": "GNU Make|Makefiles?",
+  "cs": true,
+  "implies": [
+   "Build Systems"
+  ]
+ },
+ {
+  "n": "Build Systems",
+  "re": "build systems?|build tooling|monorepo tooling|pants|buck2?"
+ },
+ {
+  "n": "DevOps",
+  "re": "devops"
+ },
+ {
+  "n": "Ansible",
+  "re": "ansible",
+  "implies": [
+   "Infrastructure as Code"
+  ]
+ },
+ {
+  "n": "Puppet",
+  "re": "Puppet",
+  "cs": true,
+  "implies": [
+   "Infrastructure as Code"
+  ]
+ },
+ {
+  "n": "Infrastructure as Code",
+  "re": "infrastructure as code|\\bIaC\\b"
+ },
+ {
+  "n": "ArgoCD",
+  "re": "argo ?cd|argo workflows",
+  "implies": [
+   "CI/CD",
+   "Kubernetes"
+  ]
+ },
+ {
+  "n": "FluxCD",
+  "re": "flux ?cd",
+  "implies": [
+   "CI/CD",
+   "Kubernetes"
+  ]
+ },
+ {
+  "n": "Istio",
+  "re": "istio|service mesh",
+  "implies": [
+   "Kubernetes"
+  ]
+ },
+ {
+  "n": "Envoy",
+  "re": "Envoy",
+  "cs": true
+ },
+ {
+  "n": "Nginx",
+  "re": "nginx"
+ },
+ {
+  "n": "HashiCorp Vault",
+  "re": "hashicorp vault|(?<!Veeva )Vault(?=\\s*(?:[,/)]|and |or |$))",
+  "cs": true,
+  "implies": [
+   "Security"
+  ]
+ },
+ {
+  "n": "Podman",
+  "re": "podman",
+  "implies": [
+   "Docker"
+  ]
+ },
+ {
+  "n": "Packer",
+  "re": "Packer(?=\\s*(?:[,/)]|and |or |$))|hashicorp packer",
+  "cs": true,
+  "implies": [
+   "Infrastructure as Code"
+  ]
+ },
+ {
+  "n": "OpenShift",
+  "re": "openshift",
+  "implies": [
+   "Kubernetes"
+  ]
+ },
+ {
+  "n": "Virtualization",
+  "re": "kvm|qemu|vmware|hypervisors?|virtualization"
+ },
+ {
+  "n": "Travis CI",
+  "re": "travis(?: ci)?",
+  "implies": [
+   "CI/CD"
+  ]
+ },
+ {
+  "n": "Buildkite",
+  "re": "buildkite",
+  "implies": [
+   "CI/CD"
+  ]
+ },
+ {
+  "n": "TeamCity",
+  "re": "teamcity",
+  "implies": [
+   "CI/CD"
+  ]
+ },
+ {
+  "n": "Spinnaker",
+  "re": "spinnaker",
+  "implies": [
+   "CI/CD"
+  ]
+ },
+ {
+  "n": "Sentry",
+  "re": "sentry\\.io|Sentry(?=\\s*(?:[,/)]|and |or |$))(?! Towers?)",
+  "cs": true,
+  "implies": [
+   "Observability"
+  ]
+ },
+ {
+  "n": "PagerDuty",
+  "re": "pagerduty",
+  "implies": [
+   "Observability",
+   "SRE"
+  ]
+ },
+ {
+  "n": "Honeycomb",
+  "re": "Honeycomb",
+  "cs": true,
+  "implies": [
+   "Observability"
+  ]
+ },
+ {
+  "n": "Jaeger",
+  "re": "jaeger",
+  "implies": [
+   "Observability"
+  ]
+ },
+ {
+  "n": "Zipkin",
+  "re": "zipkin",
+  "implies": [
+   "Observability"
+  ]
+ },
+ {
+  "n": "OpenTelemetry",
+  "re": "opentelemetry|otel\\b",
+  "implies": [
+   "Observability"
+  ]
+ },
+ {
+  "n": "Linux Kernel",
+  "re": "linux kernel|kernel development|device drivers?",
+  "implies": [
+   "Linux",
+   "Operating Systems"
+  ]
+ },
+ {
+  "n": "eBPF",
+  "re": "ebpf",
+  "implies": [
+   "Linux"
+  ]
+ },
+ {
+  "n": "DPDK",
+  "re": "dpdk",
+  "implies": [
+   "Networking"
+  ]
+ },
+ {
+  "n": "RDMA",
+  "re": "rdma|infiniband|roce",
+  "implies": [
+   "Networking"
+  ]
+ },
+ {
+  "n": "HTTP",
+  "re": "HTTP(?:/[123])?|HTTPS",
+  "cs": true,
+  "implies": [
+   "Networking"
+  ]
+ },
+ {
+  "n": "SLOs/SLAs",
+  "re": "slos?\\b|slas?\\b|error budgets?",
+  "implies": [
+   "SRE"
+  ]
+ },
+ {
+  "n": "IAM",
+  "re": "IAM\\b|identity and access management",
+  "cs": true,
+  "implies": [
+   "Security"
+  ]
+ },
+ {
+  "n": "OAuth/SSO",
+  "re": "oauth2?|oidc|openid connect|saml|single sign-on|\\bSSO\\b",
+  "implies": [
+   "Security"
+  ]
+ },
+ {
+  "n": "REST",
+  "re": "REST(?=\\s*(?:[,/)]|and |or |APIs?|services|$))",
+  "cs": true,
+  "implies": [
+   "REST APIs",
+   "Backend"
+  ]
+ },
+ {
+  "n": "Postman",
+  "re": "postman",
+  "implies": [
+   "REST APIs"
+  ]
+ },
+ {
+  "n": "MCP",
+  "re": "MCP\\b|model context protocol",
+  "cs": true,
+  "implies": [
+   "LLMs"
+  ]
+ },
+ {
+  "n": "AI coding tools",
+  "re": "GitHub Copilot|Copilot|Claude Code|Cursor(?=\\s*(?:[,/)]|and |or |$))|ChatGPT|Codex|Windsurf|AI[- ]assisted (?:development|coding|engineering|tools)|LLM[- ]assisted (?:development|coding|workflows)",
+  "cs": true
+ },
+ {
+  "n": "vLLM",
+  "re": "vllm",
+  "implies": [
+   "LLMs",
+   "MLOps"
+  ]
+ },
+ {
+  "n": "TensorRT",
+  "re": "tensorrt",
+  "implies": [
+   "CUDA",
+   "MLOps"
+  ]
+ },
+ {
+  "n": "ONNX",
+  "re": "onnx",
+  "implies": [
+   "MLOps"
+  ]
+ },
+ {
+  "n": "Ray",
+  "re": "Ray(?: Serve| Tune| Train| Data)?(?=\\s*(?:[,/)]|and |or |$))|Ray Serve|Ray Tune",
+  "cs": true,
+  "implies": [
+   "Distributed Systems",
+   "MLOps"
+  ]
+ },
+ {
+  "n": "Hugging Face",
+  "re": "hugging ?face|transformers library",
+  "implies": [
+   "LLMs",
+   "Machine Learning"
+  ]
+ },
+ {
+  "n": "LangGraph",
+  "re": "langgraph",
+  "implies": [
+   "LangChain",
+   "LLMs"
+  ]
+ },
+ {
+  "n": "CrewAI",
+  "re": "crewai",
+  "implies": [
+   "LLMs"
+  ]
+ },
+ {
+  "n": "AutoGen",
+  "re": "AutoGen",
+  "cs": true,
+  "implies": [
+   "LLMs"
+  ]
+ },
+ {
+  "n": "DSPy",
+  "re": "dspy",
+  "implies": [
+   "LLMs"
+  ]
+ },
+ {
+  "n": "LLM Agents",
+  "re": "ai agents?|agentic|llm agents?|multi-agent",
+  "implies": [
+   "LLMs"
+  ]
+ },
+ {
+  "n": "XGBoost/LightGBM",
+  "re": "xgboost|lightgbm|catboost|gradient boost(?:ing|ed)",
+  "implies": [
+   "Machine Learning"
+  ]
+ },
+ {
+  "n": "scikit-learn",
+  "re": "scikit-learn|sklearn",
+  "implies": [
+   "Machine Learning"
+  ]
+ },
+ {
+  "n": "NumPy",
+  "re": "numpy",
+  "implies": [
+   "Pandas"
+  ]
+ },
+ {
+  "n": "Polars",
+  "re": "Polars",
+  "cs": true,
+  "implies": [
+   "Pandas"
+  ]
+ },
+ {
+  "n": "Jupyter",
+  "re": "jupyter",
+  "implies": [
+   "Data Analysis"
+  ]
+ },
+ {
+  "n": "MLflow",
+  "re": "mlflow",
+  "implies": [
+   "MLOps"
+  ]
+ },
+ {
+  "n": "Vector Databases",
+  "re": "vector (?:databases?|db|stores?|search)|milvus|qdrant|pgvector|faiss|chroma(?:db)?",
+  "implies": [
+   "RAG"
+  ]
+ },
+ {
+  "n": "Pinecone",
+  "re": "pinecone",
+  "implies": [
+   "Vector Databases",
+   "RAG"
+  ]
+ },
+ {
+  "n": "Nsight",
+  "re": "nsight",
+  "implies": [
+   "CUDA"
+  ]
+ },
+ {
+  "n": "NCCL",
+  "re": "nccl",
+  "implies": [
+   "CUDA",
+   "Distributed Systems"
+  ]
+ },
+ {
+  "n": "HPC",
+  "re": "HPC|high[- ]performance computing|MPI\\b|Slurm|OpenMP",
+  "cs": true
+ },
+ {
+  "n": "ROCm",
+  "re": "rocm",
+  "implies": [
+   "CUDA"
+  ]
+ },
+ {
+  "n": "Presto/Trino",
+  "re": "presto|trino",
+  "implies": [
+   "Data Warehousing",
+   "SQL"
+  ]
+ },
+ {
+  "n": "ClickHouse",
+  "re": "clickhouse",
+  "implies": [
+   "Data Warehousing"
+  ]
+ },
+ {
+  "n": "DuckDB",
+  "re": "duckdb",
+  "implies": [
+   "SQL"
+  ]
+ },
+ {
+  "n": "Druid/Pinot",
+  "re": "apache druid|apache pinot|\\bDruid\\b|\\bPinot\\b",
+  "implies": [
+   "Data Warehousing"
+  ]
+ },
+ {
+  "n": "HBase",
+  "re": "hbase",
+  "implies": [
+   "NoSQL"
+  ]
+ },
+ {
+  "n": "CockroachDB",
+  "re": "cockroachdb",
+  "implies": [
+   "SQL",
+   "Distributed Systems"
+  ]
+ },
+ {
+  "n": "Spanner/Bigtable",
+  "re": "spanner|bigtable",
+  "implies": [
+   "GCP"
+  ]
+ },
+ {
+  "n": "Firebase",
+  "re": "firebase|firestore",
+  "implies": [
+   "GCP"
+  ]
+ },
+ {
+  "n": "Supabase",
+  "re": "supabase",
+  "implies": [
+   "PostgreSQL"
+  ]
+ },
+ {
+  "n": "Neo4j",
+  "re": "neo4j|graph databases?|cypher queries",
+  "implies": [
+   "NoSQL"
+  ]
+ },
+ {
+  "n": "SQS/SNS",
+  "re": "\\bsqs\\b|\\bsns\\b",
+  "implies": [
+   "AWS",
+   "Message Queues"
+  ]
+ },
+ {
+  "n": "ZeroMQ",
+  "re": "zeromq|zmq",
+  "implies": [
+   "Message Queues"
+  ]
+ },
+ {
+  "n": "Tableau",
+  "re": "tableau",
+  "implies": [
+   "Data Analysis"
+  ]
+ },
+ {
+  "n": "Looker",
+  "re": "Looker",
+  "cs": true,
+  "implies": [
+   "Data Analysis"
+  ]
+ },
+ {
+  "n": "Power BI",
+  "re": "power ?bi",
+  "implies": [
+   "Data Analysis"
+  ]
+ },
+ {
+  "n": "Superset/Metabase",
+  "re": "apache superset|metabase",
+  "implies": [
+   "Data Analysis"
+  ]
+ },
+ {
+  "n": "Dagster/Prefect",
+  "re": "dagster|prefect",
+  "implies": [
+   "Airflow"
+  ]
+ },
+ {
+  "n": "jQuery",
+  "re": "jquery",
+  "implies": [
+   "JavaScript",
+   "Frontend"
+  ]
+ },
+ {
+  "n": "State management",
+  "re": "zustand|mobx|recoil|xstate",
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "Electron",
+  "re": "Electron",
+  "cs": true,
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "WebAssembly",
+  "re": "webassembly|\\bwasm\\b"
+ },
+ {
+  "n": "WebRTC",
+  "re": "webrtc",
+  "implies": [
+   "Networking"
+  ]
+ },
+ {
+  "n": "WebGL/Three.js",
+  "re": "webgl|webgpu|three\\.js|threejs",
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "D3",
+  "re": "D3(?:\\.js)?",
+  "cs": true,
+  "implies": [
+   "Frontend",
+   "Data Analysis"
+  ]
+ },
+ {
+  "n": "SolidJS",
+  "re": "solidjs|solid\\.js",
+  "implies": [
+   "Frontend"
+  ]
+ },
+ {
+  "n": "Prisma/ORMs",
+  "re": "prisma|sequelize|typeorm|sqlalchemy|\\bORMs?\\b",
+  "implies": [
+   "SQL",
+   "Backend"
+  ]
+ },
+ {
+  "n": "Hibernate/JPA",
+  "re": "hibernate|\\bJPA\\b",
+  "implies": [
+   "Java",
+   "SQL"
+  ]
+ },
+ {
+  "n": "Quarkus/Micronaut",
+  "re": "quarkus|micronaut",
+  "implies": [
+   "Java",
+   "Backend"
+  ]
+ },
+ {
+  "n": ".NET",
+  "re": "\\.net(?: core| framework)?|dotnet|asp\\.net",
+  "implies": [
+   "C#",
+   "Backend"
+  ]
+ },
+ {
+  "n": "Jetpack Compose",
+  "re": "jetpack compose",
+  "implies": [
+   "Android"
+  ]
+ },
+ {
+  "n": "SwiftUI",
+  "re": "swiftui|uikit",
+  "implies": [
+   "iOS",
+   "Swift"
+  ]
+ },
+ {
+  "n": "Godot",
+  "re": "godot",
+  "implies": [
+   "Game Development"
+  ]
+ },
+ {
+  "n": "Clojure",
+  "re": "clojure"
+ },
+ {
+  "n": "Perl",
+  "re": "Perl",
+  "cs": true
+ },
+ {
+  "n": "Lua",
+  "re": "Lua",
+  "cs": true
+ },
+ {
+  "n": "Zig",
+  "re": "Zig",
+  "cs": true
+ },
+ {
+  "n": "Fortran",
+  "re": "fortran"
+ },
+ {
+  "n": "COBOL",
+  "re": "cobol"
+ },
+ {
+  "n": "Objective-C",
+  "re": "objective-c",
+  "implies": [
+   "iOS"
+  ]
+ },
+ {
+  "n": "OCaml",
+  "re": "ocaml",
+  "implies": [
+   "Haskell"
+  ]
+ },
+ {
+  "n": "FPGA",
+  "re": "fpgas?",
+  "implies": [
+   "Embedded"
+  ]
+ },
+ {
+  "n": "Verilog/VHDL",
+  "re": "systemverilog|verilog|vhdl|\\bRTL\\b",
+  "implies": [
+   "Embedded"
+  ]
+ },
+ {
+  "n": "RTOS",
+  "re": "freertos|zephyr|rtos",
+  "implies": [
+   "Embedded"
+  ]
+ },
+ {
+  "n": "Embedded Linux",
+  "re": "yocto|buildroot|u-boot|embedded linux",
+  "implies": [
+   "Embedded",
+   "Linux"
+  ]
+ },
+ {
+  "n": "ARM",
+  "re": "ARM(?: Cortex|v[789]|64)?\\b|aarch64",
+  "cs": true,
+  "implies": [
+   "Embedded"
+  ]
+ },
+ {
+  "n": "ROS",
+  "re": "ROS ?2?\\b|robot operating system",
+  "cs": true,
+  "implies": [
+   "Robotics"
+  ]
+ },
+ {
+  "n": "Simulink",
+  "re": "simulink",
+  "implies": [
+   "MATLAB"
+  ]
+ }
+]

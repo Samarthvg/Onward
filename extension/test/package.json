@@ -1,0 +1,24 @@
+{
+  "name": "jobradar-autofill-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build-mocks": "node build-mocks.mjs",
+    "test": "node unit.mjs && node build-mocks.mjs && node run-mocks.mjs",
+    "test:firefox": "node build-mocks.mjs && python firefox_mocks.py",
+    "test:live": "node live-check.mjs && python firefox_mocks.py --live",
+    "lint": "web-ext lint --source-dir .. --ignore-files test test/** web-ext-artifacts",
+    "build": "web-ext build --source-dir .. --artifacts-dir ../web-ext-artifacts --ignore-files test test/** web-ext-artifacts --overwrite-dest"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "playwright": "^1.64.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-select": "^5.10.1",
+    "web-ext": "^10.7.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}

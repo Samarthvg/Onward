@@ -1,0 +1,36 @@
+# Personal data: resumes, tailored outputs, saved answers
+resume/
+
+# Job database and downloaded datasets (rebuilt by radar.py)
+jobs.db
+jobs.db-journal
+jobs.db-wal
+jobs.db-shm
+data/
+
+# Generated output
+dashboard.html
+*.tmp
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Local environment and secrets
+.env
+.env.*
+
+# Local assistant/tooling config
+CLAUDE.md
+.claude/
+.claude-runner/
+AGENTS.md
+
+# Editors and OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

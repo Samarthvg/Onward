@@ -1,0 +1,350 @@
+"use strict";
+
+const api = globalThis.browser || globalThis.chrome;
+const R = globalThis.JR.rules;
+const $ = (id) => document.getElementById(id);
+const MAX_RESUME = 8 * 1024 * 1024;
+// Firefox match patterns can't name a port; the port is checked separately.
+const DASHBOARD = ["http://127.0.0.1/*", "http://localhost/*"];
+const DASHBOARD_PORT = "8765";
+
+let state = { profile: {}, answers: {}, settings: {} };
+
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (k === "text") n.textContent = v;
+    else if (k === "value") n.value = v;
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) n.append(k);
+  return n;
+}
+
+let savedTimer = 0;
+function saved(msg = "Saved") {
+  $("saved").textContent = msg;
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => { $("saved").textContent = ""; }, 1800);
+}
+
+const pending = {};
+let saveTimer = 0;
+function save(area) {
+  pending[area] = state[area];
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    const out = Object.assign({}, pending);
+    for (const k of Object.keys(pending)) delete pending[k];
+    await api.storage.local.set(out);
+    saved();
+  }, 300);
+}
+
+async function load() {
+  const s = await api.storage.local.get(["profile", "answers", "settings", "resume"]);
+  state.profile = Object.assign({}, R.DEFAULT_PROFILE, s.profile);
+  state.answers = Object.assign({}, R.DEFAULT_ANSWERS, s.answers);
+  state.settings = Object.assign({}, R.DEFAULT_SETTINGS, s.settings);
+  renderProfile();
+  renderStd();
+  renderEeo();
+  renderSettings();
+  renderResume(s.resume);
+  renderMemory();
+}
+
+/* -------------------------------------------------------------- profile */
+
+const INPUT_TYPES = { email: "email", phone: "tel", linkedin: "url", github: "url", portfolio: "url" };
+
+function renderProfile() {
+  const box = $("profileFields");
+  box.replaceChildren();
+  for (const [key, label] of R.PROFILE_FIELDS) {
+    const id = "p-" + key;
+    const input = el("input", { id, type: INPUT_TYPES[key] || "text", value: state.profile[key] || "", autocomplete: "off" });
+    input.addEventListener("input", () => { state.profile[key] = input.value.trim(); save("profile"); });
+    box.append(el("label", { for: id, text: label }), input, el("span"));
+  }
+}
+
+/* -------------------------------------------------------- standard answers */
+
+function renderStd() {
+  const box = $("stdFields");
+  box.replaceChildren();
+  for (const [key, question, allowed] of R.STANDARD_ANSWERS) {
+    const id = "a-" + key;
+    let input;
+    if (allowed) {
+      input = el("select", { id },
+        el("option", { value: "", text: "Ask me each time" }),
+        el("option", { value: "yes", text: "Yes" }),
+        el("option", { value: "no", text: "No" }));
+      input.value = state.answers[key] || "";
+      input.addEventListener("change", () => { state.answers[key] = input.value; save("answers"); });
+    } else {
+      input = el("input", { id, type: "text", value: state.answers[key] || "", autocomplete: "off",
+        placeholder: key === "hearAbout" ? "LinkedIn" : "Leave empty to answer yourself" });
+      input.addEventListener("input", () => { state.answers[key] = input.value.trim(); save("answers"); });
+    }
+    box.append(el("label", { for: id, text: question }), input, el("span"));
+  }
+}
+
+function renderEeo() {
+  const box = $("eeoFields");
+  box.replaceChildren();
+  for (const [key, label, choices] of R.EEO_ANSWERS) {
+    const id = "e-" + key;
+    const cur = state.answers[key];
+    const known = cur === R.DECLINE || cur === "" || choices.includes(cur);
+    const select = el("select", { id },
+      el("option", { value: R.DECLINE, text: "Decline to answer" }),
+      choices.map((c) => el("option", { value: c, text: c })),
+      el("option", { value: "__custom", text: "Other (type it)" }),
+      el("option", { value: "", text: "Leave it for me" }));
+    select.value = known ? cur : "__custom";
+    const custom = el("input", { type: "text", value: known ? "" : cur, "aria-label": label + " (your wording)", placeholder: "Your answer as the form words it" });
+    custom.hidden = known;
+    select.addEventListener("change", () => {
+      custom.hidden = select.value !== "__custom";
+      state.answers[key] = select.value === "__custom" ? custom.value.trim() : select.value;
+      save("answers");
+      if (!custom.hidden) custom.focus();
+    });
+    custom.addEventListener("input", () => { state.answers[key] = custom.value.trim(); save("answers"); });
+    // The wrapper keeps the grid cell even while the text box is hidden.
+    box.append(el("label", { for: id, text: label }), select, el("span", { class: "cell" }, custom));
+  }
+}
+
+/* ------------------------------------------------------------- settings */
+
+function renderSettings() {
+  for (const k of ["autoRun", "remember", "fillRemembered", "helper", "aiFill"]) {
+    const box = $("set-" + k);
+    box.checked = !!state.settings[k];
+    box.onchange = () => { state.settings[k] = box.checked; save("settings"); };
+  }
+  const b = $("draftBackend");
+  b.value = state.settings.draftBackend;
+  b.onchange = () => { state.settings.draftBackend = b.value; save("settings"); };
+}
+
+$("helperCheck").addEventListener("click", async () => {
+  const out = $("helperStatus");
+  out.textContent = "Checking…";
+  const r = await api.runtime.sendMessage({ type: "jr:helperStatus" });
+  if (!r || r.error) { out.textContent = (r && r.error) || "No answer from the helper."; return; }
+  const b = r.backends || {};
+  const parts = [
+    "ChatGPT " + (b.chatgpt ? "signed in" : "not signed in"),
+    "Claude " + (b.claude_code ? "signed in" : "not signed in"),
+    "Ollama " + (b.ollama ? "ready" : "not ready"),
+  ];
+  out.textContent = "Running. " + parts.join(", ") + "." + (r.master ? "" : " Upload your master .tex resume in the dashboard to enable drafts.");
+});
+
+/* --------------------------------------------------------------- resume */
+
+function renderResume(r) {
+  $("resumeInfo").textContent = r ? `${r.name} (${Math.round(r.size / 1024)} KB), saved ${new Date(r.updated).toLocaleDateString()}` : "No resume chosen.";
+  $("resumeRemove").hidden = !r;
+}
+
+function toB64(buf) {
+  const bytes = new Uint8Array(buf);
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+$("resumeFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  if (f.size > MAX_RESUME) { saved("That file is over 8 MB."); return; }
+  const resume = { name: f.name, type: f.type || "application/pdf", size: f.size, updated: Date.now(), data: toB64(await f.arrayBuffer()) };
+  await api.storage.local.set({ resume });
+  renderResume(resume);
+  saved("Resume saved");
+});
+
+$("resumeRemove").addEventListener("click", async () => {
+  await api.storage.local.remove("resume");
+  renderResume(null);
+  saved("Resume removed");
+});
+
+/* --------------------------------------------------------------- import */
+
+const KIT_TO_ANSWERS = { workAuth: "workAuthText", sponsorship: "sponsorshipText" };
+
+function importKit(kit) {
+  if (!kit || typeof kit !== "object") return "Nothing to import.";
+  let added = 0, kept = 0;
+  const profileKeys = new Set(R.PROFILE_FIELDS.map(([k]) => k));
+  for (const [k, raw] of Object.entries(kit)) {
+    const v = typeof raw === "string" ? raw.trim() : "";
+    if (!v) continue;
+    const area = profileKeys.has(k) ? "profile" : KIT_TO_ANSWERS[k] ? "answers" : null;
+    if (!area) continue;
+    const key = area === "answers" ? KIT_TO_ANSWERS[k] : k;
+    const cur = state[area][key];
+    if (cur && !(key === "country" && cur === R.DEFAULT_PROFILE.country)) { if (cur !== v) kept++; continue; }
+    state[area][key] = v;
+    added++;
+  }
+  api.storage.local.set({ profile: state.profile, answers: state.answers });
+  renderProfile();
+  renderStd();
+  return `Imported ${added} field${added === 1 ? "" : "s"}.` + (kept ? ` Kept ${kept} you had already set here.` : "");
+}
+
+async function profileFromDashboard() {
+  let tabs = (await api.tabs.query({ url: DASHBOARD })).filter((t) => {
+    try { return new URL(t.url).port === DASHBOARD_PORT; } catch (e) { return false; }
+  });
+  let opened = null;
+  if (!tabs.length) {
+    opened = await api.tabs.create({ url: "http://127.0.0.1:8765/", active: false });
+    tabs = [opened];
+  }
+  for (let i = 0; i < 20; i++) {
+    for (const t of tabs) {
+      try {
+        const r = await api.tabs.sendMessage(t.id, { type: "jr:exportProfile" });
+        if (r) { if (opened) api.tabs.remove(opened.id); return r.profile; }
+      } catch (e) { /* not loaded yet */ }
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  if (opened) api.tabs.remove(opened.id);
+  throw new Error("Couldn't reach the dashboard. Is the helper running (pythonw server.py)? You can also paste an export.");
+}
+
+$("importDash").addEventListener("click", async () => {
+  $("importMsg").textContent = "Reading the dashboard's Apply kit…";
+  try {
+    const kit = await profileFromDashboard();
+    $("importMsg").textContent = kit ? importKit(kit) : "The dashboard's Apply kit is empty. Fill it in there first, or type your details below.";
+  } catch (e) {
+    $("importMsg").textContent = e.message;
+  }
+});
+
+$("pasteToggle").addEventListener("click", () => { $("pasteBox").hidden = !$("pasteBox").hidden; if (!$("pasteBox").hidden) $("pasteText").focus(); });
+$("pasteImport").addEventListener("click", () => {
+  try {
+    const data = JSON.parse($("pasteText").value);
+    $("importMsg").textContent = importKit(data && data.profile && typeof data.profile === "object" ? data.profile : data);
+    $("pasteText").value = "";
+    $("pasteBox").hidden = true;
+  } catch (e) {
+    $("importMsg").textContent = "That isn't a Job Radar export. In the dashboard's Apply kit, press Copy for extension and paste the result.";
+  }
+});
+
+/* --------------------------------------------------------------- memory */
+
+let memCache = [];
+
+async function readMemory() {
+  const all = await api.storage.local.get(null);
+  memCache = Object.entries(all).filter(([k]) => k.startsWith("mem:")).map(([k, v]) => Object.assign({ key: k }, v))
+    .sort((a, b) => (b.updated || 0) - (a.updated || 0));
+}
+
+const SHOW = 100;
+async function renderMemory() {
+  await readMemory();
+  drawMemory();
+}
+
+function drawMemory() {
+  const q = R.normQ($("memSearch").value);
+  const hits = q ? memCache.filter((m) => R.normQ(m.q + " " + m.a + " " + (m.company || "")).includes(q)) : memCache;
+  $("memCount").textContent = memCache.length ? `(${memCache.length})` : "";
+  const list = $("memList");
+  list.replaceChildren();
+  for (const m of hits.slice(0, SHOW)) {
+    const ta = el("textarea", { rows: m.a.length > 120 ? 4 : 1, "aria-label": "Answer to: " + m.q }, m.a);
+    ta.addEventListener("change", async () => {
+      m.a = ta.value;
+      m.updated = Date.now();
+      const { key, ...rest } = m;
+      await api.storage.local.set({ [key]: rest });
+      saved();
+    });
+    list.append(el("li", null,
+      el("div", { class: "q" }, m.q),
+      ta,
+      el("div", { class: "meta" },
+        el("span", null, [m.company, m.host, m.updated ? new Date(m.updated).toLocaleDateString() : ""].filter(Boolean).join(" · ")),
+        el("button", { type: "button", class: "ghost danger", onclick: async () => {
+          await api.storage.local.remove(m.key);
+          memCache = memCache.filter((x) => x !== m);
+          drawMemory();
+          saved("Deleted");
+        } }, "Delete"))));
+  }
+  if (!memCache.length) list.append(el("li", { class: "muted" }, "Nothing saved yet. Answers you type into custom questions on application forms show up here."));
+  $("memMore").textContent = hits.length > SHOW ? `Showing ${SHOW} of ${hits.length}. Search to narrow down.` : "";
+}
+
+$("memSearch").addEventListener("input", drawMemory);
+
+/* --------------------------------------------------------------- backup */
+
+$("exportAll").addEventListener("click", async () => {
+  const all = await api.storage.local.get(null);
+  delete all.resume;
+  const blob = new Blob([JSON.stringify({ jobradar: "autofill-backup", version: 1, data: all }, null, 1)], { type: "application/json" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: "jobradar-autofill-backup.json" });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
+
+$("importAll").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  try {
+    const doc = JSON.parse(await f.text());
+    if (!doc || doc.jobradar !== "autofill-backup" || typeof doc.data !== "object") throw new Error();
+    const data = {};
+    for (const [k, v] of Object.entries(doc.data)) {
+      if (["profile", "answers", "settings"].includes(k) || k.startsWith("mem:")) data[k] = v;
+    }
+    await api.storage.local.set(data);
+    await load();
+    saved("Backup imported");
+  } catch (err) {
+    saved("That file isn't a Job Radar Autofill backup.");
+  }
+});
+
+/* ---------------------------------------------------------- permissions */
+
+async function checkPermissions() {
+  const origins = api.runtime.getManifest().host_permissions;
+  const ok = await api.permissions.contains({ origins });
+  $("perm").hidden = ok;
+  $("grant").onclick = async () => {
+    const granted = await api.permissions.request({ origins });
+    $("perm").hidden = granted;
+  };
+}
+
+$("unsupported").hidden = location.hash !== "#unsupported";
+api.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && Object.keys(changes).some((k) => k.startsWith("mem:"))) renderMemory();
+});
+checkPermissions();
+load();

@@ -1,0 +1,97 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Mock Co - Software Engineer, New Grad</title>
+<style>body{font:14px system-ui;margin:24px} .application-question{list-style:none;margin:10px 0} .invisible-resume-upload{position:absolute;opacity:0;width:1px;height:1px}</style>
+</head><body>
+<!-- Modelled on jobs.lever.co/<company>/<id>/apply as served in October 2026. -->
+<div class="posting-headline"><h2>Software Engineer, New Grad</h2></div>
+<form id="application-form" enctype="multipart/form-data" method="POST" action="/never">
+  <div class="section page-centered application-form"><h4>Submit your application</h4><ul>
+    <li class="application-question resume"><label><div class="application-label">Resume/CV </div><div class="application-field">
+      <a href="#" class="postings-btn template-btn-utility visible-resume-upload"><span class="filename"></span><span class="default-label">ATTACH RESUME/CV</span>
+      <input class="application-file-input invisible-resume-upload" data-qa="input-resume" id="resume-upload-input" name="resume" tabindex="-1" type="file"></a></div></label></li>
+    <li class="application-question"><label><div class="application-label">Full name<span class="required">✱</span></div><div class="application-field"><input type="text" data-qa="name-input" name="name" required=""></div></label></li>
+    <li class="application-question"><label><div class="application-label">Email<span class="required">✱</span></div><div class="application-field"><input name="email" data-qa="email-input" type="email" required=""></div></label></li>
+    <li class="application-question"><label><div class="application-label">Phone </div><div class="application-field"><input type="text" data-qa="phone-input" name="phone"></div></label></li>
+    <li class="application-question" data-qa="structured-contact-location-question"><label><div class="application-label">Current location </div><div class="application-field"><input class="location-input" data-qa="location-input" id="location-input" type="text" maxlength="100" name="location"><input id="selected-location" type="hidden" name="selectedLocation">
+      <div class="dropdown-container"><div class="dropdown-results width-full cursor-pointer"></div></div></div></label></li>
+    <li class="application-question"><label><div class="application-label">Current company </div><div class="application-field"><input type="text" data-qa="org-input" name="org"></div></label></li>
+  </ul></div>
+  <div class="section page-centered application-form"><h4>Links</h4><ul>
+    <li class="application-question"><label><div class="application-label">LinkedIn URL</div><div class="application-field"><input type="text" name="urls[LinkedIn]"></div></label></li>
+    <li class="application-question"><label><div class="application-label">GitHub URL</div><div class="application-field"><input type="text" name="urls[GitHub]"></div></label></li>
+    <li class="application-question"><label><div class="application-label">Portfolio URL</div><div class="application-field"><input type="text" name="urls[Portfolio]"></div></label></li>
+  </ul></div>
+  <div class="section page-centered application-form" data-qa="additional-cards"><h4 data-qa="card-name">Additional Questions: US</h4><ul>
+    <li class="application-question custom-question"><div><div class="application-label full-width multiple-choice"><div class="text">Do you have the unrestricted right to work in the United States?<span class="required">✱</span></div></div>
+      <div class="application-field full-width required-field"><ul data-qa="multiple-choice">
+        <li><label><input type="radio" name="cards[a][field0]" value="Yes" required="required"><span class="application-answer-alternative">Yes</span></label></li>
+        <li><label><input type="radio" name="cards[a][field0]" value="No" required="required"><span class="application-answer-alternative">No</span></label></li></ul></div></div></li>
+    <li class="application-question custom-question"><div><div class="application-label full-width multiple-choice"><div class="text">Do you now, or in the future require sponsorship?<span class="required">✱</span></div></div>
+      <div class="application-field full-width required-field"><ul data-qa="multiple-choice">
+        <li><label><input type="radio" name="cards[a][field1]" value="Yes" required="required"><span class="application-answer-alternative">Yes</span></label></li>
+        <li><label><input type="radio" name="cards[a][field1]" value="No" required="required"><span class="application-answer-alternative">No</span></label></li></ul></div></div></li>
+    <li class="application-question custom-question"><div><div class="application-label full-width multiple-choice"><div class="text">Have you personally built and deployed a working AI agent?<span class="required">✱</span></div></div>
+      <div class="application-field full-width required-field"><ul data-qa="multiple-choice">
+        <li><label><input type="radio" name="cards[b][field0]" value="Yes" required="required"><span class="application-answer-alternative">Yes</span></label></li>
+        <li><label><input type="radio" name="cards[b][field0]" value="No" required="required"><span class="application-answer-alternative">No</span></label></li></ul></div></div></li>
+    <li class="application-question custom-question"><div><div class="application-label full-width textarea"><div class="text">If yes, briefly describe what it did and what you built it with.<span class="required">✱</span></div></div>
+      <div class="application-field full-width required-field"><textarea class="card-field-input" name="cards[b][field1]" required="required"></textarea></div></div></li>
+    <li class="application-question custom-question"><div><div class="application-label full-width text"><div class="text">Which languages do you use most?</div></div>
+      <div class="application-field full-width"><input type="text" class="card-field-input" name="cards[b][field2]"></div></div></li>
+    <li class="application-question custom-question"><div><div class="application-label full-width multiple-choice"><div class="text">Which office would you prefer?</div></div>
+      <div class="application-field full-width"><ul data-qa="checkboxes">
+        <li><label><input type="checkbox" name="cards[b][field3]" value="Boston"><span class="application-answer-alternative">Boston</span></label></li>
+        <li><label><input type="checkbox" name="cards[b][field3]" value="New York"><span class="application-answer-alternative">New York</span></label></li></ul></div></div></li>
+  </ul></div>
+  <div class="section page-centered application-form"><h4>U.S. Equal Employment Opportunity information</h4>
+    <div class="application-question"><label><div class="application-label">Gender</div><div class="application-field"><div class="application-dropdown"><select name="eeo[gender]">
+      <option value="">Select ...</option><option value="Male">Male</option><option value="Female">Female</option><option value="Decline to self-identify">Decline to self-identify</option></select></div></div></label></div>
+    <div class="application-question"><label><div class="application-label">Race</div><div class="application-field"><div class="application-dropdown"><select name="eeo[race]">
+      <option value="">Select ...</option><option>Hispanic or Latino</option><option>Asian (Not Hispanic or Latino)</option><option>White (Not Hispanic or Latino)</option><option>Decline to self-identify</option></select></div></div></label></div>
+    <div class="application-question"><label><div class="application-label">Veteran status</div><div class="application-field"><div class="application-dropdown"><select name="eeo[veteran]">
+      <option value="">Select ...</option><option>I am a veteran</option><option>I am not a veteran</option><option>Decline to self-identify</option></select></div></div></label></div>
+  </div>
+  <div class="section page-centered application-form" data-qa="consent-section"><ul><li class="application-question"><div class="application-field full-width"><ul><li><label>
+    <input type="hidden" name="consent[marketing]" value="0"><input type="checkbox" name="consent[marketing]" value="1"><p class="application-answer-alternative">Yes, Mock Co can contact me about future job opportunities for up to 2 years</p></label></li></ul></div></li></ul></div>
+  <div class="section page-centered application-form last-section-apply"><button id="btn-submit" type="button" class="postings-btn template-btn-submit" data-qa="btn-submit">Submit application</button></div>
+</form>
+<script>
+  // Lever's own script reads the resume as soon as it's attached.
+  window.__submitted = 0;
+  const S = {};
+  document.addEventListener("submit", (e) => { e.preventDefault(); window.__submitted++; }, true);
+  document.getElementById("btn-submit").addEventListener("click", () => { window.__submitted++; });
+  document.getElementById("resume-upload-input").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    document.querySelector(".filename").textContent = f ? f.name : "";
+    S.resume = f ? f.name + ":" + f.size : "";
+  });
+  // Like live Lever: suggestions load on keyup, and the field empties on
+  // blur unless one of them was picked.
+  const loc = document.getElementById("location-input");
+  const results = document.querySelector(".dropdown-results");
+  const PLACES = ["Boston, MA, USA", "Boston, Lincolnshire, England, GBR", "Boston, NY, USA"];
+  loc.addEventListener("keyup", () => {
+    document.getElementById("selected-location").value = "";
+    const q = loc.value.split(",")[0].trim().toLowerCase();
+    setTimeout(() => {
+      results.innerHTML = "";
+      for (const [i, p] of PLACES.filter((p) => q && p.toLowerCase().startsWith(q)).entries()) {
+        const d = document.createElement("div");
+        d.className = "dropdown-location"; d.id = "location-" + i; d.textContent = p;
+        d.addEventListener("click", () => { loc.value = p; document.getElementById("selected-location").value = JSON.stringify({ name: p }); results.innerHTML = ""; });
+        results.append(d);
+      }
+    }, 300);
+  });
+  loc.addEventListener("blur", () => setTimeout(() => { if (!document.getElementById("selected-location").value) loc.value = ""; }, 150));
+  window.__mockState = () => {
+    const out = Object.assign({}, S);
+    for (const el of document.querySelectorAll("#application-form input:not([type=hidden]):not([type=file]), #application-form textarea, #application-form select")) {
+      if (el.type === "radio" || el.type === "checkbox") { if (el.checked) out[el.name] = (out[el.name] ? out[el.name] + "," : "") + el.value; }
+      else out[el.name] = el.value;
+    }
+    return out;
+  };
+</script>
+</body></html>

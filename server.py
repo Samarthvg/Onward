@@ -1,0 +1,470 @@
+"""Local helper for the dashboard: serves it at http://127.0.0.1:8765 and runs
+resume tailoring jobs in the background. It also drafts answers to
+application questions for the Job Radar Autofill browser extension.
+
+Only this machine can reach it (bound to 127.0.0.1), and every write request
+must come from the dashboard's own origin (or, for drafts, from the
+extension), so other websites open in the same browser can't trigger
+tailoring or read your resume.
+
+Run:  pythonw server.py      (windowless; the scheduled task does this at logon)
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sqlite3
+import sys
+import threading
+import time
+import traceback
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+import resume_tex as rt
+import tailor
+
+ROOT = Path(__file__).resolve().parent
+HOST, PORT = "127.0.0.1", 8765
+ORIGINS = {f"http://{HOST}:{PORT}", f"http://localhost:{PORT}"}
+DASHBOARD = ROOT / "dashboard.html"
+RESUME_DIR = ROOT / "resume"
+MASTER = RESUME_DIR / "master.tex"
+MASTER_META = RESUME_DIR / "master.json"
+OUT_DIR = RESUME_DIR / "tailored"
+DB_PATH = ROOT / "jobs.db"
+LOG_PATH = ROOT / "server.log"
+MAX_BODY = 2 * 1024 * 1024
+FILE_NAME = re.compile(r"^[A-Za-z0-9_.-]+\.(pdf|tex)$")
+# Browser extensions' own pages; websites can't send these origins. The
+# extension also sends X-JobRadar-Client, which no website can add without a
+# CORS preflight, and this server never answers preflights.
+EXT_ORIGIN = re.compile(r"^(moz|chrome)-extension://[A-Za-z0-9-]+$")
+EXT_CLIENT = "autofill"
+
+EXECUTOR = ThreadPoolExecutor(max_workers=2)
+GPU_LOCK = threading.Lock()          # one local-model run at a time
+JOBS: dict[str, dict] = {}
+JOBS_LOCK = threading.Lock()
+
+HISTORY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS tailored (
+    id         TEXT PRIMARY KEY,
+    job_key    TEXT NOT NULL,
+    created    REAL NOT NULL,
+    backend    TEXT NOT NULL,
+    model      TEXT NOT NULL,
+    pdf        TEXT NOT NULL,
+    tex        TEXT NOT NULL,
+    result     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tailored_job ON tailored(job_key, created);
+"""
+
+
+def log(msg: str) -> None:
+    with LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(time.strftime("%Y-%m-%dT%H:%M:%S ") + msg + "\n")
+
+
+def db() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.executescript(HISTORY_SCHEMA)
+    return conn
+
+
+def job_row(key: str) -> dict | None:
+    conn = db()
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
+        desc = "description" if "description" in cols else "''"
+        row = conn.execute(f"SELECT company, title, {desc}, url FROM jobs WHERE key = ?", (key,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    return {"company": row[0], "title": row[1], "description": row[2] or "", "url": row[3]}
+
+
+def apply_url_candidates(page_url: str) -> list[str]:
+    """apply_url values radar.py could have stored for the form at page_url."""
+    u = urlparse(page_url)
+    if u.scheme not in ("http", "https") or not u.netloc:
+        return []
+    host = u.netloc.lower()
+    path = u.path.rstrip("/")
+    q = parse_qs(u.query)
+    out = []
+    if host.endswith("greenhouse.io"):
+        m = re.match(r"^/([^/]+)/jobs/(\d+)", path)
+        board, jid = m.groups() if m else (None, None)
+        if path.startswith("/embed/job_app"):
+            board, jid = (q.get("for") or [None])[0], (q.get("token") or [None])[0]
+        jid = jid or (q.get("gh_jid") or [None])[0]
+        if board and jid:
+            out.append(f"https://job-boards.greenhouse.io/embed/job_app?for={board}&token={jid}")
+    if host.endswith(("myworkdayjobs.com", "myworkdaysite.com")):
+        path = re.sub(r"^/[a-z]{2}-[A-Z]{2}(?=/)", "", path)        # locale prefix
+        path = re.sub(r"/apply(/.*)?$", "", path)
+    path = re.sub(r"/(apply|application)$", "", path)
+    base = f"https://{host}{path}"
+    return out + [base, base + "/apply", base + "/application"]
+
+
+def job_by_url(page_url: str) -> dict | None:
+    cands = apply_url_candidates(page_url)
+    if not cands:
+        return None
+    conn = db()
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
+        if "apply_url" not in cols:
+            return None
+        desc = "description" if "description" in cols else "''"
+        row = conn.execute(f"SELECT company, title, {desc}, url FROM jobs WHERE apply_url IN "
+                           f"({','.join('?' * len(cands))}) LIMIT 1", cands).fetchone()
+    finally:
+        conn.close()
+    return {"company": row[0], "title": row[1], "description": row[2] or "", "url": row[3]} if row else None
+
+
+def master_meta() -> dict | None:
+    if not MASTER.exists():
+        return None
+    meta = json.loads(MASTER_META.read_text(encoding="utf-8")) if MASTER_META.exists() else {}
+    try:
+        res = rt.parse(MASTER.read_text(encoding="utf-8"))
+        meta.update(rt.summary(res))
+    except ValueError as e:
+        meta["error"] = str(e)
+    return meta
+
+
+# --------------------------------------------------------------------------
+# Jobs
+
+def run_job(jid: str, params: dict) -> None:
+    def update(**kw):
+        with JOBS_LOCK:
+            JOBS[jid].update(kw)
+
+    update(state="running", started=time.time())
+    try:
+        master = MASTER.read_text(encoding="utf-8")
+        backend = params["backend"]
+        meta = {"company": params.get("company", ""), "title": params.get("title", "")}
+        if backend == "ollama":
+            with GPU_LOCK:
+                result = tailor.tailor(master, meta, params["jd"], backend, OUT_DIR,
+                                       rewrite_bullets=params.get("rewrite", True))
+        else:
+            result = tailor.tailor(master, meta, params["jd"], backend, OUT_DIR,
+                                   rewrite_bullets=params.get("rewrite", True),
+                                   manual_answer=params.get("answer"))
+        conn = db()
+        try:
+            with conn:
+                conn.execute(
+                    "INSERT INTO tailored (id, job_key, created, backend, model, pdf, tex, result) VALUES (?,?,?,?,?,?,?,?)",
+                    (jid, params.get("key", ""), time.time(), backend, result["model"],
+                     result["pdf"], result["tex"], json.dumps(result)))
+        finally:
+            conn.close()
+        update(state="done", result=result)
+    except (tailor.BackendError, rt.CompileError, ValueError) as e:
+        update(state="error", error=str(e))
+    except Exception as e:  # report, don't kill the worker
+        log(f"job {jid} failed:\n{traceback.format_exc()}")
+        update(state="error", error=f"Unexpected error: {e}")
+
+
+def run_draft(jid: str, params: dict) -> None:
+    """A draft for one question, or (with params["questions"]) answers for several."""
+    def update(**kw):
+        with JOBS_LOCK:
+            JOBS[jid].update(kw)
+
+    update(state="running", started=time.time())
+    try:
+        master = MASTER.read_text(encoding="utf-8")
+        job = {"company": params["company"], "title": params["title"]}
+        if "questions" in params:
+            call = lambda: tailor.answer_questions(master, job, params["profile"], params["questions"],
+                                                   params["jd"], params["backend"])
+        else:
+            call = lambda: tailor.draft_answer(master, job, params["question"], params["context"], params["jd"],
+                                               params["backend"], params["max_chars"])
+        if params["backend"] == "ollama":
+            with GPU_LOCK:
+                result = call()
+        else:
+            result = call()
+        update(state="done", result=result)
+    except (tailor.BackendError, ValueError) as e:
+        update(state="error", error=str(e))
+    except Exception as e:  # report, don't kill the worker
+        log(f"draft {jid} failed:\n{traceback.format_exc()}")
+        update(state="error", error=f"Unexpected error: {e}")
+
+
+def _register(**fields) -> str:
+    jid = uuid.uuid4().hex[:12]
+    with JOBS_LOCK:
+        # Keep the in-memory table bounded; tailoring results also live in SQLite.
+        if len(JOBS) > 200:
+            for old in sorted(JOBS, key=lambda k: JOBS[k]["created"])[:100]:
+                JOBS.pop(old, None)
+        JOBS[jid] = {"id": jid, "state": "queued", "created": time.time(), **fields}
+    return jid
+
+
+def submit_draft(params: dict) -> str:
+    jid = _register(kind="draft", backend=params["backend"])
+    EXECUTOR.submit(run_draft, jid, params)
+    return jid
+
+
+def submit(params: dict) -> str:
+    jid = _register(backend=params["backend"])
+    EXECUTOR.submit(run_job, jid, params)
+    return jid
+
+
+# --------------------------------------------------------------------------
+# HTTP
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "jobradar/1.0"
+
+    def log_message(self, fmt, *args):  # quiet; errors go to server.log
+        pass
+
+    # -- helpers
+    def _host_ok(self) -> bool:
+        # Blocks DNS-rebinding: only our own host names are served.
+        return self.headers.get("Host", "") in {f"{HOST}:{PORT}", f"localhost:{PORT}"}
+
+    def _send(self, status: int, body: bytes, ctype: str, extra: dict | None = None) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json(self, status: int, data) -> None:
+        self._send(status, json.dumps(data).encode("utf-8"), "application/json; charset=utf-8")
+
+    def _err(self, status: int, msg: str) -> None:
+        self._json(status, {"error": msg})
+
+    def _origin_ok(self, allow_extension: bool = False) -> bool:
+        origin = self.headers.get("Origin")
+        if origin in ORIGINS:
+            return True
+        # Firefox may omit Origin on an extension's own requests.
+        return (allow_extension and self.headers.get("X-JobRadar-Client") == EXT_CLIENT
+                and (origin is None or bool(EXT_ORIGIN.match(origin))))
+
+    def _body(self) -> dict | None:
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > MAX_BODY:
+            self._err(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "Request too large")
+            return None
+        try:
+            data = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self._err(HTTPStatus.BAD_REQUEST, "Invalid JSON")
+            return None
+        if not isinstance(data, dict):
+            self._err(HTTPStatus.BAD_REQUEST, "Expected a JSON object")
+            return None
+        return data
+
+    # -- GET
+    def do_GET(self):
+        if not self._host_ok():
+            return self._err(HTTPStatus.FORBIDDEN, "Bad host")
+        url = urlparse(self.path)
+        q = parse_qs(url.query)
+        path = url.path
+
+        if path in ("/", "/index.html", "/dashboard.html"):
+            if not DASHBOARD.exists():
+                return self._err(HTTPStatus.NOT_FOUND, "Run radar.py once to build the dashboard")
+            return self._send(200, DASHBOARD.read_bytes(), "text/html; charset=utf-8")
+
+        if path == "/api/status":
+            return self._json(200, {"backends": tailor.backend_status(), "master": master_meta()})
+
+        if path == "/api/job":
+            row = job_row((q.get("key") or [""])[0])
+            return self._json(200, row) if row else self._err(HTTPStatus.NOT_FOUND, "Unknown job")
+
+        if path.startswith(("/api/tailor/", "/api/draft/")):
+            jid = path.rsplit("/", 1)[-1]
+            with JOBS_LOCK:
+                job = dict(JOBS.get(jid) or {})
+            return self._json(200, job) if job else self._err(HTTPStatus.NOT_FOUND, "Unknown job")
+
+        if path == "/api/history":
+            key = (q.get("key") or [""])[0]
+            conn = db()
+            try:
+                rows = conn.execute(
+                    "SELECT id, created, backend, model, pdf, tex, result FROM tailored "
+                    "WHERE job_key = ? ORDER BY created DESC LIMIT 10", (key,)).fetchall()
+            finally:
+                conn.close()
+            return self._json(200, [{"id": r[0], "created": r[1], "backend": r[2], "model": r[3],
+                                     "pdf": r[4], "tex": r[5], "result": json.loads(r[6])} for r in rows])
+
+        if path.startswith("/files/"):
+            name = path[len("/files/"):]
+            if not FILE_NAME.match(name):
+                return self._err(HTTPStatus.BAD_REQUEST, "Bad file name")
+            f = (OUT_DIR / name).resolve()
+            if f.parent != OUT_DIR.resolve() or not f.exists():
+                return self._err(HTTPStatus.NOT_FOUND, "Not found")
+            if name.endswith(".pdf"):
+                return self._send(200, f.read_bytes(), "application/pdf",
+                                  {"Content-Disposition": f'inline; filename="{name}"'})
+            return self._send(200, f.read_bytes(), "application/x-tex; charset=utf-8",
+                              {"Content-Disposition": f'attachment; filename="{name}"'})
+
+        return self._err(HTTPStatus.NOT_FOUND, "Not found")
+
+    # -- POST
+    def do_POST(self):
+        if not self._host_ok():
+            return self._err(HTTPStatus.FORBIDDEN, "Bad host")
+        path = urlparse(self.path).path
+        if not self._origin_ok(allow_extension=path in ("/api/draft", "/api/answers")):
+            return self._err(HTTPStatus.FORBIDDEN, "Requests must come from the dashboard")
+        data = self._body()
+        if data is None:
+            return
+
+        if path == "/api/draft":
+            return self._draft(data)
+        if path == "/api/answers":
+            return self._answers(data)
+
+        if path == "/api/master":
+            tex = str(data.get("tex", ""))
+            try:
+                res = rt.parse(tex)
+                pages = rt.compile_pdf(tex)
+            except (ValueError, rt.CompileError) as e:
+                return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, f"Couldn't use this resume: {e}")
+            RESUME_DIR.mkdir(exist_ok=True)
+            MASTER.write_text(tex, encoding="utf-8")
+            MASTER_META.write_text(json.dumps({"name": str(data.get("name", "master.tex"))[:200],
+                                               "uploaded": time.time(), "pages": pages}), encoding="utf-8")
+            return self._json(200, {**rt.summary(res), "pages": pages, "name": data.get("name")})
+
+        if path in ("/api/tailor", "/api/prompt"):
+            if not MASTER.exists():
+                return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume first")
+            key = str(data.get("key", ""))
+            row = job_row(key) or {}
+            jd = str(data.get("jd") or row.get("description") or "")
+            params = {"key": key, "jd": jd, "company": row.get("company", data.get("company", "")),
+                      "title": row.get("title", data.get("title", "")),
+                      "backend": str(data.get("backend", "ollama")), "rewrite": bool(data.get("rewrite", True)),
+                      "answer": data.get("answer")}
+            if path == "/api/prompt":
+                try:
+                    prompt = tailor.build_manual_prompt(MASTER.read_text(encoding="utf-8"), params, jd)
+                except ValueError as e:
+                    return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
+                return self._json(200, {"prompt": prompt})
+            if params["backend"] not in set(tailor.BACKENDS) | {"manual"}:
+                return self._err(HTTPStatus.BAD_REQUEST, "Unknown backend")
+            if len(jd.strip()) < 200:
+                return self._err(HTTPStatus.UNPROCESSABLE_ENTITY,
+                                 "No job description saved for this posting. Paste it into the box first.")
+            return self._json(202, {"id": submit(params)})
+
+        return self._err(HTTPStatus.NOT_FOUND, "Not found")
+
+    def _draft(self, data: dict):
+        if not MASTER.exists():
+            return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume in the dashboard first")
+        backend = str(data.get("backend", "chatgpt"))
+        if backend not in set(tailor.DRAFT_BACKENDS) | {"manual"}:
+            return self._err(HTTPStatus.BAD_REQUEST, "Drafting works with chatgpt, claude-code, ollama or manual")
+        question = str(data.get("question", "")).strip()[:2000]
+        if not question:
+            return self._err(HTTPStatus.BAD_REQUEST, "No question to answer")
+        row = job_by_url(str(data.get("url", ""))[:2000]) or {}
+        try:
+            max_chars = max(0, min(int(data.get("max_chars") or 0), 20000))
+        except (TypeError, ValueError):
+            max_chars = 0
+        params = {"backend": backend, "question": question, "max_chars": max_chars,
+                  "context": str(data.get("context", ""))[:2000],
+                  "company": row.get("company") or str(data.get("company", ""))[:200],
+                  "title": row.get("title") or str(data.get("title", ""))[:300],
+                  "jd": row.get("description") or str(data.get("jd", ""))[:30000]}
+        if backend == "manual":
+            prompt = tailor.build_draft_prompt(MASTER.read_text(encoding="utf-8"),
+                                               {"company": params["company"], "title": params["title"]},
+                                               question, params["context"], params["jd"], max_chars)
+            return self._json(200, {"prompt": prompt})
+        return self._json(202, {"id": submit_draft(params)})
+
+    def _answers(self, data: dict):
+        """Answers for the questions autofill couldn't fill; poll /api/draft/<id>."""
+        if not MASTER.exists():
+            return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume in the dashboard first")
+        backend = str(data.get("backend", "chatgpt"))
+        if backend not in tailor.DRAFT_BACKENDS:
+            return self._err(HTTPStatus.BAD_REQUEST, "Answering works with chatgpt, claude-code or ollama")
+        questions = []
+        for q in (data.get("questions") or [])[:60]:
+            if not isinstance(q, dict) or not str(q.get("question", "")).strip():
+                continue
+            try:
+                max_chars = max(0, min(int(q.get("max_chars") or 0), 20000))
+            except (TypeError, ValueError):
+                max_chars = 0
+            questions.append({"id": str(q.get("id", ""))[:20], "question": str(q["question"])[:1500],
+                              "kind": str(q.get("kind", "text"))[:20], "max_chars": max_chars,
+                              "context": str(q.get("context", ""))[:800],
+                              "options": [str(o)[:300] for o in (q.get("options") or [])[:200]]})
+        if not questions:
+            return self._err(HTTPStatus.BAD_REQUEST, "No questions to answer")
+        profile = data.get("profile") if isinstance(data.get("profile"), dict) else {}
+        row = job_by_url(str(data.get("url", ""))[:2000]) or {}
+        params = {"backend": backend, "questions": questions,
+                  "profile": {k: str(v)[:300] for k, v in profile.items() if k in tailor.PROFILE_FOR_ANSWERS},
+                  "company": row.get("company") or str(data.get("company", ""))[:200],
+                  "title": row.get("title") or str(data.get("title", ""))[:300],
+                  "jd": row.get("description") or str(data.get("jd", ""))[:30000]}
+        return self._json(202, {"id": submit_draft(params)})
+
+
+def main() -> int:
+    RESUME_DIR.mkdir(exist_ok=True)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        httpd = ThreadingHTTPServer((HOST, PORT), Handler)
+    except OSError as e:
+        log(f"could not bind {HOST}:{PORT}: {e}")
+        return 1
+    log(f"serving http://{HOST}:{PORT}")
+    httpd.serve_forever()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

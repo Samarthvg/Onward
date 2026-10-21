@@ -1,0 +1,1394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Radar</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --surface: #ffffff; --surface-2: #faf9f6; --text: #1d1d1b; --muted: #6b6a64;
+    --line: #e4e2db; --accent: #2f6b4f; --accent-ink: #ffffff; --accent-soft: #e3efe8;
+    --warn: #9a3b1e; --warn-soft: #f7e6df; --ok: #2f6b4f; --ok-soft: #e3efe8;
+    --new: #b5590f; --new-soft: #fbeedd; --chip: #efede7;
+    --h1b: #1f5fa8; --h1b-soft: #e2ecf8;
+    --hi: #2f6b4f; --mid: #8a6a12; --lo: #8b8a83;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151614; --surface: #1d1e1b; --surface-2: #232420; --text: #ecebe6; --muted: #9b9a93;
+      --line: #2e2f2b; --accent: #7cc3a0; --accent-ink: #10201a; --accent-soft: #23352c;
+      --warn: #f0a084; --warn-soft: #3a241c; --ok: #7cc3a0; --ok-soft: #23352c;
+      --new: #f2b36b; --new-soft: #3a2b18; --chip: #262724;
+      --h1b: #8db8ec; --h1b-soft: #1d2a3b;
+      --hi: #7cc3a0; --mid: #e3c46d; --lo: #8b8a83;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151614; --surface: #1d1e1b; --surface-2: #232420; --text: #ecebe6; --muted: #9b9a93;
+    --line: #2e2f2b; --accent: #7cc3a0; --accent-ink: #10201a; --accent-soft: #23352c;
+    --warn: #f0a084; --warn-soft: #3a241c; --ok: #7cc3a0; --ok-soft: #23352c;
+    --new: #f2b36b; --new-soft: #3a2b18; --chip: #262724;
+    --h1b: #8db8ec; --h1b-soft: #1d2a3b;
+    --hi: #7cc3a0; --mid: #e3c46d; --lo: #8b8a83;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 28px 16px 64px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 14px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .status { color: var(--muted); font-size: 13px; flex: 1 1 260px; }
+  .status b { color: var(--text); font-weight: 600; }
+  .hbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+  button, .btn {
+    font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text); text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px; line-height: 1.3;
+  }
+  button:hover, .btn:hover { border-color: var(--muted); }
+  .btn.primary, button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .btn.primary:hover, button.primary:hover { filter: brightness(1.06); }
+  button.ghost { background: transparent; color: var(--muted); }
+  button.ghost:hover { color: var(--text); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .resume-bar {
+    display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+    padding: 10px 12px; margin-bottom: 10px; border-radius: 10px;
+    background: var(--surface); border: 1px dashed var(--line); font-size: 13px; color: var(--muted);
+  }
+  .resume-bar.drag { border-color: var(--accent); background: var(--accent-soft); }
+  .resume-bar.has { border-style: solid; }
+  .resume-bar b { color: var(--text); }
+  .resume-bar .spacer { flex: 1; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    padding: 12px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; margin-bottom: 14px; position: sticky; top: 8px; z-index: 2;
+  }
+  .seg { display: inline-flex; background: var(--chip); border-radius: 8px; padding: 2px; }
+  .seg button { border: 0; background: transparent; color: var(--muted); padding: 6px 11px; border-radius: 6px; }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08); }
+  input[type=search], input[type=text], input[type=email], input[type=tel], input[type=url], select, textarea {
+    padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit; font-size: 14px; min-width: 0;
+  }
+  input[type=search] { flex: 1 1 200px; }
+  label.toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
+  label.toggle input { accent-color: var(--accent); }
+  .count { font-size: 13px; color: var(--muted); margin: 0 2px 10px; }
+
+  ul.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  li.job {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; display: grid; grid-template-columns: 1fr auto; gap: 4px 14px;
+    border-left: 4px solid transparent;
+  }
+  li.job.sponsor { border-left-color: var(--h1b); }
+  li.job.done { opacity: .5; }
+  .title { font-weight: 600; color: var(--text); text-decoration: none; }
+  .title:hover { text-decoration: underline; }
+  .meta { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .company { color: var(--text); font-weight: 500; }
+  .right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .age { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .age.hot { color: var(--accent); font-weight: 600; }
+  .score { font-size: 13px; font-weight: 700; padding: 2px 9px; border-radius: 999px; border: 1.5px solid currentColor; white-space: nowrap; }
+  .score.hi { color: var(--hi); } .score.mid { color: var(--mid); } .score.lo { color: var(--lo); }
+  .row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+  .badge.new { background: var(--new-soft); color: var(--new); font-weight: 600; }
+  .badge.no { background: var(--warn-soft); color: var(--warn); }
+  .badge.yes { background: var(--ok-soft); color: var(--ok); }
+  .badge.h1b { background: var(--h1b-soft); color: var(--h1b); font-weight: 600; }
+  .badge.h1b.small { font-weight: 500; }
+  .skills-line { font-size: 13px; color: var(--muted); }
+  .skills-line .breakdown { flex-basis: 100%; }
+  .kwlist { display: flex; flex-wrap: wrap; gap: 6px; }
+  .kwi { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+  .kwi.ok { background: var(--ok-soft); color: var(--ok); }
+  .kwi.miss { background: var(--warn-soft); color: var(--warn); }
+  .skills-line .breakdown b { color: var(--text); font-weight: 600; }
+  .skills-line .hit { color: var(--ok); }
+  .skills-line .miss { color: var(--warn); }
+  .actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+  .actions button, .actions .btn { font-size: 12px; padding: 4px 10px; }
+  .actions .nudge { border-color: var(--accent); color: var(--accent); }
+
+  details.evidence { grid-column: 1 / -1; font-size: 13px; }
+  details.evidence summary { cursor: pointer; color: var(--muted); width: fit-content; }
+  details.evidence summary:hover { color: var(--text); }
+  .ev { margin-top: 8px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 6px; }
+  .ev dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; }
+  .ev dt { color: var(--muted); }
+  .ev dd { margin: 0; overflow-wrap: anywhere; }
+  .ev code { font: 12px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+  .ev .warnline { color: var(--warn); }
+  .ev a { color: var(--accent); }
+  .empty { padding: 40px 16px; text-align: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 10px; }
+
+  dialog {
+    border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(640px, calc(100vw - 32px));
+    background: var(--surface); color: var(--text); max-height: calc(100vh - 48px);
+  }
+  dialog::backdrop { background: rgb(0 0 0 / .35); }
+  .dlg-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
+  .dlg-head h2 { font-size: 16px; margin: 0; flex: 1; }
+  .dlg-body { padding: 14px 16px 18px; display: grid; gap: 14px; }
+  .dlg-body p { margin: 0; color: var(--muted); font-size: 13px; }
+  .kit { display: grid; grid-template-columns: max-content 1fr auto; gap: 6px 10px; align-items: center; }
+  .kit label { font-size: 13px; color: var(--muted); }
+  .kit button { font-size: 12px; padding: 4px 9px; }
+  .bookmarklet {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px;
+    background: var(--accent); color: var(--accent-ink); font-weight: 600; text-decoration: none; cursor: grab;
+  }
+  .autofill { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .steps { margin: 0; padding-left: 20px; display: grid; gap: 10px; font-size: 13px; color: var(--muted); }
+  .steps b { color: var(--text); }
+  kbd { font: 12px ui-monospace, Consolas, monospace; padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-2); color: var(--text); }
+  .sample { display: grid; gap: 8px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); border: 0; cursor: pointer; }
+  .chip.off { background: var(--chip); color: var(--muted); text-decoration: line-through; }
+  .note { font-size: 12px; color: var(--muted); }
+  dialog.wide { width: min(860px, calc(100vw - 32px)); }
+  .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .opt { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; flex: 1 1 180px; font-size: 13px; }
+  .opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+  .opt input { accent-color: var(--accent); margin-top: 2px; }
+  .opt b { display: block; color: var(--text); }
+  .opt span { color: var(--muted); }
+  .opt.off { opacity: .55; }
+  textarea.jd { width: 100%; min-height: 140px; resize: vertical; font-size: 13px; }
+  .progress { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+  .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+  .errbox { padding: 10px 12px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
+  .kw { display: flex; flex-wrap: wrap; gap: 6px; }
+  .kw .badge.added { background: var(--ok-soft); color: var(--ok); font-weight: 600; }
+  .kw .badge.missing { background: var(--warn-soft); color: var(--warn); }
+  .kw .badge.cut { text-decoration: line-through; }
+  .changes { display: grid; gap: 8px; }
+  .chg { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; background: var(--surface-2); }
+  .chg.rejected { border-style: dashed; }
+  .chg .lbl { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .chg .why { color: var(--warn); font-size: 12px; margin-top: 4px; }
+  .chg ins { background: var(--ok-soft); color: var(--ok); text-decoration: none; border-radius: 3px; padding: 0 2px; }
+  .chg del { color: var(--warn); }
+  .chg.rejected .after { text-decoration: line-through; color: var(--muted); }
+  .section-h { font-size: 13px; font-weight: 600; color: var(--text); margin: 0; }
+  .toast {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg);
+    padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 600px) {
+    .controls { position: static; }
+    li.job { grid-template-columns: 1fr; }
+    .right { flex-direction: row; align-items: center; }
+    .actions { margin-left: 0; }
+    .kit { grid-template-columns: 1fr auto; }
+    .kit label { grid-column: 1 / -1; margin-top: 4px; }
+    .ev dl { grid-template-columns: 1fr; }
+    .ev dt { margin-top: 4px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Job Radar</h1>
+    <div class="status" id="status"></div>
+    <div class="hbtns">
+      <button type="button" id="openKit">Apply kit</button>
+    </div>
+  </header>
+
+  <div class="resume-bar" id="resumeBar"></div>
+
+  <div class="controls">
+    <div class="seg" id="window" role="group" aria-label="Posted within">
+      <button type="button" data-h="1">1h</button>
+      <button type="button" data-h="6">6h</button>
+      <button type="button" data-h="24">24h</button>
+      <button type="button" data-h="72">3d</button>
+      <button type="button" data-h="168">7d</button>
+    </div>
+    <input type="search" id="q" placeholder="Filter by company, title, city, skill" aria-label="Filter">
+    <select id="sort" aria-label="Sort">
+      <option value="new">Newest first</option>
+      <option value="match">Best match first</option>
+    </select>
+    <select id="minMatch" aria-label="Minimum match">
+      <option value="0">Any match</option>
+      <option value="50">50%+ match</option>
+      <option value="65">65%+ match</option>
+      <option value="80">80%+ match</option>
+    </select>
+    <label class="toggle"><input type="checkbox" id="h1bOnly"> H-1B sponsors only</label>
+    <label class="toggle"><input type="checkbox" id="nosp"> Hide no sponsorship / no OPT</label>
+    <label class="toggle"><input type="checkbox" id="remote"> Remote only</label>
+    <label class="toggle"><input type="checkbox" id="hidedone"> Hide applied/dismissed</label>
+  </div>
+
+  <div class="count" id="count"></div>
+  <ul class="list" id="list"></ul>
+</div>
+
+<dialog id="kit" aria-labelledby="kitTitle">
+  <div class="dlg-head">
+    <h2 id="kitTitle">Apply kit</h2>
+    <button type="button" class="ghost" id="closeKit" aria-label="Close">Close</button>
+  </div>
+  <div class="dlg-body">
+    <p>Your details for application forms. Saved only in this browser. Nothing is sent anywhere.</p>
+    <div><button type="button" id="fromResume">Fill from resume</button></div>
+    <div class="kit" id="kitFields"></div>
+    <div class="autofill">
+      <p class="section-h">Job Radar Autofill extension</p>
+      <p>If you've installed the extension (see <code>extension/README.md</code>), it replaces the bookmark below: it also attaches your resume, picks dropdown answers and remembers answers you type. Open its options and press <b>Import from dashboard</b> while this page is open, or copy your details here and paste them there.</p>
+      <div class="row"><button type="button" id="copyForExtension">Copy for extension</button></div>
+    </div>
+    <div class="autofill">
+      <p class="section-h">One-click autofill on application forms</p>
+      <p>This works as a special bookmark. Instead of opening a page, clicking it fills in the form you're looking at with the details above. It never submits anything.</p>
+      <ol class="steps">
+        <li>Show your bookmarks toolbar: press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> (Firefox, Chrome and Edge).</li>
+        <li>Drag this green button onto the toolbar:
+          <div class="row" style="margin-top:6px">
+            <a class="bookmarklet" id="bookmarklet" href="#" title="Drag me to your bookmarks toolbar">Fill application</a>
+            <button type="button" id="copyBookmarklet">Copy bookmark</button>
+          </div>
+          <span class="note">Dragging doesn't work? Click <b>Copy bookmark</b>, right-click the bookmarks toolbar, choose <b>Add Bookmark…</b>, name it "Fill application", paste into the URL field, and save.</span>
+        </li>
+        <li>On a job's application form (the <b>Apply ↗</b> button opens one), click the bookmark. Then attach your resume, answer the remaining questions, review, and submit yourself.</li>
+      </ol>
+      <p class="note">Works on Greenhouse and Ashby forms and on Workday. Workday asks you to sign in first, and each company's Workday site needs its own account; make it yourself, then click the bookmark on each step (My Information, My Experience). It never clicks Next or answers sponsorship, work authorization, or demographic questions.</p>
+      <div class="sample">
+        <p class="section-h">Try it here first</p>
+        <form id="sampleForm" class="kit" onsubmit="return false">
+          <label for="s-first">First name</label><input id="s-first" type="text"><span></span>
+          <label for="s-last">Last name</label><input id="s-last" type="text"><span></span>
+          <label for="s-email">Email</label><input id="s-email" type="email"><span></span>
+          <label for="s-phone">Phone</label><input id="s-phone" type="tel"><span></span>
+          <label for="s-li">LinkedIn profile</label><input id="s-li" type="url"><span></span>
+        </form>
+        <div class="row"><button type="button" id="trySample">Fill this sample form</button><button type="button" class="ghost" id="clearSample">Clear</button></div>
+      </div>
+      <p class="note">Changed your details? Make the bookmark again; it carries the details from when it was made.</p>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="skillsDlg" aria-labelledby="skillsTitle">
+  <div class="dlg-head">
+    <h2 id="skillsTitle">Skills read from your resume</h2>
+    <button type="button" class="ghost" id="closeSkills" aria-label="Close">Close</button>
+  </div>
+  <div class="dlg-body">
+    <p>Match scores compare these against the skills listed in each job. Click a skill to turn it off if it was misread. Add any the parser missed.</p>
+    <div class="chips" id="skillChips"></div>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="addSkill" list="skillList" placeholder="Add a skill" style="flex:1">
+      <datalist id="skillList"></datalist>
+      <button type="button" id="addSkillBtn">Add</button>
+    </div>
+    <p class="section-h">Experience</p>
+    <div id="expBox" style="display:grid;gap:6px"></div>
+  </div>
+</dialog>
+
+<dialog id="tailorDlg" aria-labelledby="tailorTitle" class="wide">
+  <div class="dlg-head">
+    <h2 id="tailorTitle">Tailor resume</h2>
+    <button type="button" class="ghost" id="closeTailor" aria-label="Close">Close</button>
+  </div>
+  <div class="dlg-body" id="tailorBody"></div>
+</dialog>
+
+<input type="file" id="resumeFile" accept=".pdf,.tex,.txt,.md" hidden>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="text/plain" id="fillerSrc">
+function (P, root) {
+  root = root || document;
+  var full = [P.firstName, P.lastName].filter(Boolean).join(" ");
+  var rules = [
+    [/preferred.?name|nick.?name|pronoun|authori[sz]|sponsor|visa|requir|willing|relocat|salary|compensation|why |describe|how did you hear|referr|gender|race|veteran|disabilit/, null],
+    [/first.?name|given.?name|fname/, P.firstName],
+    [/last.?name|family.?name|surname|lname/, P.lastName],
+    [/linked.?in/, P.linkedin],
+    [/git.?hub/, P.github],
+    [/portfolio|personal.?(web)?site|website|blog|other.?(link|url|website)/, P.portfolio],
+    [/e-?mail/, P.email],
+    [/phone|mobile|telephone/, P.phone],
+    [/current.?(company|employer)|company|\borg\b|organization|employer/, P.company],
+    [/school|university|college|institution/, P.school],
+    [/degree/, P.degree],
+    [/discipline|major|field.?of.?study/, P.major],
+    [/graduat/, P.gradDate],
+    [/full.?name|legal.?name|\bname\b/, full],
+    [/city|location|where.*(located|based)|current.?address/, P.location]
+  ];
+  /* Workday names its fields with data-automation-id, either on the input
+     (legalNameSection_firstName) or, in newer tenants, on a formField-
+     wrapper around an input like id="name--legalName--firstName". Those
+     names are exact, so they are checked before any label. */
+  var SITE = {};
+  var sites = [P.portfolio, P.github].filter(Boolean);
+  var workday = [
+    [rules[0][0], null],
+    [/preferred|middle|local|extension|phonecode|addressline|postal|county|twitter|facebook|workexperience|jobtitle|company|location|description|gpa|gradeaverage|fieldofstudy/, null],
+    [/firstname|givenname/, P.firstName],
+    [/lastname|familyname/, P.lastName],
+    [/email/, P.email],
+    [/phone-?number/, P.phone],
+    [/city/, (P.location || "").split(",")[0].trim()],
+    [/linkedin/, P.linkedin],
+    [/github/, P.github],
+    [/website|webaddress/, SITE],
+    [/school/, P.school]
+  ];
+  function workdayKey(el) {
+    var own = el.getAttribute("data-automation-id");
+    var wrap = el.closest('[data-automation-id^="formField-"]');
+    if (wrap && wrap.querySelectorAll("input, textarea, select").length > 1) wrap = null;
+    if (!own && !wrap) return "";
+    return [own, wrap && wrap.getAttribute("data-automation-id"), el.id, el.name].filter(Boolean).join(" ").toLowerCase();
+  }
+  function labelOf(el) {
+    var t = [el.name, el.id, el.placeholder, el.getAttribute("aria-label"), el.getAttribute("autocomplete")];
+    var direct = false;
+    if (el.id) { var l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) { t.push(l.textContent); direct = true; } }
+    var cl = el.closest("label"); if (cl) { t.push(cl.textContent); direct = true; }
+    var lb = el.getAttribute("aria-labelledby");
+    if (lb) lb.split(/\s+/).forEach(function (i) { var n = document.getElementById(i); if (n) { t.push(n.textContent); direct = true; } });
+    var prev = el.previousElementSibling;
+    if (!direct && prev && !prev.querySelector("input, textarea, select") && prev.textContent.trim().length < 80) {
+      t.push(prev.textContent); direct = true;
+    }
+    if (!direct) {
+      /* Fall back to a nearby label only from a wrapper that holds this one
+         field; a wider container's first label belongs to some other field. */
+      var p = el.parentElement;
+      for (var i = 0; i < 4 && p; i++, p = p.parentElement) {
+        if (p.querySelectorAll("input, textarea, select").length > 1) break;
+        var q = p.querySelector("label, legend, .application-label, [class*=label]");
+        if (q && !q.contains(el)) { t.push(q.textContent); break; }
+      }
+    }
+    return t.filter(Boolean).join(" ").toLowerCase();
+  }
+  function setValue(el, v) {
+    var proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    /* React (Workday, Ashby) keeps its own copy of the value; the native
+       setter plus an input event is what makes it notice. Workday commits
+       and validates a field when focus leaves it, so move focus through. */
+    try { el.focus({ preventScroll: true }); } catch (e) {}
+    Object.getOwnPropertyDescriptor(proto, "value").set.call(el, v);
+    ["input", "change"].forEach(function (e) { el.dispatchEvent(new Event(e, { bubbles: true })); });
+    /* A window without OS focus fires no focus events, so stand in for them. */
+    var left = false, mark = function () { left = true; };
+    el.addEventListener("focusout", mark);
+    if (el.ownerDocument.activeElement === el) el.blur();
+    el.removeEventListener("focusout", mark);
+    if (!left) ["blur", "focusout"].forEach(function (e) { el.dispatchEvent(new Event(e, { bubbles: true })); });
+  }
+  var filled = 0;
+  root.querySelectorAll("input").forEach(function (el) {
+    var type = (el.type || "text").toLowerCase();
+    if (["text", "email", "tel", "url", "search"].indexOf(type) < 0) return;
+    if (el.disabled || el.readOnly || el.value || el.offsetParent === null) return;
+    if (el.getAttribute("role") === "combobox") return;
+    var label = labelOf(el), key = workdayKey(el);
+    for (var w = 0; key && w < workday.length; w++) {
+      if (!w && rules[0][0].test(label)) return;
+      if (workday[w][0].test(key)) {
+        var v = workday[w][1] === SITE ? sites.shift() : workday[w][1];
+        if (v) { setValue(el, v); filled++; }
+        return;
+      }
+    }
+    for (var r = 0; r < rules.length; r++) {
+      if (rules[r][0].test(label)) {
+        if (rules[r][1]) { setValue(el, rules[r][1]); filled++; }
+        return;
+      }
+    }
+  });
+  var box = document.createElement("div");
+  box.textContent = "Filled " + filled + " field" + (filled === 1 ? "" : "s") + ". Attach your resume, answer the rest, review, then submit.";
+  box.style.cssText = "position:fixed;z-index:2147483647;left:50%;top:16px;transform:translateX(-50%);background:#1d1d1b;color:#fff;padding:10px 16px;border-radius:8px;font:14px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.25)";
+  document.body.appendChild(box);
+  setTimeout(function () { box.remove(); }, 6000);
+}
+</script>
+
+<script>
+const DATA = /*__DATA__*/null;
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("jr:" + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("jr:" + k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem("jr:" + k); } catch {} },
+};
+
+const state = {
+  hours: store.get("hours", 24),
+  q: "",
+  sort: store.get("sort", "new"),
+  minMatch: store.get("minMatch", 0),
+  remote: store.get("remote", false),
+  nosp: store.get("nosp", false),
+  h1bOnly: store.get("h1bOnly", false),
+  hidedone: store.get("hidedone", false),
+  marks: store.get("marks", {}),        // url -> "applied" | "dismissed"
+  opened: {},                           // url -> true once Apply was clicked this session
+  resume: store.get("resume", null),    // {name, text, skills[], off[], added[], at}
+  profile: store.get("profile", {}),
+};
+
+const $ = (id) => document.getElementById(id);
+
+// ---------------------------------------------------------------- skills
+
+const SKILLS = DATA.meta.skills.map((s) => ({
+  n: s.n,
+  rx: new RegExp("(?<![A-Za-z0-9+#])(?:" + s.re + ")(?![A-Za-z0-9+#])", s.cs ? "" : "i"),
+}));
+
+// Resumes list concrete tools; postings often ask for the umbrella term.
+// The same "implies" data drives the resume checker in resume_tex.py.
+const IMPLIES = Object.fromEntries(DATA.meta.skills.map((s) => [s.n, s.implies || []]));
+function detectSkills(text) {
+  const found = new Set(SKILLS.filter((s) => s.rx.test(text)).map((s) => s.n));
+  for (const k of [...found]) for (const to of IMPLIES[k] || []) found.add(to);
+  if (found.has("Frontend") && found.has("Backend")) found.add("Full Stack");
+  return [...found];
+}
+
+function resumeSkills() {
+  const r = state.resume;
+  if (!r) return null;
+  const set = new Set([...r.skills, ...(r.added || [])]);
+  for (const k of r.off || []) set.delete(k);
+  return set;
+}
+
+// Match score = keyword coverage x experience factor.
+//
+// Keywords are the concrete skills and tools named in the posting's
+// requirement lines (job.kw, built by reqparse.py), each checked for literally
+// appearing on the resume. A resume can't prove "strong problem-solving" or
+// "designing scalable web applications", so lines like that aren't scored.
+// Each keyword's weight is where it appears (title 1.5, required 1,
+// nice-to-have 0.5) times its rarity across all stored postings, so Git or
+// "backend" count little and Spring Boot or CUDA count a lot.
+const SKILL_W = DATA.meta.skill_w || {};
+const TERM_W = DATA.meta.term_w || {};
+const TAXONOMY = new Set(DATA.meta.skills.map((s) => s.n));
+
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
+const MON = "(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\\.?";
+const RANGE = new RegExp(MON + "\\s+(\\d{4})\\s*(?:-|–|—|to)\\s*(?:(present|current|now)|" + MON + "\\s+(\\d{4}))", "gi");
+const DEGREE_LINE = /bachelor|master|b\.?\s?tech|m\.?\s?s\.?\b|ph\.?d|gpa|degree|coursework|diploma/i;
+const INTERN_LINE = /intern|co-?op|research assistant|teaching assistant|trainee/i;
+
+// Professional experience from dated ranges in the resume. Education ranges
+// (lines naming a degree or GPA, or the line after) are skipped; internships
+// count half. Overlapping ranges are merged.
+function resumeExperience(text) {
+  // Blank lines (and Windows "\r") would hide the role or degree printed
+  // under each date, so neighbours are taken from non-empty lines only.
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const spans = [];
+  lines.forEach((line, i) => {
+    if (DEGREE_LINE.test(line) || DEGREE_LINE.test(lines[i + 1] || "")) return;
+    for (const m of line.matchAll(RANGE)) {
+      const start = new Date(+m[2], MONTHS[m[1].toLowerCase().slice(0, 3)]);
+      const end = m[3] ? new Date() : new Date(+m[5], MONTHS[m[4].toLowerCase().slice(0, 3)]);
+      if (end <= start) continue;
+      // Only the role line below counts for "intern": the line above may belong to another job.
+      const role = [line, lines[i + 1] || ""].join(" ");
+      spans.push({ start: +start, end: +end, factor: INTERN_LINE.test(role) ? 0.5 : 1,
+        label: line.replace(/https?:\/\/\S+/g, "").trim().slice(0, 80) });
+    }
+  });
+  spans.sort((a, b) => a.start - b.start);
+  let months = 0, cursor = 0;
+  for (const s of spans) {
+    const from = Math.max(s.start, cursor);
+    if (s.end > from) months += ((s.end - from) / (30.44 * 86400000)) * s.factor;
+    cursor = Math.max(cursor, s.end);
+  }
+  return { years: Math.round((months / 12) * 10) / 10, spans };
+}
+
+const DEGREE_RANK = { associate: 0, bachelor: 1, master: 2, phd: 3 };
+const DEGREE_NAME = { associate: "Associate's", bachelor: "Bachelor's", master: "Master's", phd: "PhD" };
+
+function resumeDegree(text) {
+  if (/\bph\.?\s?d\b|doctor of/i.test(text)) return "phd";
+  if (/master|\bm\.?\s?s\.?\s+in\b|\bmsc\b|m\.?\s?tech|\bmba\b/i.test(text)) return "master";
+  if (/bachelor|b\.?\s?tech|\bb\.?\s?s\.?\s+in\b|\bbsc\b|\bb\.?\s?e\.?\s+in\b|\bb\.?\s?a\.?\s+in\b/i.test(text)) return "bachelor";
+  return null;
+}
+
+// Shown on the card but not part of the score: "or equivalent experience"
+// is common, and a degree line is easy to check by eye.
+function degreeFit(req, have) {
+  if (!req) return null;
+  const need = DEGREE_NAME[req.level] + (req.or_equivalent ? " or equivalent" : "");
+  if (have && DEGREE_RANK[have] >= DEGREE_RANK[req.level]) return { ok: true, label: `${need}, you have ${DEGREE_NAME[have]}` };
+  return { ok: false, label: `asks ${need}` + (have ? `, you have ${DEGREE_NAME[have]}` : "") };
+}
+
+function expFit(job, years) {
+  const min = job.min_yoe;
+  if (min == null) return { v: job.entry_hint ? 1 : 0.85, label: job.entry_hint ? "entry level" : "years not stated" };
+  if (years >= min) return { v: 1, ok: true, label: `asks ${min}+ yrs, you have ~${years}` };
+  return { v: Math.max(0.15, 1 - (min - years) * 0.35), ok: false, label: `asks ${min}+ yrs, you have ~${years}` };
+}
+
+function termRegex(t) {
+  return new RegExp("(?<![A-Za-z0-9])" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Za-z0-9])", "i");
+}
+
+function scoreJob(job, have, ctx) {
+  // Without the description (or with no concrete keywords in it) there's no
+  // honest score to give; title words alone don't say whether someone fits.
+  const kw = job.kw || [];
+  if (!job.has_jd || !kw.length) return { pct: null, items: [], noJd: !job.has_jd };
+  let W = 0, M = 0;
+  const items = kw.map(([k, w, kind]) => {
+    const weight = w * (SKILL_W[k] ?? TERM_W[k] ?? 0.8);
+    const ok = TAXONOMY.has(k) ? have.has(k) : ctx.hasTerm(k);
+    W += weight;
+    if (ok) M += weight;
+    return { k, kind, ok, weight };
+  });
+  // Matching 4 of 4 keywords is thinner evidence than 14 of 21, so every
+  // checklist gets the weight of 3 average keywords at 50% mixed in: short
+  // lists drift toward the middle, long ones barely move.
+  const thin = kw.length < 4;
+  const prior = 3 * (W / kw.length);
+  const cov = (M + 0.5 * prior) / (W + prior);
+  const exp = expFit(job, ctx.years);
+  const pct = Math.round(100 * cov * (0.6 + 0.4 * exp.v));
+  const count = (kinds) => {
+    const xs = items.filter((i) => kinds.includes(i.kind));
+    return { have: xs.filter((i) => i.ok).length, of: xs.length };
+  };
+  items.sort((a, b) => b.weight - a.weight);
+  return {
+    pct, thin, cov: Math.round(cov * 100), exp, items,
+    req: count(["title", "req"]), pref: count(["pref"]),
+    degree: degreeFit(job.degree, ctx.degree),
+    matched: items.filter((i) => i.ok).map((i) => i.k),
+    missing: items.filter((i) => !i.ok).map((i) => i.k),
+  };
+}
+
+let scores = new Map();
+function rescore() {
+  scores = new Map();
+  const have = resumeSkills();
+  if (!have) return;
+  const r = state.resume;
+  const years = r.years != null ? r.years : resumeExperience(r.text).years;
+  const cache = new Map();
+  const ctx = {
+    years,
+    degree: resumeDegree(r.text),
+    hasTerm: (t) => { if (!cache.has(t)) cache.set(t, termRegex(t).test(r.text)); return cache.get(t); },
+  };
+  for (const j of DATA.jobs) scores.set(j, scoreJob(j, have, ctx));
+}
+
+// ---------------------------------------------------------------- resume parsing
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error("Could not load " + src));
+    document.head.append(s);
+  });
+}
+
+async function pdfText(buf) {
+  if (!window.pdfjsLib) {
+    await loadScript(PDFJS);
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+  }
+  const doc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+  const pages = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const tc = await page.getTextContent();
+    pages.push(tc.items.map((it) => it.str + (it.hasEOL ? "\n" : " ")).join(""));
+  }
+  return pages.join("\n");
+}
+
+function texText(src) {
+  return src
+    .replace(/(^|[^\\])%.*$/gm, "$1")
+    .replace(/\\(?:href|url)\{([^}]*)\}(?:\{([^}]*)\})?/g, " $1 $2 ")
+    .replace(/\\(?:begin|end)\{[^}]*\}/g, " ")
+    .replace(/\\[a-zA-Z@]+\*?(?:\[[^\]]*\])?/g, " ")
+    .replace(/[{}$]/g, " ")
+    .replace(/\\\\/g, "\n")
+    .replace(/[ \t]+/g, " ");
+}
+
+async function readResume(file) {
+  const name = file.name;
+  const ext = name.split(".").pop().toLowerCase();
+  let text, rawTex = null;
+  if (ext === "pdf") text = await pdfText(await file.arrayBuffer());
+  else if (ext === "tex") { rawTex = await file.text(); text = texText(rawTex); }
+  else if (ext === "txt" || ext === "md") text = await file.text();
+  else throw new Error("Use a PDF, .tex or .txt file. For Word files, save as PDF first.");
+  if (text.replace(/\s/g, "").length < 200) {
+    throw new Error("Couldn't read text from that file. If it's a scanned PDF, export a text PDF instead.");
+  }
+  const prev = state.resume || {};
+  state.resume = { name, text, skills: detectSkills(text), off: prev.off || [], added: prev.added || [], at: Date.now() };
+  store.set("resume", state.resume);
+  rescore();
+  if (state.sort === "new") { state.sort = "match"; store.set("sort", "match"); }
+  render();
+  toast(`Read ${state.resume.skills.length} skills from ${name}. Sorted by best match.`);
+  if (rawTex !== null && HELPER) {
+    try {
+      const s = await api("/api/master", { name, tex: rawTex });
+      await refreshStatus();
+      toast(`Saved as your master resume for tailoring: ${s.entries.length} entries, ${s.pages} page${s.pages === 1 ? "" : "s"}.`);
+    } catch (e) { toast(e.message); }
+  }
+}
+
+function contactsFrom(text) {
+  const out = {};
+  const email = text.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/); if (email) out.email = email[0];
+  const phone = text.match(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/); if (phone) out.phone = phone[0].trim();
+  const li = text.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w%-]+\/?/i); if (li) out.linkedin = "https://" + li[0].replace(/^https?:\/\//, "");
+  const gh = text.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+\/?/i); if (gh) out.github = "https://" + gh[0].replace(/^https?:\/\//, "");
+  const first = text.split(/\n/).map((l) => l.trim()).find((l) => /^[A-Za-z][A-Za-z'.-]+(?: [A-Za-z][A-Za-z'.-]+){1,3}$/.test(l));
+  if (first) { const p = first.split(" "); out.firstName = p[0]; out.lastName = p.slice(1).join(" "); }
+  const school = text.match(/[A-Z][A-Za-z.&' ]{2,60}(?:University|College|Institute of Technology)(?: of [A-Z][A-Za-z ]+)?/);
+  if (school) out.school = school[0].trim();
+  return out;
+}
+
+// ---------------------------------------------------------------- helpers
+
+function ago(sec) {
+  const s = Date.now() / 1000 - sec;
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 48) return h + "h ago";
+  return Math.floor(h / 24) + "d ago";
+}
+const fmt = (sec) => new Date(sec * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const n = (x) => x.toLocaleString();
+function when(job) { return job.posted_at || job.first_seen; }
+
+function el(tag, attrs = {}, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of kids) if (c != null && c !== false) node.append(c);
+  return node;
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 3500);
+}
+
+// H-1B tiers from USCIS approvals in the employer's strongest loaded year.
+function h1bTier(h) {
+  if (!h) return null;
+  const total = h.initial + h.continuing;
+  if (total >= 50) return "strong";
+  if (total >= 5) return "some";
+  return "rare";
+}
+function isSponsor(j) {
+  if (j.sponsorship === "no") return false;
+  const t = h1bTier(j.h1b);
+  return t === "strong" || t === "some" || j.sponsorship === "yes";
+}
+
+// ---------------------------------------------------------------- evidence
+
+function sourceLabel(j) {
+  return { greenhouse: "Greenhouse job board API", lever: "Lever postings API", ashby: "Ashby job board API",
+    workday: "Workday career site API", simplify: "SimplifyJobs New-Grad listings feed" }[j.source] || j.source;
+}
+
+// Workday reports the day a job was posted, never the time.
+const dateOnly = (j) => j.posted_field === "startDate";
+function dayLabel(sec) {
+  const d = new Date(sec * 1000), now = new Date();
+  const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+  return days <= 0 ? "today" : days === 1 ? "yesterday" : days + " days ago";
+}
+
+function rawExplain(j) {
+  if (!j.posted_raw) return null;
+  if (j.posted_field === "createdAt") return `${j.posted_raw} (milliseconds since 1970)`;
+  if (j.posted_field === "date_posted") return `${j.posted_raw} (seconds since 1970)`;
+  return j.posted_raw;
+}
+
+function evidence(j) {
+  const ev = el("div", { class: "ev" });
+  const dl = el("dl");
+  const add = (k, ...v) => { dl.append(el("dt", { text: k }), el("dd", {}, ...v)); };
+
+  add("Date source", sourceLabel(j));
+  if (j.posted_field) add("Field", el("code", { text: j.posted_field }), " = ", el("code", { text: rawExplain(j) }));
+  if (j.posted_at) {
+    if (dateOnly(j)) add("Posted", new Date(j.posted_at * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " (" + dayLabel(j.posted_at) + "), date only");
+    else add("Posted", fmt(j.posted_at) + " your time (" + ago(j.posted_at) + ")");
+  }
+
+  const firstRun = Math.abs(j.first_seen - DATA.meta.first_run) < 600;
+  add("Radar first saw it", fmt(j.first_seen) + (firstRun ? " (radar's first run, so the job was already up)" : ""));
+
+  if (j.verify_url) {
+    const extra = [];
+    if (j.source === "ashby") {
+      const id = (j.apply_url.match(/[0-9a-f-]{36}/) || [""])[0];
+      extra.push(" · whole board feed, press Ctrl+F for ", el("code", { text: id }));
+    } else if (j.source === "simplify") {
+      extra.push(" · large file, press Ctrl+F for the job title");
+    }
+    add("Check it yourself", el("a", { href: j.verify_url, target: "_blank", rel: "noopener", text: "Open raw source record" }), ...extra);
+  }
+  ev.append(dl);
+
+  if (dateOnly(j)) {
+    ev.append(el("div", { class: "note", text: "Workday reports only the date a job was posted, not the time. When the radar first saw it on that same date, that time is the latest it could have gone up." }));
+  } else if (!j.posted_exact) {
+    ev.append(el("div", { class: "warnline", text: "This board only reports a last-updated time, not the original post time. The job may be older than it looks." }));
+  }
+  if (j.posted_at && j.first_seen < j.posted_at - 3600) {
+    ev.append(el("div", { class: "warnline", text: `The radar saw this job ${fmt(j.first_seen)}, before the date the source now reports. It was probably reposted with a new date.` }));
+  }
+
+  const h = j.h1b;
+  if (h) {
+    const yrs = Object.entries(h.years).sort((a, b) => b[0] - a[0])
+      .map(([y, v]) => `FY${y}: ${n(v.initial)} new, ${n(v.continuing)} continuing`).join(" · ");
+    const how = { exact: "exact name match", prefix: "name prefix match", alias: "manual alias", ambiguous: `best of ${h.candidates} employers with this name, verify` }[h.match];
+    const d2 = el("dl");
+    d2.append(el("dt", { text: "H-1B record" }), el("dd", {}, el("code", { text: h.employer }), ` (${how})`));
+    d2.append(el("dt", { text: "USCIS approvals" }), el("dd", { text: yrs }));
+    d2.append(el("dt", { text: "Source" }), el("dd", {}, el("a", { href: "https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub", target: "_blank", rel: "noopener", text: "USCIS H-1B Employer Data Hub" })));
+    ev.append(d2);
+  } else {
+    ev.append(el("div", { class: "note", text: `No H-1B approvals found for "${j.company}" in USCIS FY${DATA.meta.h1b_years.join("/FY")} data. The company may file under a different legal name.` }));
+  }
+  if (j.sponsor_note) {
+    ev.append(el("div", {}, el("span", { style: "color:var(--muted)", text: "Sponsorship text in posting: " }), "“" + j.sponsor_note + "”"));
+  }
+  return ev;
+}
+
+// ---------------------------------------------------------------- render
+
+function render() {
+  const now = Date.now() / 1000;
+  const q = state.q.trim().toLowerCase();
+  const hasResume = !!state.resume;
+
+  let jobs = DATA.jobs.filter((j) => {
+    if (now - when(j) > state.hours * 3600) return false;
+    if (state.remote && !j.remote) return false;
+    if (state.nosp && (j.sponsorship === "no" || j.no_opt)) return false;
+    if (state.h1bOnly && !isSponsor(j)) return false;
+    if (state.hidedone && state.marks[j.url]) return false;
+    if (hasResume && state.minMatch > 0) {
+      const sc = scores.get(j);
+      if (!sc || sc.pct == null || sc.pct < state.minMatch) return false;
+    }
+    if (q) {
+      const s = j.skills || {};
+      const hay = [j.company, j.title, j.location, ...(s.t || []), ...(s.r || []), ...(s.p || [])].join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  if (hasResume && state.sort === "match") {
+    jobs = jobs.slice().sort((a, b) => ((scores.get(b) || {}).pct ?? -1) - ((scores.get(a) || {}).pct ?? -1) || when(b) - when(a));
+  }
+
+  const list = $("list");
+  list.replaceChildren();
+  if (!jobs.length) list.append(el("li", { class: "empty", text: "Nothing matches these filters in this window. Try a wider time range." }));
+
+  for (const j of jobs) {
+    const mark = state.marks[j.url];
+    const sc = scores.get(j);
+    const tier = h1bTier(j.h1b);
+
+    const right = el("div", { class: "right" });
+    if (sc && sc.pct != null) {
+      const cls = sc.pct >= 70 ? "hi" : sc.pct >= 50 ? "mid" : "lo";
+      right.append(el("span", { class: "score " + cls,
+        title: `Keyword coverage ${sc.cov}%, scaled for experience (${sc.exp.label})` + (sc.thin ? ". The posting names few keywords, so the score is rough" : ""),
+        text: sc.pct + "%" + (sc.thin ? "?" : "") + " match" }));
+    }
+    right.append(el("div", {
+      class: "age" + ((dateOnly(j) ? dayLabel(when(j)) === "today" : now - when(j) < 6 * 3600) ? " hot" : ""),
+      title: dateOnly(j) ? "Workday gives the posting date only, not the time" : j.posted_exact ? "Posted " + fmt(when(j)) : "Source gave only an update time",
+      text: dateOnly(j) ? "Posted " + dayLabel(when(j)) : (j.posted_exact ? "" : "~") + ago(when(j)),
+    }));
+
+    const badges = el("div", { class: "row" });
+    if (j.fresh) badges.append(el("span", { class: "badge new", text: "New this run" }));
+    // The posting's own words outrank the company's filing history.
+    if ((tier === "strong" || tier === "some") && j.sponsorship === "no") {
+      const h = j.h1b;
+      badges.append(el("span", { class: "badge",
+        title: `${h.employer} filed ${n(h.initial)} new H-1B petitions in FY${h.year}, but this posting says it won't sponsor`,
+        text: "Files H-1B, but not for this role" }));
+    } else if (tier === "strong" || tier === "some") {
+      const h = j.h1b;
+      badges.append(el("span", {
+        class: "badge h1b" + (tier === "some" ? " small" : ""),
+        title: `USCIS FY${h.year}: ${h.employer}, ${n(h.initial)} new and ${n(h.continuing)} continuing H-1B approvals${h.match === "ambiguous" ? " (name matched several employers)" : ""}`,
+        text: `H-1B sponsor · ${n(h.initial)} new FY${String(h.year).slice(2)}${h.match === "ambiguous" ? "?" : ""}`,
+      }));
+    } else if (tier === "rare") {
+      badges.append(el("span", { class: "badge", title: `USCIS FY${j.h1b.year}: ${j.h1b.employer}`, text: "Rare H-1B filer" }));
+    }
+    if (j.sponsorship === "no") badges.append(el("span", { class: "badge no", title: j.sponsor_note, text: "No sponsorship / clearance" }));
+    if (j.no_opt) badges.append(el("span", { class: "badge no", title: j.sponsor_note, text: "No STEM OPT / I-983" }));
+    if (j.sponsorship === "yes") badges.append(el("span", { class: "badge yes", title: j.sponsor_note, text: "Posting says it sponsors" }));
+    if (j.remote) badges.append(el("span", { class: "badge", text: "Remote" }));
+    if (j.entry_hint) badges.append(el("span", { class: "badge", text: "Entry level" }));
+    if (j.min_yoe != null) badges.append(el("span", { class: "badge", text: j.min_yoe + "+ yrs" }));
+    if (mark) badges.append(el("span", { class: "badge", text: mark }));
+
+    let skillsRow = null;
+    if (sc && sc.pct != null) {
+      skillsRow = el("div", { class: "row skills-line" });
+      const parts = [
+        el("b", { text: `Required ${sc.req.have}/${sc.req.of}` }),
+        sc.pref.of ? `Nice-to-have ${sc.pref.have}/${sc.pref.of}` : null,
+        el("span", { class: sc.exp.ok === false ? "miss" : "", text: "Experience: " + sc.exp.label }),
+        sc.degree ? el("span", { class: sc.degree.ok ? "" : "miss", text: "Degree: " + sc.degree.label }) : null,
+      ].filter(Boolean);
+      const line = el("span", { class: "breakdown" });
+      parts.forEach((x, i) => { if (i) line.append(" \u00b7 "); line.append(x); });
+      skillsRow.append(line);
+      const missReq = sc.items.filter((i) => !i.ok && i.kind !== "pref").map((i) => i.k);
+      const missPref = sc.items.filter((i) => !i.ok && i.kind === "pref").map((i) => i.k);
+      if (missReq.length) skillsRow.append(el("span", {}, "Missing: ", el("span", { class: "miss", text: missReq.slice(0, 8).join(", ") + (missReq.length > 8 ? ` +${missReq.length - 8}` : "") })));
+      if (missPref.length) skillsRow.append(el("span", {}, "Nice-to-have missing: ", el("span", { text: missPref.slice(0, 5).join(", ") })));
+    } else if (hasResume && sc && sc.pct == null) {
+      skillsRow = el("div", { class: "row skills-line", text: sc.noJd
+        ? "No job description from this source, so no score. Open the posting to judge it."
+        : "The posting names no concrete skills or tools, so no score." });
+    }
+
+    const actions = el("div", { class: "actions" });
+    actions.append(el("a", {
+      class: "btn primary", href: j.apply_url || j.url, target: "_blank", rel: "noopener", text: "Apply ↗",
+      title: "Opens the application form",
+      onclick: () => { state.opened[j.url] = true; setTimeout(render, 0); },
+    }));
+    if (HELPER) actions.append(el("button", { type: "button", text: "Tailor resume", onclick: () => openTailor(j) }));
+    for (const [label, val] of [["Applied", "applied"], ["Dismiss", "dismissed"]]) {
+      actions.append(el("button", {
+        type: "button",
+        class: val === "applied" && state.opened[j.url] && !mark ? "nudge" : null,
+        text: mark === val ? "Undo" : label,
+        onclick: () => {
+          if (state.marks[j.url] === val) delete state.marks[j.url]; else state.marks[j.url] = val;
+          store.set("marks", state.marks); render();
+        },
+      }));
+    }
+
+    let reqDet = null;
+    if (sc && sc.items && sc.items.length) {
+      reqDet = el("details", { class: "evidence" }, el("summary", { text: "Keyword checklist" }));
+      reqDet.addEventListener("toggle", () => {
+        if (!reqDet.open || reqDet.childNodes.length > 1) return;
+        const box = el("div", { class: "ev" });
+        for (const [label, kinds] of [["Required", ["title", "req"]], ["Nice to have", ["pref"]]]) {
+          const xs = sc.items.filter((i) => kinds.includes(i.kind));
+          if (!xs.length) continue;
+          box.append(el("p", { class: "section-h", text: label }),
+            el("div", { class: "kwlist" }, ...xs.map((i) => el("span", {
+              class: "kwi " + (i.ok ? "ok" : "miss"),
+              title: i.ok ? "On your resume" : "Not on your resume",
+              text: (i.ok ? "\u2713 " : "\u2717 ") + i.k }))));
+        }
+        box.append(el("p", { class: "note", text: "Exact keyword check against your resume. Sentences without a concrete skill or tool (e.g. \u201cstrong problem-solving\u201d) aren't scored, since a resume can't settle them." }));
+        reqDet.append(box);
+      });
+    }
+
+    const det = el("details", { class: "evidence" }, el("summary", { text: "Why is this new? Proof and H-1B details" }));
+    det.addEventListener("toggle", () => { if (det.open && det.childNodes.length === 1) det.append(evidence(j)); }, { once: false });
+
+    badges.append(actions);
+
+    list.append(el("li", { class: "job" + (mark ? " done" : "") + (isSponsor(j) ? " sponsor" : "") },
+      el("div", {},
+        el("a", { class: "title", href: j.url, target: "_blank", rel: "noopener", text: j.title }),
+        el("div", { class: "meta" }, el("span", { class: "company", text: j.company }), el("span", { text: j.location }))),
+      right, skillsRow, badges, reqDet, det));
+  }
+
+  const label = { 1: "hour", 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[state.hours];
+  $("count").textContent = `${jobs.length} role${jobs.length === 1 ? "" : "s"} posted in the last ${label}`;
+
+  const m = DATA.meta;
+  $("status").replaceChildren(
+    "Updated ", el("b", { text: ago(m.generated) }), ` (${fmt(m.generated)}) · ${m.boards} boards`,
+    m.new ? ` · ${m.new} new since last run` : "",
+    m.failed ? ` · ${m.failed} boards unreachable` : "");
+
+  renderResumeBar();
+  for (const b of $("window").querySelectorAll("button")) b.setAttribute("aria-pressed", String(+b.dataset.h === state.hours));
+  $("sort").value = state.sort;
+  $("minMatch").value = String(state.minMatch);
+  $("sort").disabled = !hasResume;
+  $("minMatch").disabled = !hasResume;
+}
+
+function masterLine() {
+  if (!HELPER) {
+    return el("div", { class: "note", style: "flex-basis:100%" }, "Resume tailoring needs the local helper: open ",
+      el("a", { href: "http://127.0.0.1:8765/", text: "http://127.0.0.1:8765" }), " instead of this file.");
+  }
+  const m = helper.status && helper.status.master;
+  if (!helper.status) return el("div", { class: "note", style: "flex-basis:100%", text: "Local helper isn't responding. Tailoring is unavailable until it's running." });
+  if (!m) return el("div", { class: "note", style: "flex-basis:100%", text: "Upload a .tex resume to enable tailoring. It becomes your master resume." });
+  const tagged = m.entries.filter((e) => e.tagged.length).length;
+  return el("div", { class: "note", style: "flex-basis:100%" },
+    "Master resume for tailoring: ", el("b", { text: m.name || "master.tex" }),
+    ` · ${m.entries.length} entries · ${m.pages || "?"} page${m.pages === 1 ? "" : "s"}`,
+    tagged ? ` · ${tagged} with hidden skill tags` : " · no hidden skill tags yet",
+    m.error ? el("span", { style: "color:var(--warn)", text: " · " + m.error }) : null);
+}
+
+function renderResumeBar() {
+  const bar = $("resumeBar");
+  bar.classList.toggle("has", !!state.resume);
+  if (!state.resume) {
+    bar.replaceChildren(
+      el("span", {}, el("b", { text: "Get match scores." }), " Drop your resume here or "),
+      el("button", { type: "button", class: "primary", text: "Upload resume", onclick: () => $("resumeFile").click() }),
+      el("span", { class: "note", text: "PDF, .tex or .txt. A .tex also enables tailoring. It stays on your computer." }),
+      masterLine());
+    return;
+  }
+  const have = resumeSkills();
+  bar.replaceChildren(...[
+    el("span", {}, "Scoring against ", el("b", { text: state.resume.name }), ` · ${have.size} skills`),
+    el("button", { type: "button", class: "ghost", text: "Review skills", onclick: openSkills }),
+    el("span", { class: "spacer" }),
+    el("button", { type: "button", text: "Replace", onclick: () => $("resumeFile").click() }),
+    el("button", { type: "button", class: "ghost", text: "Remove", onclick: () => {
+      state.resume = null; store.del("resume"); rescore();
+      if (state.sort === "match") state.sort = "new";
+      render();
+    } }),
+    masterLine(),
+  ].filter(Boolean));
+}
+
+// ---------------------------------------------------------------- skills dialog
+
+function openSkills() { renderSkills(); $("skillsDlg").showModal(); }
+function renderExperience() {
+  const r = state.resume; if (!r) return;
+  const est = resumeExperience(r.text);
+  const input = el("input", { type: "number", min: "0", max: "40", step: "0.5", style: "width:90px",
+    value: String(r.years != null ? r.years : est.years), "aria-label": "Years of experience" });
+  input.addEventListener("change", () => {
+    const v = parseFloat(input.value);
+    r.years = Number.isFinite(v) && v >= 0 ? v : null;
+    store.set("resume", r); rescore(); render(); renderExperience();
+  });
+  $("expBox").replaceChildren(...[
+    el("div", { class: "row" }, input, el("span", { text: "years, used to compare against each job's required years" }),
+      r.years != null ? el("button", { type: "button", class: "ghost", text: "Use estimate", onclick: () => {
+        r.years = null; store.set("resume", r); rescore(); render(); renderExperience();
+      } }) : null),
+    el("p", { class: "note", text: `Estimated ${est.years} years from the dates on your resume (internships count half, education is skipped):` }),
+    ...est.spans.map((s) => el("p", { class: "note", text: `• ${s.label}${s.factor < 1 ? " (internship, half)" : ""}` })),
+  ].filter(Boolean));
+}
+
+function renderSkills() {
+  const r = state.resume; if (!r) return;
+  renderExperience();
+  const off = new Set(r.off || []);
+  const all = [...new Set([...r.skills, ...(r.added || [])])].sort();
+  $("skillChips").replaceChildren(...all.map((k) => el("button", {
+    type: "button", class: "chip" + (off.has(k) ? " off" : ""), text: k, "aria-pressed": String(!off.has(k)),
+    onclick: () => {
+      r.off = off.has(k) ? r.off.filter((x) => x !== k) : [...(r.off || []), k];
+      store.set("resume", r); rescore(); renderSkills(); render();
+    },
+  })));
+  $("skillList").replaceChildren(...SKILLS.filter((s) => !all.includes(s.n)).map((s) => el("option", { value: s.n })));
+}
+function addSkill() {
+  const r = state.resume; const v = $("addSkill").value.trim(); if (!r || !v) return;
+  const hit = SKILLS.find((s) => s.n.toLowerCase() === v.toLowerCase());
+  if (!hit) { toast("Pick a skill from the list so it can be matched against jobs."); return; }
+  r.added = [...new Set([...(r.added || []), hit.n])];
+  r.off = (r.off || []).filter((x) => x !== hit.n);
+  $("addSkill").value = "";
+  store.set("resume", r); rescore(); renderSkills(); render();
+}
+
+// ---------------------------------------------------------------- apply kit
+
+const KIT = [
+  ["firstName", "First name", "text"], ["lastName", "Last name", "text"],
+  ["email", "Email", "email"], ["phone", "Phone", "tel"],
+  ["linkedin", "LinkedIn URL", "url"], ["github", "GitHub URL", "url"], ["portfolio", "Portfolio URL", "url"],
+  ["location", "City, State", "text"], ["company", "Current company", "text"],
+  ["school", "School", "text"], ["degree", "Degree", "text"], ["major", "Major", "text"],
+  ["gradDate", "Graduation (e.g. May 2026)", "text"],
+  ["workAuth", "Work authorization answer", "text"], ["sponsorship", "Sponsorship answer", "text"],
+];
+
+function renderKit() {
+  const P = state.profile;
+  const box = $("kitFields");
+  box.replaceChildren();
+  for (const [key, label, type] of KIT) {
+    const id = "kit-" + key;
+    const input = el("input", { id, type, value: P[key] || "", autocomplete: "off",
+      placeholder: key === "sponsorship" ? "e.g. Yes, I will require H-1B sponsorship" : key === "workAuth" ? "e.g. F-1 OPT, eligible for STEM extension" : null });
+    input.addEventListener("input", () => { P[key] = input.value.trim(); store.set("profile", P); updateBookmarklet(); });
+    box.append(el("label", { for: id, text: label }), input,
+      el("button", { type: "button", text: "Copy", onclick: async () => {
+        try { await navigator.clipboard.writeText(input.value); toast(label + " copied"); }
+        catch { input.select(); toast("Press Ctrl+C to copy"); }
+      } }));
+  }
+  updateBookmarklet();
+}
+
+function updateBookmarklet() {
+  const src = $("fillerSrc").textContent.trim();
+  $("bookmarklet").href = "javascript:" + encodeURIComponent("(" + src + ")(" + JSON.stringify(state.profile) + ");void 0");
+}
+
+$("bookmarklet").addEventListener("click", (e) => { e.preventDefault(); toast("Drag this onto your bookmarks toolbar (Ctrl+Shift+B shows it), or use Copy bookmark."); });
+$("copyBookmarklet").addEventListener("click", async () => {
+  updateBookmarklet();
+  try { await navigator.clipboard.writeText($("bookmarklet").href); toast("Copied. Right-click the bookmarks toolbar, Add Bookmark, paste into URL."); }
+  catch { toast("Couldn't copy automatically. Drag the green button instead."); }
+});
+$("copyForExtension").addEventListener("click", async () => {
+  const text = JSON.stringify({ jobradar: "profile", version: 1, profile: state.profile });
+  try { await navigator.clipboard.writeText(text); toast("Copied. In the extension's options, choose Paste an export instead."); }
+  catch { toast("Couldn't copy automatically. Use Import from dashboard in the extension instead."); }
+});
+$("trySample").addEventListener("click", () => {
+  if (!state.profile.firstName && !state.profile.email) { toast("Fill in your details above first."); return; }
+  // Same code the bookmark runs, limited to the sample form.
+  const run = new Function("P", "root", "return (" + $("fillerSrc").textContent.trim() + ")(P, root);");
+  run(state.profile, $("sampleForm"));
+});
+$("clearSample").addEventListener("click", () => { for (const i of $("sampleForm").querySelectorAll("input")) i.value = ""; });
+$("openKit").addEventListener("click", () => { renderKit(); $("kit").showModal(); });
+$("closeKit").addEventListener("click", () => $("kit").close());
+$("closeSkills").addEventListener("click", () => $("skillsDlg").close());
+$("addSkillBtn").addEventListener("click", addSkill);
+$("addSkill").addEventListener("keydown", (e) => { if (e.key === "Enter") addSkill(); });
+$("fromResume").addEventListener("click", () => {
+  if (!state.resume) { toast("Upload your resume first."); return; }
+  const found = contactsFrom(state.resume.text);
+  let added = 0;
+  for (const [k, v] of Object.entries(found)) if (!state.profile[k]) { state.profile[k] = v; added++; }
+  store.set("profile", state.profile); renderKit();
+  toast(added ? `Filled ${added} field${added === 1 ? "" : "s"} from your resume. Check them.` : "Nothing new found in your resume.");
+});
+
+// ---------------------------------------------------------------- tailoring (local helper)
+
+// Tailoring needs the local helper (server.py); the file:// page can't reach it.
+const HELPER = location.protocol === "http:" && /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+const helper = { status: null };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function api(path, body) {
+  const init = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const res = await fetch(path, init);
+  let data = null;
+  try { data = await res.json(); } catch {}
+  if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);
+  return data;
+}
+
+async function refreshStatus() {
+  if (!HELPER) return;
+  try { helper.status = await api("/api/status"); } catch { helper.status = null; }
+  renderResumeBar();
+}
+
+const BACKENDS = [
+  { id: "chatgpt", name: "ChatGPT", desc: "Runs on your ChatGPT plan. No extra cost.", ok: (b) => b.chatgpt, setup: "codex login" },
+  { id: "claude-code", name: "Claude", desc: "Runs on your Claude plan. No extra cost.", ok: (b) => b.claude_code, setup: "claude auth login" },
+  { id: "manual", name: "Paste into any chat", desc: "Copy a prompt, paste the answer back.", ok: () => true },
+  { id: "ollama", name: "Local Qwen3 8B", desc: "Free and offline, but rough. Best with rewording off.", ok: (b) => b.ollama },
+  { id: "claude-api", name: "Claude API key", desc: "Billed per use, about 8 to 15 cents.", ok: (b) => b.claude_api, hidden: (b) => !b.claude_api },
+];
+
+function progressLine(text) {
+  return el("div", { class: "progress" }, el("span", { class: "spin", "aria-hidden": "true" }), el("span", { text }));
+}
+
+async function openTailor(j) {
+  const body = $("tailorBody");
+  $("tailorTitle").textContent = `Tailor resume: ${j.title} at ${j.company}`;
+  body.replaceChildren(progressLine("Loading…"));
+  $("tailorDlg").showModal();
+  await refreshStatus();
+  const m = helper.status && helper.status.master;
+  if (!m) {
+    body.replaceChildren(
+      el("p", { text: "Upload your master resume as a .tex file first, using Upload resume at the top of the page. Put every bullet, project and skill you have in it, more than fits on one page. Tailoring picks the best ones for each job." }),
+      tagHelp());
+    return;
+  }
+  let jd = "", history = [];
+  try { jd = (await api("/api/job?key=" + encodeURIComponent(j.key))).description || ""; } catch {}
+  try { history = await api("/api/history?key=" + encodeURIComponent(j.key)); } catch {}
+  renderTailorForm(j, jd, history);
+}
+
+function tagHelp() {
+  return el("details", {},
+    el("summary", { text: "How to add skills you used but didn't write down" }),
+    el("div", { class: "note", style: "margin-top:6px" },
+      "Inside any job or project block of your .tex, add a comment line such as ",
+      el("code", { text: "% skills: React, Redux" }), ". Comments never print. Tailoring may then mention those skills in that entry. For the skills section only, ",
+      el("code", { text: "% inventory: Kafka, Go" }), " anywhere in the file adds to what's allowed there."));
+}
+
+function renderTailorForm(j, jd, history) {
+  const b = (helper.status && helper.status.backends) || {};
+  let chosen = store.get("backend", "chatgpt");
+  const opts = el("div", { class: "opts", role: "radiogroup", "aria-label": "Model" });
+  for (const be of BACKENDS) {
+    if (be.hidden && be.hidden(b)) continue;
+    const ready = be.ok(b);
+    const input = el("input", { type: "radio", name: "backend", value: be.id });
+    input.checked = be.id === chosen;
+    input.addEventListener("change", () => { chosen = be.id; store.set("backend", chosen); syncManual(); });
+    opts.append(el("label", { class: "opt" + (ready ? "" : " off") }, input,
+      el("div", {}, el("b", { text: be.name }), el("span", { text: ready ? be.desc : (be.setup ? `Needs one-time sign-in: run ${be.setup}` : "Not available") }))));
+  }
+
+  const rewrite = el("input", { type: "checkbox", id: "rewriteChk" });
+  rewrite.checked = store.get("rewrite", true);
+  rewrite.addEventListener("change", () => store.set("rewrite", rewrite.checked));
+
+  const jdBox = el("textarea", { class: "jd", id: "jdBox", placeholder: "Paste the full job description here." });
+  jdBox.value = jd;
+
+  const answer = el("textarea", { class: "jd", placeholder: "Paste the chat's JSON answer here." });
+  const manual = el("div", { style: "display:grid;gap:8px" },
+    el("p", { text: "1. Copy the prompt and paste it into ChatGPT, Claude or any chat. 2. Paste its whole reply below. 3. Apply." }),
+    el("div", {}, el("button", { type: "button", text: "Copy prompt", onclick: async () => {
+      try {
+        const { prompt } = await api("/api/prompt", { key: j.key, jd: jdBox.value });
+        await navigator.clipboard.writeText(prompt);
+        toast("Prompt copied. Paste it into your chat.");
+      } catch (e) { toast(e.message); }
+    } })),
+    answer);
+  function syncManual() { manual.hidden = chosen !== "manual"; go.textContent = chosen === "manual" ? "Apply answer" : "Tailor resume"; }
+
+  const result = el("div", { id: "tailorResult", style: "display:grid;gap:12px" });
+  const go = el("button", { type: "button", class: "primary", onclick: () => {
+    if (jdBox.value.trim().length < 200) { toast("Paste the full job description first."); return; }
+    if (chosen === "manual" && !answer.value.trim()) { toast("Paste the chat's answer first."); return; }
+    runTailor(j, { backend: chosen, jd: jdBox.value, rewrite: rewrite.checked, answer: answer.value }, go, result);
+  } });
+
+  const hist = history.length ? el("div", { style: "display:grid;gap:6px" },
+    el("p", { class: "section-h", text: "Earlier versions for this job" }),
+    ...history.map((h) => el("div", { class: "row", style: "font-size:13px" },
+      el("span", { text: `${fmt(h.created)} · ${h.model}` }),
+      el("a", { class: "btn", href: "/files/" + h.pdf, target: "_blank", rel: "noopener", text: "PDF" }),
+      el("button", { type: "button", class: "ghost", text: "Show changes", onclick: () => renderResult(h.result, result) })))) : null;
+
+  $("tailorBody").replaceChildren(...[
+    el("p", { class: "section-h", text: "Model" }), opts,
+    el("label", { class: "toggle" }, rewrite, " Reword bullets to use the job's keywords (otherwise only reorders, trims, and updates tech lines and skills)"),
+    el("p", { class: "section-h", text: "Job description" + (jd ? " (saved from the posting, edit if needed)" : "") }), jdBox,
+    manual,
+    el("div", {}, go),
+    result, hist, tagHelp(),
+  ].filter(Boolean));
+  syncManual();
+}
+
+async function runTailor(j, opts, btn, out) {
+  btn.disabled = true;
+  out.replaceChildren(progressLine("Starting…"));
+  const t0 = Date.now();
+  try {
+    const { id } = await api("/api/tailor", { key: j.key, ...opts });
+    for (;;) {
+      await sleep(1500);
+      const s = await api("/api/tailor/" + id);
+      if (s.state === "done") { renderResult(s.result, out); break; }
+      if (s.state === "error") throw new Error(s.error);
+      const secs = Math.round((Date.now() - t0) / 1000);
+      out.replaceChildren(progressLine(`${s.state === "queued" ? "Waiting for another run to finish" : "Tailoring"}… ${secs}s`));
+    }
+  } catch (e) {
+    out.replaceChildren(el("div", { class: "errbox", text: e.message }));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Word-level diff (LCS) so a rewrite shows exactly which words changed.
+function wordDiff(a, b) {
+  const A = a.split(/\s+/).filter(Boolean), B = b.split(/\s+/).filter(Boolean);
+  const dp = Array.from({ length: A.length + 1 }, () => new Array(B.length + 1).fill(0));
+  for (let i = A.length - 1; i >= 0; i--) for (let k = B.length - 1; k >= 0; k--)
+    dp[i][k] = A[i] === B[k] ? dp[i + 1][k + 1] + 1 : Math.max(dp[i + 1][k], dp[i][k + 1]);
+  const out = [];
+  let i = 0, k = 0;
+  const push = (tag, w) => { out.push(tag ? el(tag, { text: w }) : w, " "); };
+  while (i < A.length && k < B.length) {
+    if (A[i] === B[k]) { push(null, A[i]); i++; k++; }
+    else if (dp[i + 1][k] >= dp[i][k + 1]) { push("del", A[i]); i++; }
+    else { push("ins", B[k]); k++; }
+  }
+  while (i < A.length) push("del", A[i++]);
+  while (k < B.length) push("ins", B[k++]);
+  return out;
+}
+
+// Tool lists only get reordered or extended, so show the new order with the
+// additions highlighted rather than a word diff.
+function listDiff(before, after) {
+  const norm = (x) => x.toLowerCase().replace(/\.?js\b/g, "").replace(/[^a-z0-9+#&/]/g, "");
+  const split = (x) => x.split(/,(?![^(]*\))/).map((t) => t.trim()).filter(Boolean);
+  const old = new Set(split(before).map(norm));
+  const items = split(after);
+  const nodes = [];
+  items.forEach((it, i) => { nodes.push(old.has(norm(it)) ? it : el("ins", { text: it }), i < items.length - 1 ? ", " : ""); });
+  const moved = split(before).map(norm).filter((x) => items.map(norm).includes(x)).join() !== items.map(norm).filter((x) => old.has(x)).join();
+  return el("div", {}, ...nodes, moved ? el("span", { class: "note", text: "  (reordered)" }) : null);
+}
+
+const KIND = { bullet: "Bullet", tech: "Tech line", skills: "Skills row", drop_bullet: "Bullet removed", drop_entry: "Section removed", reorder: "Reordered" };
+
+function renderResult(r, out) {
+  const applied = r.changes.filter((c) => c.status === "applied" && ["bullet", "tech", "skills"].includes(c.kind));
+  const rejected = r.changes.filter((c) => c.status === "rejected");
+  const removed = r.changes.filter((c) => c.kind === "drop_bullet" || c.kind === "drop_entry");
+  const reordered = r.changes.filter((c) => c.kind === "reorder");
+
+  const card = (c) => el("div", { class: "chg" + (c.status === "rejected" ? " rejected" : "") },
+    el("div", { class: "lbl", text: `${KIND[c.kind]} · ${c.label}` }),
+    c.status === "rejected"
+      ? el("div", {}, el("div", { text: c.before }), el("div", { class: "after", text: c.after }))
+      : (c.kind === "drop_bullet" || c.kind === "drop_entry") ? el("div", { text: c.before || c.label })
+      : (c.kind === "tech" || c.kind === "skills") ? listDiff(c.before, c.after)
+      : el("div", {}, ...wordDiff(c.before, c.after)),
+    c.reason ? el("div", { class: "why", text: c.reason }) : null);
+
+  const kw = el("div", { class: "kw" }, ...(r.keywords || []).map((k) => el("span", {
+    class: "badge " + k.status, title: k.note || "",
+    text: { added: "+ ", already_present: "", missing: "✗ ", cut: "" }[k.status] + k.keyword,
+  })));
+
+  out.replaceChildren(...[
+    el("div", { class: "row" },
+      el("b", { text: `${r.pages} page${r.pages === 1 ? "" : "s"}` }),
+      el("span", { class: "note", text: `${r.model} · ${r.seconds}s` }),
+      el("span", { class: "spacer", style: "flex:1" }),
+      el("a", { class: "btn primary", href: "/files/" + r.pdf, target: "_blank", rel: "noopener", text: "Open PDF ↗" }),
+      el("a", { class: "btn", href: "/files/" + r.tex, download: r.tex, text: "Download .tex" })),
+    r.summary ? el("p", { text: r.summary }) : null,
+    (r.keywords || []).length ? el("div", { style: "display:grid;gap:6px" },
+      el("p", { class: "section-h", text: "Job keywords, checked against the final PDF" }), kw,
+      el("p", { class: "note", text: "+ added for this job · plain: already in your resume · ✗ not in your resume (not added, since there's no evidence for it)" })) : null,
+    el("p", { class: "section-h", text: `Changes (${applied.length})` }),
+    applied.length ? el("div", { class: "changes" }, ...applied.map(card)) : el("p", { text: "No wording changes." }),
+    rejected.length ? el("p", { class: "section-h", text: `Blocked by the honesty check (${rejected.length})` }) : null,
+    rejected.length ? el("div", { class: "changes" }, ...rejected.map(card)) : null,
+    removed.length ? el("p", { class: "section-h", text: `Removed to fit one page (${removed.length})` }) : null,
+    removed.length ? el("div", { class: "changes" }, ...removed.map(card)) : null,
+    reordered.length ? el("p", { class: "note", text: "Bullets reordered, most relevant first, in: " + reordered.map((c) => c.label.split(" | ")[0]).join("; ") }) : null,
+  ].filter(Boolean));
+}
+
+$("closeTailor").addEventListener("click", () => $("tailorDlg").close());
+
+// ---------------------------------------------------------------- wiring
+
+async function handleFile(file) {
+  if (!file) return;
+  try { toast("Reading " + file.name + "…"); await readResume(file); }
+  catch (err) { toast(err.message || String(err)); }
+}
+$("resumeFile").addEventListener("change", (e) => { handleFile(e.target.files[0]); e.target.value = ""; });
+const bar = $("resumeBar");
+for (const ev of ["dragenter", "dragover"]) bar.addEventListener(ev, (e) => { e.preventDefault(); bar.classList.add("drag"); });
+for (const ev of ["dragleave", "drop"]) bar.addEventListener(ev, () => bar.classList.remove("drag"));
+bar.addEventListener("drop", (e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); });
+
+$("window").addEventListener("click", (e) => {
+  const h = e.target.dataset && e.target.dataset.h;
+  if (!h) return;
+  state.hours = +h; store.set("hours", state.hours); render();
+});
+$("q").addEventListener("input", (e) => { state.q = e.target.value; render(); });
+$("sort").addEventListener("change", (e) => { state.sort = e.target.value; store.set("sort", state.sort); render(); });
+$("minMatch").addEventListener("change", (e) => { state.minMatch = +e.target.value; store.set("minMatch", state.minMatch); render(); });
+for (const id of ["remote", "nosp", "h1bOnly", "hidedone"]) {
+  $(id).checked = state[id];
+  $(id).addEventListener("change", (e) => { state[id] = e.target.checked; store.set(id, state[id]); render(); });
+}
+
+rescore();
+updateBookmarklet();
+render();
+refreshStatus();
+// Keep relative times current; reload for fresh data every 10 minutes unless a dialog is open.
+setInterval(render, 60000);
+setInterval(() => { if (!document.querySelector("dialog[open]")) location.reload(); }, 600000);
+</script>
+</body>
+</html>

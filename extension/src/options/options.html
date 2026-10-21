@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Radar Autofill</title>
+<link rel="stylesheet" href="options.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Job Radar Autofill</h1>
+    <p class="lede">Fills Greenhouse, Lever, Ashby and Workday applications with the details below. Everything stays in this browser. It never presses Submit or Next, and never creates accounts.</p>
+    <span class="saved" id="saved" role="status" aria-live="polite"></span>
+  </header>
+
+  <div class="banner warn" id="unsupported" hidden>That page isn't a supported application form. Autofill works on Greenhouse, Lever, Ashby and Workday application pages.</div>
+  <div class="banner warn" id="perm" hidden>
+    The extension can't read job sites yet.
+    <button type="button" id="grant">Allow access to job sites</button>
+  </div>
+
+  <section>
+    <h2>Resume</h2>
+    <p class="hint">Attached to the resume upload field on each application.</p>
+    <div class="row">
+      <label class="file"><input type="file" id="resumeFile" accept=".pdf,.doc,.docx,application/pdf"><span>Choose file…</span></label>
+      <span id="resumeInfo" class="muted">No resume chosen.</span>
+      <button type="button" id="resumeRemove" class="ghost" hidden>Remove</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Profile</h2>
+    <div class="row">
+      <button type="button" id="importDash">Import from dashboard</button>
+      <button type="button" id="pasteToggle" class="ghost">Paste an export instead</button>
+    </div>
+    <p class="hint" id="importMsg"></p>
+    <div id="pasteBox" hidden>
+      <label for="pasteText">In the dashboard's Apply kit, press <b>Copy for extension</b>, then paste here.</label>
+      <textarea id="pasteText" rows="4"></textarea>
+      <div class="row"><button type="button" id="pasteImport">Import</button></div>
+    </div>
+    <div class="grid" id="profileFields"></div>
+  </section>
+
+  <section>
+    <h2>Work authorization and standard answers</h2>
+    <p class="hint">Sponsorship and work authorization questions are only answered when you set an answer here. Leave one on "Ask me each time" and the form will leave it for you.</p>
+    <div class="grid" id="stdFields"></div>
+  </section>
+
+  <section>
+    <h2>Voluntary self-identification</h2>
+    <p class="hint">Demographic questions (gender, race, veteran, disability). "Decline to answer" picks the form's decline option; if a form has none, the question is left for you.</p>
+    <div class="grid" id="eeoFields"></div>
+  </section>
+
+  <section>
+    <h2>Drafting answers</h2>
+    <p class="hint">For questions like "Why do you want to work here?", the panel can draft an answer from your master resume and the job posting, using the Job Radar helper on this computer and your existing ChatGPT or Claude login. No paid API is used. Drafts go into the field for you to edit; nothing is sent to the employer.</p>
+    <div class="grid">
+      <label for="draftBackend">Draft with</label>
+      <select id="draftBackend">
+        <option value="chatgpt">ChatGPT (your ChatGPT login via codex)</option>
+        <option value="claude-code">Claude (your Claude login via claude CLI)</option>
+        <option value="ollama">Local model (Ollama)</option>
+        <option value="manual">Manual: copy a prompt, paste it into any chat</option>
+      </select>
+      <span></span>
+      <span class="muted">Helper</span>
+      <span id="helperStatus" class="muted">Not checked yet.</span>
+      <button type="button" id="helperCheck" class="ghost">Check</button>
+    </div>
+    <label class="check"><input type="checkbox" id="set-helper"> Offer "Draft an answer" on writing questions</label>
+    <label class="check"><input type="checkbox" id="set-aiFill"> After filling, answer the remaining questions with AI too (marked "AI answer, check it"). Sponsorship, demographic, consent and legal questions are never sent.</label>
+  </section>
+
+  <section>
+    <h2>Behaviour</h2>
+    <label class="check"><input type="checkbox" id="set-autoRun"> Fill automatically when an application form opens (otherwise press the Autofill button or Alt+Shift+F)</label>
+    <label class="check"><input type="checkbox" id="set-remember"> Remember answers I type into other questions</label>
+    <label class="check"><input type="checkbox" id="set-fillRemembered"> Reuse remembered short answers automatically (longer written answers are always offered, never filled on their own)</label>
+  </section>
+
+  <section>
+    <h2>Saved answers <span class="count" id="memCount"></span></h2>
+    <p class="hint">Answers you typed into custom questions, keyed by the question's wording.</p>
+    <div class="row">
+      <input type="search" id="memSearch" placeholder="Search questions and answers" aria-label="Search saved answers">
+    </div>
+    <ul class="mem" id="memList"></ul>
+    <p class="muted" id="memMore"></p>
+  </section>
+
+  <section>
+    <h2>Backup</h2>
+    <div class="row">
+      <button type="button" id="exportAll">Export everything</button>
+      <label class="file"><input type="file" id="importAll" accept=".json,application/json"><span>Import a backup…</span></label>
+    </div>
+    <p class="hint">The export holds your profile, answers and saved answers, not the resume file.</p>
+  </section>
+
+  <section class="rules">
+    <h2>What autofill will never do</h2>
+    <ul>
+      <li>Press Submit, Next, Apply or Save and Continue, or submit a form in any way.</li>
+      <li>Create an account or sign in.</li>
+      <li>Answer sponsorship, work authorization or demographic questions without an answer saved here.</li>
+      <li>Answer salary, consent, signature, background-check or legal questions.</li>
+      <li>Fill a field whose label it can't tie to that one field.</li>
+      <li>Overwrite something already typed in a field.</li>
+    </ul>
+  </section>
+</main>
+<script src="../shared/rules.js"></script>
+<script src="options.js"></script>
+</body>
+</html>
