@@ -1,6 +1,6 @@
 """Local helper for the dashboard: serves it at http://127.0.0.1:8765 and runs
 resume tailoring jobs in the background. It also drafts answers to
-application questions for the Job Radar Autofill browser extension, and
+application questions for the It gets easier Autofill browser extension, and
 keeps the apply queue (prep.py): new jobs that match well get a tailored
 resume and drafted answers before the user opens them.
 
@@ -457,7 +457,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in ("/api/prepared", "/api/queue/next"):
             if not self._origin_ok(allow_extension=True):
-                return self._err(HTTPStatus.FORBIDDEN, "Only the Job Radar extension can ask for this")
+                return self._err(HTTPStatus.FORBIDDEN, "Only the It gets easier extension can ask for this")
             if path == "/api/queue/next":
                 return self._json(200, {"next": PREP.next_ready((q.get("exclude") or [""])[0])})
             return self._prepared((q.get("url") or [""])[0][:2000])
@@ -579,7 +579,7 @@ class Handler(BaseHTTPRequestHandler):
                                  "No job description saved for this posting. Paste it into the box first.")
             if params["instruction"] and params["backend"] == "chatgpt" and not PREP.reserve_run():
                 return self._err(HTTPStatus.TOO_MANY_REQUESTS,
-                                 "Today's ChatGPT runs for Job Radar are used up. Raise the limit in the apply queue settings, "
+                                 "Today's ChatGPT runs for It gets easier are used up. Raise the limit in the apply queue settings, "
                                  "or pick another model.")
             return self._json(202, {"id": submit(params)})
 
@@ -658,7 +658,7 @@ class Handler(BaseHTTPRequestHandler):
         attach it; without a prepared one it attaches its stored master."""
         job = job_by_url(page_url)
         if not job:
-            return self._err(HTTPStatus.NOT_FOUND, "Not a job Job Radar knows")
+            return self._err(HTTPStatus.NOT_FOUND, "It gets easier doesn't know this job")
         p = PREP.prepared(job["key"]) or {"state": None, "choice": "master", "pdf": None, "answers": []}
         pdf = p.pop("pdf")
         return self._json(200, {"job": {"key": job["key"], "company": job["company"], "title": job["title"]},
@@ -672,7 +672,7 @@ class Handler(BaseHTTPRequestHandler):
             job = job_by_url(str(data.get("url", ""))[:2000])
             key = job["key"] if job else ""
         if not key or not PREP.mark(key, "applied"):
-            return self._err(HTTPStatus.NOT_FOUND, "Not a job Job Radar knows")
+            return self._err(HTTPStatus.NOT_FOUND, "It gets easier doesn't know this job")
         return self._json(200, {"ok": True, "key": key, "next": PREP.next_ready(key)})
 
     def _draft(self, data: dict):

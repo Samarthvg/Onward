@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Job Radar</title>
+<title>It gets easier</title>
 <style>
   :root {
     --bg: #f6f5f1; --surface: #ffffff; --surface-2: #faf9f6; --text: #1d1d1b; --muted: #6b6a64;
@@ -270,7 +270,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>Job Radar</h1>
+    <h1>It gets easier</h1>
     <div class="status" id="status"></div>
     <div class="hbtns">
       <select id="roleSel" aria-label="Role" hidden></select>
@@ -338,7 +338,7 @@
       <div class="row"><button type="button" id="saveAbout">Save</button><span class="note" id="aboutNote"></span></div>
     </div>
     <div class="autofill">
-      <p class="section-h">Job Radar Autofill extension</p>
+      <p class="section-h">It gets easier Autofill extension</p>
       <p>If you've installed the extension (see <code>extension/README.md</code>), it replaces the bookmark below: it also attaches your resume, picks dropdown answers and remembers answers you type. Open its options and press <b>Import from dashboard</b> while this page is open, or copy your details here and paste them there.</p>
       <div class="row"><button type="button" id="copyForExtension">Copy for extension</button></div>
     </div>
@@ -2203,7 +2203,7 @@ function companiesCard() {
 
   return el("section", { class: "card", "aria-labelledby": "compH" },
     el("h3", { id: "compH", text: "Companies" }),
-    el("p", { text: "Job Radar reads company job boards directly. Paste a careers page or any job posting link to add a company: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Oracle, Eightfold and iCIMS are recognized." }),
+    el("p", { text: "It gets easier reads company job boards directly. Paste a careers page or any job posting link to add a company: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Oracle, Eightfold and iCIMS are recognized." }),
     el("div", { class: "rowline" }, url, check), out,
     el("div", { class: "field" }, el("p", { class: "section-h", text: `Companies you added (${added.length})` }),
       added.length ? boardList(added) : el("p", { class: "note", text: "None yet. They're read from the next radar run on." })),
@@ -2254,7 +2254,7 @@ function builtinBoards() {
   filter.addEventListener("input", draw);
   draw();
   const off = all.filter((b) => b.removed).length;
-  return el("div", { class: "field" }, el("p", { class: "section-h", text: `Companies Job Radar ships with (${all.length}${off ? `, ${off} not tracked` : ""})` }),
+  return el("div", { class: "field" }, el("p", { class: "section-h", text: `Companies included with It gets easier (${all.length}${off ? `, ${off} not tracked` : ""})` }),
     filter, holder);
 }
 

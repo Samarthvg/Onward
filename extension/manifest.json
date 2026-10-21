@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Job Radar Autofill",
+  "name": "It gets easier Autofill",
   "version": "0.2.0",
   "description": "Fills Greenhouse, Lever, Ashby and Workday job applications with your saved details. Never submits.",
   "icons": {

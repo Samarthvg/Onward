@@ -32,7 +32,7 @@ class Tmp(unittest.TestCase):
 
 
 class DefaultsTests(Tmp):
-    """Defaults are how Job Radar behaved before settings existed."""
+    """Defaults are how It gets easier behaved before settings existed."""
 
     def test_defaults_match_the_old_constants(self):
         d = config.defaults()

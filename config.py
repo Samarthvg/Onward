@@ -8,7 +8,7 @@ features each turns on, the user's own company boards, match-score weights
 
 The file is checked against SCHEMA on every load. A value of the wrong type
 falls back to its default (and is reported), numbers outside their range are
-clamped, unknown keys are dropped. Defaults reproduce how Job Radar behaved
+clamped, unknown keys are dropped. Defaults reproduce how It gets easier behaved
 before settings existed, so an install without a settings file runs exactly
 as before. Each file carries a version; MIGRATIONS bring older files up to
 date when they are loaded.
@@ -493,7 +493,7 @@ class Store:
         data, errors = validate(raw)
         self.warnings += errors
         if newer:
-            self.warnings.append(f"{self.path.name} is from a newer Job Radar (version {raw['version']}); "
+            self.warnings.append(f"{self.path.name} is from a newer version of It gets easier (version {raw['version']}); "
                                  "it is used read-only")
             data["version"] = raw["version"]
         elif migrated and exists:
@@ -515,7 +515,7 @@ class Store:
         with self.lock:
             cur = self.load()
             if cur.get("version", VERSION) > VERSION:
-                raise SettingsError([f"{self.path.name} is from a newer Job Radar; not overwriting it"])
+                raise SettingsError([f"{self.path.name} is from a newer version of It gets easier; not overwriting it"])
             self._write(clean)
             self._data, self._stamp = clean, self._file_stamp()
         return copy.deepcopy(clean)
