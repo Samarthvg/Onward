@@ -288,6 +288,77 @@
     return "";
   }
 
+  /* --------------------------------------------- saved answers by company */
+
+  const COMPANY_SUFFIX = /\b(inc|incorporated|llc|l l c|ltd|limited|corp|corporation|co|company|plc|gmbh|ag|sa|pbc|technologies|technology|labs?|group|holdings|financial|systems|software|solutions|ai|io|hq)\b/g;
+  const GENERIC_WORDS = new Set(["the", "and", "for", "with", "global", "international", "national", "american", "united",
+    "first", "general", "digital", "data", "cloud", "health", "bank", "capital", "energy", "media", "network", "new", "open"]);
+
+  /** Comparable form of a company name: "ElevenLabs, Inc." and "Elevenlabs" match. */
+  function companyKey(name) {
+    return normQ(name).replace(COMPANY_SUFFIX, " ").replace(/\s+/g, "");
+  }
+
+  function sameCompany(a, b) {
+    const x = companyKey(a), y = companyKey(b);
+    return !!x && !!y && (x === y || (Math.min(x.length, y.length) >= 4 && (x.startsWith(y) || y.startsWith(x))));
+  }
+
+  /** Spellings of a company an answer might use: "Chime Financial, Inc" -> Chime Financial, Chime. */
+  function companyNames(name) {
+    const full = clean(name).replace(/,?\s*\b(inc|llc|ltd|corp|plc|gmbh|pbc)\b\.?$/i, "").trim();
+    if (!full) return [];
+    const out = [full];
+    const core = full.replace(new RegExp(COMPANY_SUFFIX.source, "gi"), " ").replace(/\s+/g, " ").trim();
+    if (core && core !== full) out.push(core);
+    const first = core.split(/[\s,]+/)[0];
+    if (first && first.length >= 4 && !GENERIC_WORDS.has(first.toLowerCase())) out.push(first);
+    return [...new Set(out)];
+  }
+
+  /**
+   * The company and product names an answer written for one company
+   * mentions: the company's own names, and capitalized words of the posting
+   * (or job title) the answer repeats that start like the company does
+   * ("ElevenMusic" at ElevenLabs) or appear in the job title.
+   */
+  function namesIn(answer, company, title, posting) {
+    const text = String(answer || "");
+    const found = mentions(text, companyNames(company));
+    const stem = companyKey(company).slice(0, 5);
+    const titleWords = new Set((String(title || "").match(/\b[A-Z][A-Za-z0-9]{3,}\b/g) || []).map((w) => w.toLowerCase()));
+    const source = String(posting || "") + " " + String(title || "");
+    for (const w of new Set(text.match(/\b[A-Z][A-Za-z0-9]*[A-Za-z0-9]{2,}\b/g) || [])) {
+      const lw = w.toLowerCase();
+      if (found.some((f) => f.toLowerCase() === lw)) continue;
+      const product = (stem.length >= 4 && lw.startsWith(stem) && lw !== stem) || (titleWords.has(lw) && /[A-Z].*[A-Z]|\d/.test(w.slice(1)));
+      if (product && new RegExp("\\b" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(source + " " + company)) found.push(w);
+    }
+    return found;
+  }
+
+  /** Which of names appear in text as whole words, case-insensitively. */
+  function mentions(text, names) {
+    const t = " " + normQ(text) + " ";
+    return (names || []).filter((n) => { const k = normQ(n); return k && t.includes(" " + k + " "); });
+  }
+
+  /**
+   * How a saved answer may be used on this page:
+   *   "use"   same company, or the answer names no company or product
+   *   "warn"  written for another company and names it or its products;
+   *           offered only behind a warning, never filled on its own
+   */
+  function savedAnswerUse(saved, pageCompany) {
+    if (!saved || !saved.a) return { use: "none" };
+    if (saved.company && pageCompany && sameCompany(saved.company, pageCompany)) return { use: "use", names: [] };
+    // Answers saved before names were recorded: catch "ElevenMusic" by the company's stem.
+    const stem = companyKey(saved.company).slice(0, 5);
+    const stemmed = stem.length >= 5 ? (String(saved.a).match(/\b[A-Z][A-Za-z0-9]{4,}\b/g) || []).filter((w) => w.toLowerCase().startsWith(stem)) : [];
+    const names = [...new Set([...(saved.names || []), ...mentions(saved.a, companyNames(saved.company)), ...stemmed])];
+    return names.length ? { use: "warn", names, company: saved.company || "another company" } : { use: "use", names: [] };
+  }
+
   /* ----------------------------------------------- work history fields */
 
   // Field names inside repeating Work Experience / Education rows, read from
@@ -416,5 +487,6 @@
   root.JR.rules = {
     PROFILE_FIELDS, STANDARD_ANSWERS, EEO_ANSWERS, DECLINE, DEFAULT_ANSWERS, DEFAULT_PROFILE, DEFAULT_SETTINGS, DRAFT_BACKENDS, withDefaults,
     US_STATES, CHOICE_KINDS, TEXT_KINDS, clean, normQ, classify, answerFor, pickOption, asText, alternatives, DECLINE_RE, historyField,
+    companyKey, sameCompany, companyNames, namesIn, mentions, savedAnswerUse,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

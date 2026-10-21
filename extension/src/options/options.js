@@ -265,16 +265,28 @@ $("pasteImport").addEventListener("click", () => {
 
 let memCache = [];
 
+let useSince = 0;
+
 async function readMemory() {
   const all = await api.storage.local.get(null);
-  memCache = Object.entries(all).filter(([k]) => k.startsWith("mem:")).map(([k, v]) => Object.assign({ key: k }, v))
+  useSince = all.useLogSince || 0;
+  memCache = Object.entries(all).filter(([k]) => k.startsWith("mem:"))
+    .map(([k, v]) => Object.assign({ key: k, uses: Array.isArray(all["use:" + k.slice(4)]) ? all["use:" + k.slice(4)] : [] }, v))
     .sort((a, b) => (b.updated || 0) - (a.updated || 0));
 }
+
+const day = (t) => new Date(t).toLocaleDateString();
 
 const SHOW = 100;
 async function renderMemory() {
   await readMemory();
   drawMemory();
+}
+
+/** A flag for answers that name the company they were written for, or its products. */
+function named(m) {
+  const u = R.savedAnswerUse(m, "");
+  return u.use === "warn" ? el("div", { class: "flag" }, `Names ${u.names.join(", ")}. Only offered on other companies' forms behind a warning.`) : null;
 }
 
 function drawMemory() {
@@ -295,15 +307,22 @@ function drawMemory() {
     list.append(el("li", null,
       el("div", { class: "q" }, m.q),
       ta,
+      named(m),
+      el("div", { class: "meta" }, m.uses.length
+        ? "Used on: " + m.uses.slice(-8).reverse().map((u) => `${u.company || u.host}${u.title ? " (" + u.title + ")" : ""}, ${day(u.date)}`).join("; ")
+          + (m.uses.length > 8 ? `; and ${m.uses.length - 8} earlier` : "")
+        : "Not used on any form since uses started being recorded."),
       el("div", { class: "meta" },
-        el("span", null, [m.company, m.host, m.updated ? new Date(m.updated).toLocaleDateString() : ""].filter(Boolean).join(" · ")),
+        el("span", null, [m.company ? "Written for " + m.company : "", m.host, m.updated ? "saved " + day(m.updated) : ""].filter(Boolean).join(" · ")),
         el("button", { type: "button", class: "ghost danger", onclick: async () => {
-          await api.storage.local.remove(m.key);
+          await api.storage.local.remove([m.key, "use:" + m.key.slice(4)]);
           memCache = memCache.filter((x) => x !== m);
           drawMemory();
           saved("Deleted");
         } }, "Delete"))));
   }
+  $("useSince").textContent = "Where an answer was used is recorded from " + (useSince ? day(useSince) : "today")
+    + ". Uses before that weren't recorded, so a saved answer may have gone onto forms that aren't listed.";
   if (!memCache.length) list.append(el("li", { class: "muted" }, "Nothing saved yet. Answers you type into custom questions on application forms show up here."));
   $("memMore").textContent = hits.length > SHOW ? `Showing ${SHOW} of ${hits.length}. Search to narrow down.` : "";
 }
@@ -332,7 +351,7 @@ $("importAll").addEventListener("change", async (e) => {
     if (!doc || doc.jobradar !== "autofill-backup" || typeof doc.data !== "object") throw new Error();
     const data = {};
     for (const [k, v] of Object.entries(doc.data)) {
-      if (["profile", "answers", "settings"].includes(k) || k.startsWith("mem:")) data[k] = v;
+      if (["profile", "answers", "settings", "useLogSince"].includes(k) || k.startsWith("mem:") || k.startsWith("use:")) data[k] = v;
     }
     await api.storage.local.set(data);
     await load();

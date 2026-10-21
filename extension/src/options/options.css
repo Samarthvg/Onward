@@ -68,3 +68,4 @@ button.danger { color: var(--warn); }
   .grid > :nth-child(3n) { justify-self: auto; }
 }
 .grid .cell { width: 100%; min-width: 0; }
+.mem .flag { font-size: 12px; color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 4px 8px; }

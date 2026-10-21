@@ -3,7 +3,7 @@
 // submitted: the extension never presses Submit, and as a second guard this
 // harness aborts any request that looks like a submission. No resume is
 // seeded, so no file is sent to an ATS's resume parser.
-import { launch, seed, runFill, expect, results } from "./harness.mjs";
+import { launch, seed, runFill, expect, results, fixtureHistory } from "./harness.mjs";
 
 const PAGES = [
   ["palantir", "https://jobs.lever.co/palantir/e1a6c138-98bf-45e2-97f7-2c70371cc38a/apply", { "input[name=name]": "Testy McTestface" }],
@@ -17,6 +17,9 @@ const shots = process.argv.find((a) => a.startsWith("--shots="))?.slice(8);
 
 const env = await launch({ headless: !process.argv.includes("--headed"), mocks: false });
 const blocked = [];
+// Work history on live forms comes from the fake fixture resume, never the user's own.
+await env.ctx.route(/^http:\/\/127\.0\.0\.1:8765\/api\/resume\/entries/, (route) =>
+  route.fulfill({ status: 200, contentType: "application/json", body: fixtureHistory() }));
 await env.ctx.route(/^https:\/\//, (route) => {
   const r = route.request();
   // Greenhouse posts to .../applications, Lever to .../apply, Ashby runs a

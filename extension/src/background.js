@@ -75,7 +75,10 @@ async function fillTab(tab) {
 api.action.onClicked.addListener(fillTab);
 
 // Nothing can be filled until the profile exists, so start there.
-api.runtime.onInstalled.addListener((details) => {
+api.runtime.onInstalled.addListener(async (details) => {
+  // Saved-answer uses are recorded from this version on; the options page says so.
+  const { useLogSince } = await api.storage.local.get("useLogSince");
+  if (!useLogSince) await api.storage.local.set({ useLogSince: Date.now() });
   if (details.reason === "install") api.runtime.openOptionsPage();
 });
 

@@ -70,6 +70,48 @@ await test("greenhouse: remembers custom answers and offers written ones", async
   await opt.close();
 });
 
+await test("greenhouse: saved answers written for another company stay behind a warning", async (page) => {
+  const now = Date.now();
+  await seed(env, {
+    // Written at ElevenLabs and naming it: warned, never filled on its own.
+    "mem:why do you want to work at mock co": { q: "Why do you want to work at Mock Co?", writing: true, kind: "textarea", company: "ElevenLabs",
+      names: ["ElevenLabs", "ElevenMusic"], a: "I want to build ElevenMusic at ElevenLabs. (TEST ANSWER)", updated: now },
+    "mem:when can you start": { q: "When can you start?", kind: "text", company: "ElevenLabs", a: "Right after my ElevenLabs offer deadline", updated: now },
+    // Neutral: still reused at any company.
+    "mem:are you currently subject to any agreement with a former employer such as a non compete agreement that may limit your ability to perform the duties of the position":
+      { q: "non-compete", kind: "rselect", company: "ElevenLabs", a: "No", updated: now },
+  });
+  await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001");
+  const text = await runFill(page);
+  const st = await page.evaluate(() => window.__mockState());
+  expectState("cross-company", st, { why: "", question_8: "", question_7: "No" });
+  expect("cross-company: warning shown", /written for ElevenLabs and mentions ElevenLabs, ElevenMusic/.test(text), text);
+  const panel = page.locator("#jobradar-autofill .panel");
+  expect("cross-company: no one-click reuse", (await panel.locator("button", { hasText: "Use saved answer" }).count()) === 0);
+  await panel.locator("li", { hasText: "Why do you want to work at Mock Co" }).locator("button", { hasText: "Show it" }).click();
+  await panel.locator("button", { hasText: "Use it anyway" }).first().click();
+  await sleep(300);
+  expectState("cross-company: second click uses it", await page.evaluate(() => window.__mockState()), { why: "I want to build ElevenMusic at ElevenLabs. (TEST ANSWER)" });
+  const log = await env.sw.evaluate(() => chrome.storage.local.get(null));
+  const uses = log["use:why do you want to work at mock co"] || [];
+  expect("use logged", uses.length === 1 && uses[0].company === "Mock Co", JSON.stringify(uses));
+  const nc = Object.keys(log).find((k) => k.startsWith("use:are you currently subject"));
+  expect("auto-filled use logged", nc && log[nc].length === 1, Object.keys(log).join(","));
+  expect("warned short answer not used", !log["use:when can you start"]);
+});
+
+await test("greenhouse: answers saved at the same company are offered as before", async (page) => {
+  await seed(env, {
+    "mem:why do you want to work at mock co": { q: "Why do you want to work at Mock Co?", writing: true, kind: "textarea", company: "Mock Co",
+      names: ["Mock Co"], a: "Mock Co builds the tools I use every day. (TEST ANSWER)", updated: Date.now() },
+    "mem:when can you start": { q: "When can you start?", kind: "text", company: "Mock Co", a: "Mock Co can expect me in June", updated: Date.now() },
+  });
+  await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001");
+  const text = await runFill(page);
+  expectState("same company", await page.evaluate(() => window.__mockState()), { question_8: "Mock Co can expect me in June", why: "" });
+  expect("same company: plain offer", /Use saved answer/.test(text) && !/written for/.test(text), text);
+});
+
 await test("greenhouse: works inside a company site's iframe embed", async (page) => {
   await page.goto("https://careers.mockco.test/jobs");
   const frame = page.frameLocator("#grnhse_iframe");

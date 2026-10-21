@@ -39,6 +39,7 @@
     details > summary { cursor: pointer; color: #4a473f; margin-top: 10px; }
     a { color: #2f5a8a; }
     .prep { margin: 0 0 8px; padding: 6px 8px; border-radius: 6px; background: #eef3ec; color: #2f5a2a; }
+    .warn { margin-top: 4px; padding: 5px 8px; border-radius: 6px; background: #f7e6df; color: #7a2e14; }
     .sec { margin: 0 0 8px; padding: 6px 8px; border-radius: 6px; background: #fbefd5; color: #5e3b00; }
     .next { margin-top: 8px; padding: 8px 10px; border: 1px solid #d9d6cc; border-radius: 8px; display: grid; gap: 6px; }
     a.btn { display: inline-block; text-decoration: none; border-radius: 6px; padding: 5px 10px; background: #2f6b3a; color: #fff; font-weight: 600; width: fit-content; }
@@ -55,7 +56,7 @@
       .tag { background: #2f4429; color: #cfe6c6; } .tag.amber { background: #4a3a17; color: #f5d797; }
       textarea { background: #1b1b19; color: #ecebe6; border-color: #4d4b43; }
       a { color: #8fb6e8; }
-      .prep { background: #2a3626; color: #cfe6c6; } .sec { background: #4a3a17; color: #f5d797; } .next { border-color: #44423b; }
+      .prep { background: #2a3626; color: #cfe6c6; } .sec { background: #4a3a17; color: #f5d797; } .warn { background: #3a241c; color: #f0a084; } .next { border-color: #44423b; }
       a.btn { color: #fff; }
     }
   `;
@@ -124,7 +125,15 @@
     } else {
       if (it.why) kids.push(el("div", { class: "why" }, sentence(it.why)));
       const row = [];
-      if (it.offer) {
+      if (it.offer && it.offerWarn) {
+        // Written for another company and naming it: hidden until asked for, then a second click to use.
+        const w = it.offerWarn;
+        kids.push(el("div", { class: "warn" }, `Your saved answer was written for ${w.company} and mentions ${w.names.join(", ")}. Don't reuse it here as is.`));
+        if (it.revealed) {
+          kids.push(el("div", { class: "v" }, short(it.offer.a, 400)));
+          row.push(el("button", { onclick: () => handlers.useSaved(it) }, `Use it anyway (edit out ${w.names[0]})`));
+        } else row.push(el("button", { class: "ghost", onclick: () => handlers.revealSaved(it) }, "Show it"));
+      } else if (it.offer) {
         kids.push(el("div", { class: "v" }, "Saved answer" + (it.offer.company ? " (from " + it.offer.company + ")" : "") + ": " + short(it.offer.a, 140)));
         row.push(el("button", { onclick: () => handlers.useSaved(it) }, "Use saved answer"));
       }

@@ -105,14 +105,22 @@
     const m = k && mem[k];
     const canDraft = !!(cls.writing && store.settings.helper && (q.kind === "textarea" || q.kind === "text") && !notForAI(q));
     if (m && m.a) {
+      // An answer written for another company that names it stays behind a warning.
+      const use = R.savedAnswerUse(m, ctx.company);
+      const offerWarn = use.use === "warn" ? { company: use.company, names: use.names } : null;
       if (cls.writing || q.kind === "textarea") {
-        return Object.assign(base, { status: "needs", why: "write this one, or reuse a saved answer", offer: m, canDraft });
+        return Object.assign(base, { status: "needs", why: offerWarn ? "write this one" : "write this one, or reuse a saved answer",
+          offer: m, offerKey: k, offerWarn, canDraft });
       }
-      if (store.settings.fillRemembered) {
+      if (store.settings.fillRemembered && !offerWarn) {
         const r = await W.set(q, [m.a], cls, ctx);
-        if (r.ok) return Object.assign(base, { status: "filled", value: r.chosen, source: "remembered" });
+        if (r.ok) {
+          logUse(k, m);
+          return Object.assign(base, { status: "filled", value: r.chosen, source: "remembered" });
+        }
       }
-      return Object.assign(base, { status: "needs", why: "your saved answer didn't fit; answer it here", offer: q.kind === "text" ? m : null });
+      return Object.assign(base, { status: "needs", why: offerWarn ? "answer this yourself" : "your saved answer didn't fit; answer it here",
+        offer: q.kind === "text" || offerWarn ? m : null, offerKey: k, offerWarn });
     }
     return Object.assign(base, { status: "needs", why: cls.writing ? "write this one" : "answer this yourself", canDraft });
   }
@@ -151,7 +159,7 @@
 
       const keys = qs.map((q) => memKey(q.label)).filter(Boolean);
       const mem = keys.length ? await api.storage.local.get(keys) : {};
-      const ctx = {};
+      const ctx = { company: JR.sites.jobInfo(document).company || "" };
       const prep = store.settings.helper ? await getPrepared() : null;
       if (qs.some((q) => q.kind === "file")) ctx.resume = resumeFor(prep, (await api.storage.local.get("resume")).resume || null);
 
@@ -225,7 +233,7 @@
     };
     for (const it of items) {
       const q = it.q;
-      if (it.status !== "needs" || !q.cls || q.cls.cat !== "custom" || it.offer || q.single || q.kind === "file" || notForAI(q)) continue;
+      if (it.status !== "needs" || !q.cls || q.cls.cat !== "custom" || (it.offer && !it.offerWarn) || q.single || q.kind === "file" || notForAI(q)) continue;
       const a = find(it.label);
       if (!a || W.get(q)) continue;
       const picks = a.choices && a.choices.length ? a.choices : a.answer ? [a.answer] : [];
@@ -308,7 +316,7 @@
     const cands = [];
     for (const it of items) {
       const q = it.q;
-      if (it.status !== "needs" || !q.cls || q.cls.cat !== "custom" || it.offer || q.single || q.kind === "file" || notForAI(q)) continue;
+      if (it.status !== "needs" || !q.cls || q.cls.cat !== "custom" || (it.offer && !it.offerWarn) || q.single || q.kind === "file" || notForAI(q)) continue;
       let kind = q.kind === "textarea" ? "textarea" : AI_TEXT.has(q.kind) ? "text" : q.kind === "checkbox" ? "multi" : "choice";
       let opts = [];
       if (kind === "choice" || kind === "multi") {
@@ -370,6 +378,7 @@
     if (!store.settings.remember || !site) return;
     const qs = JR.sites.collect(document, site);
     const info = JR.sites.jobInfo(document);
+    let posting = null;
     const writes = {};
     for (const q of qs) {
       if (q.kind === "file") continue;
@@ -382,9 +391,30 @@
       if (ours && ours.value === v) continue;   // still what we put there
       if (lastSaved.get(k) === v) continue;
       lastSaved.set(k, v);
-      writes[k] = { q: q.label, a: v, kind: q.kind, writing: !!cls.writing, company: info.company || "", host: location.hostname, updated: Date.now() };
+      if (posting === null) posting = JR.sites.jobDescription(document);
+      // The company and product names the answer mentions, so it's never
+      // offered to another company as if it were neutral.
+      const names = R.namesIn(v, info.company, info.title, posting);
+      writes[k] = { q: q.label, a: v, kind: q.kind, writing: !!cls.writing, company: info.company || "", title: info.title || "",
+        names, host: location.hostname, updated: Date.now() };
     }
     if (Object.keys(writes).length) await api.storage.local.set(writes);
+  }
+
+  /** Where saved answers went: kept under use:<key>, so editing the answer keeps its history. */
+  async function logUse(key, saved) {
+    if (!key) return;
+    const info = JR.sites.jobInfo(document);
+    const uk = "use:" + key.slice(4);
+    try {
+      const got = await api.storage.local.get([uk, "useLogSince"]);
+      const list = Array.isArray(got[uk]) ? got[uk] : [];
+      list.push({ company: info.company || "", title: info.title || "", host: location.hostname, date: Date.now(),
+        q: saved && saved.q ? saved.q : "" });
+      const out = { [uk]: list.slice(-100) };
+      if (!got.useLogSince) out.useLogSince = Date.now();
+      await api.storage.local.set(out);
+    } catch (e) {}
   }
 
   let snapTimer = 0;
@@ -454,9 +484,15 @@
       n.scrollIntoView({ block: "center", behavior: "smooth" });
       if (typeof it.q.el.focus === "function" && it.q.kind !== "file") try { it.q.el.focus({ preventScroll: true }); } catch (e) {}
     },
+    revealSaved(it) {
+      it.revealed = true;
+      JR.panel.render();
+    },
     async useSaved(it) {
+      if (it.offerWarn && !it.revealed) return;   // a second, deliberate click is needed
       const r = await W.set(it.q, [it.offer.a], it.q.cls, {});
       if (r.ok) {
+        logUse(it.offerKey, it.offer);
         filledByUs.set(it.q.el, { value: r.chosen, source: "remembered" });
         mark(it.q, "review");
         Object.assign(it, { status: "filled", value: r.chosen, source: "remembered", why: "" });

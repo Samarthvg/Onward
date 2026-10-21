@@ -118,8 +118,11 @@ def main():
         driver.switch_to.window(driver.window_handles[0])
 
         def seed(extra=None):
-            data = {**PROFILE, "resume": {"name": "fake-resume.pdf", "type": "application/pdf", "size": len(RESUME), "updated": 1,
-                                          "data": base64.b64encode(RESUME).decode()}, **(extra or {})}
+            # Selenium can't intercept the helper, so it stays off: otherwise the
+            # forms would get work history from the user's real master resume.
+            data = {**PROFILE, "settings": {**PROFILE["settings"], "helper": False},
+                    "resume": {"name": "fake-resume.pdf", "type": "application/pdf", "size": len(RESUME), "updated": 1,
+                               "data": base64.b64encode(RESUME).decode()}, **(extra or {})}
             driver.get(f"http://127.0.0.1:{PORT}/seed.html")
             WebDriverWait(driver, 10).until(lambda d: d.execute_script("return document.readyState") == "complete")
             driver.execute_script("window.postMessage({__jrSeed: arguments[0]}, '*')", data)

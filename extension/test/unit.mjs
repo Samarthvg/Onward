@@ -149,6 +149,23 @@ hf("Describe a project you're proud of", "question_13", null);
 hf("How many years of experience do you have?", "cards[a][field2]", null);
 hf("LinkedIn", "socialNetworkAccounts--linkedInAccount linkedinQuestion", null);
 
+// Saved answers and the company they were written for
+const ELEVEN = "I want to join ElevenLabs because ElevenMusic is the most fun audio product I have used, and I built TypeScript tools.";
+check("names: company and its product, not a skill", () => assert.deepEqual(
+  R.namesIn(ELEVEN, "ElevenLabs", "Software Engineer, ElevenMusic", "ElevenMusic lets anyone compose. We use TypeScript."), ["ElevenLabs", "ElevenMusic"]));
+check("names: suffixes and short forms", () => assert.deepEqual(R.companyNames("Chime Financial, Inc"), ["Chime Financial", "Chime"]));
+check("names: neutral answer names nothing", () => assert.deepEqual(R.namesIn("I like building reliable APIs in Go.", "ElevenLabs", "", "We use Go."), []));
+check("same company across spellings", () => assert.ok(R.sameCompany("ElevenLabs", "Elevenlabs, Inc.") && !R.sameCompany("ElevenLabs", "Chime")));
+check("saved answer: same company is offered", () => assert.equal(R.savedAnswerUse({ a: ELEVEN, company: "ElevenLabs" }, "ElevenLabs Inc").use, "use"));
+check("saved answer: other company is warned", () => {
+  const u = R.savedAnswerUse({ a: ELEVEN, company: "ElevenLabs", names: ["ElevenLabs", "ElevenMusic"] }, "Mock Co");
+  assert.equal(u.use, "warn"); assert.deepEqual(u.names, ["ElevenLabs", "ElevenMusic"]);
+});
+check("saved answer: old entries without names still caught", () =>
+  assert.deepEqual(R.savedAnswerUse({ a: ELEVEN, company: "ElevenLabs" }, "Mock Co").names, ["ElevenLabs", "ElevenMusic"]));
+check("saved answer: neutral one is offered everywhere", () =>
+  assert.equal(R.savedAnswerUse({ a: "Two weeks after an offer", company: "ElevenLabs" }, "Mock Co").use, "use"));
+
 // Option matching
 const pick = (v, opts, want) => check(`pick ${v} from ${opts.join("|")}`, () => assert.equal(R.pickOption(v, opts), want));
 pick("yes", ["No", "Yes"], 1);
