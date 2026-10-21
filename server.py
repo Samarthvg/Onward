@@ -314,6 +314,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/status":
             return self._json(200, {"backends": tailor.backend_status(), "master": master_meta()})
 
+        if path == "/api/about":
+            return self._json(200, {"text": tailor.about_me(), "max": tailor.ABOUT_MAX})
+
         if path == "/api/job":
             row = job_row((q.get("key") or [""])[0])
             return self._json(200, row) if row else self._err(HTTPStatus.NOT_FOUND, "Unknown job")
@@ -408,6 +411,12 @@ class Handler(BaseHTTPRequestHandler):
             n = PREP.mark_many({str(k)[:500]: v for k, v in list(marks.items())[:5000]
                                 if v in ("applied", "dismissed", None)})
             return self._json(200, {"ok": True, "matched": n})
+
+        if path == "/api/about":
+            # The applicant's own notes on interests and motivations, used by
+            # drafted answers. Kept in resume/, which never leaves this machine.
+            tailor.save_about_me(str(data.get("text", "")))
+            return self._json(200, {"ok": True})
 
         if path == "/api/master":
             tex = str(data.get("tex", ""))

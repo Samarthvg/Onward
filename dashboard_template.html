@@ -282,6 +282,12 @@
     <p>Your details for application forms. Saved only in this browser. Nothing is sent anywhere.</p>
     <div><button type="button" id="fromResume">Fill from resume</button></div>
     <div class="kit" id="kitFields"></div>
+    <div id="aboutBox" style="display:grid;gap:6px">
+      <p class="section-h">About me, for drafted answers</p>
+      <p>Written answers ("Why this company?") can only mention things you tell them. Write a few lines in your own words: what you're into, why certain areas excite you, products you use, anything true you'd say in an interview. Drafts use this and never invent beyond it.</p>
+      <textarea id="aboutText" class="jd" rows="6" placeholder="e.g. Music is something I love dearly; I play guitar and make beats on weekends. I got into ML because..."></textarea>
+      <div class="row"><button type="button" id="saveAbout">Save</button><span class="note" id="aboutNote"></span></div>
+    </div>
     <div class="autofill">
       <p class="section-h">Job Radar Autofill extension</p>
       <p>If you've installed the extension (see <code>extension/README.md</code>), it replaces the bookmark below: it also attaches your resume, picks dropdown answers and remembers answers you type. Open its options and press <b>Import from dashboard</b> while this page is open, or copy your details here and paste them there.</p>
@@ -1148,7 +1154,27 @@ function renderKit() {
       } }));
   }
   updateBookmarklet();
+  loadAbout();
 }
+
+// "About me" lives with the helper (resume/about_me.txt), not in the browser,
+// because the helper is what drafts answers.
+async function loadAbout() {
+  const box = $("aboutBox");
+  box.hidden = !HELPER;
+  if (!HELPER) return;
+  try {
+    const { text } = await api("/api/about");
+    if (document.activeElement !== $("aboutText")) $("aboutText").value = text || "";
+    $("aboutNote").textContent = text ? "" : "Not written yet.";
+  } catch { $("aboutNote").textContent = "Helper not running, so this can't be loaded."; }
+}
+$("saveAbout").addEventListener("click", async () => {
+  try {
+    await api("/api/about", { text: $("aboutText").value });
+    $("aboutNote").textContent = "Saved. New drafts will use it.";
+  } catch (e) { $("aboutNote").textContent = e.message; }
+});
 
 function updateBookmarklet() {
   const src = $("fillerSrc").textContent.trim();

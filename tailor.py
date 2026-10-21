@@ -287,16 +287,166 @@ BACKENDS = {"ollama": run_ollama, "chatgpt": run_chatgpt, "claude-code": run_cla
 
 
 # --------------------------------------------------------------------------
+# Writing voice for drafted answers
+#
+# Drafts should read like the applicant wrote them: a new grad talking to a
+# person, not a model summarizing a resume. The prompt sets the voice, and
+# style_problems() checks the result in code, because models drift back to
+# the same stock phrases whatever the prompt says.
+
+ABOUT_PATH = ROOT / "resume" / "about_me.txt"
+ABOUT_MAX = 4000
+
+VOICE = """How to write it
+- Sound like a real new-grad student talking to a person: plain everyday words, contractions (I'm, I've, it's), a mix of short and longer sentences, and a bit of real personality. It should read like the applicant typed it, not like a cover letter template.
+- Lead with an honest, personal reason when ABOUT THE APPLICANT gives one that fits (an interest, something they care about, how they use the product). Never invent interests, hobbies, feelings or stories that aren't written there.
+- Mention at most one or two things from the resume, described the way you'd tell a friend what you built ("I built a chatbot that remembers past conversations"), not as a resume line full of tool names. Name a tool only if the question or the job really cares about it.
+- Don't restate the company's mission or the posting back to them, and don't explain what their product does.
+- Never use these or anything like them: "appeals to me", "resonates", "aligns with", "connects to", "makes that connection", "concrete", "I would bring", "I'd bring", "leverage", "passionate", "thrilled", "excited to", "eager to", "deeply", "at the intersection of", "drive impact", "cutting-edge", "seamless", "robust", "fast-paced", "dynamic", "I am confident", "not only ... but also", "In [project], I built", "This experience taught me", "Ultimately".
+- Also avoid cover-letter stock lines: "offers the chance", "the opportunity to", "a big reason", "this particular role", "I'd like to apply", "matters to me", "take an idea from", "through to", "grounded", "meaningful", "impactful", "contribute to".
+- No em dashes, no semicolons, no lists of three adjectives or three items in a row.
+- Don't repeat a word (other than small common words) and use the company or product name at most twice.
+
+Example of the difference (different company, same idea):
+Too machine-written: "Notion's mission resonates with me because it empowers teams to collaborate seamlessly. In my capstone project, I leveraged React and Node.js to build a robust task-management platform, and I would bring this full-stack experience to Notion's dynamic team."
+Sounds like a person: "I've used Notion for every class since my first semester, so I already have opinions about what it gets right. For my capstone I built a small task tracker in React and Node, and the hardest part was making edits feel instant when two people were working at once. I'd love to work on that kind of problem with people who care about it as much as I do.\""""
+
+# Stock phrasing that marks text as machine-written. Checked case-insensitively.
+AI_TELLS = [
+    r"appeals? to me", r"resonat\w+", r"aligns? (?:with|perfectly)", r"connects? (?:to|with)",
+    r"make[sd]? that connection", r"\bconcrete(?:ly)?\b", r"\bI(?:'d| would) bring\b", r"\bleverag\w+",
+    r"\bpassionat\w+", r"\bthrilled\b", r"\bexcited to\b", r"\beager to\b", r"\bdeeply\b",
+    r"at the intersection of", r"drive (?:real )?impact", r"cutting[- ]edge", r"\bseamless(?:ly)?\b",
+    r"\brobust\b", r"fast[- ]paced", r"\bdynamic\b", r"I am confident", r"not only\b.{0,60}\bbut also",
+    r"\bthis experience (?:taught|gave|showed)", r"\bultimately\b", r"\bfurthermore\b", r"\bmoreover\b",
+    r"\bin today's\b", r"\bunique opportunity\b", r"\bsynergy\b", r"\bend-to-end\b",
+    r"offers? (?:me )?the chance", r"\bthe opportunity to\b", r"\ba big reason\b", r"\bthis particular role\b",
+    r"\bI'd like to apply\b", r"\bmatters? to me\b", r"take an idea from", r"\bthrough to\b",
+    r"\bgrounded\b", r"\bmeaningful\b", r"\bimpactful\b", r"\bcontribute to\b",
+]
+_TELL_RX = [re.compile(p, re.I) for p in AI_TELLS]
+_STOP = set("""a an the and or but if of to in on at for with from by as is are was were be been being it its
+this that these those i i'm i've i'd me my we our you your they their them he she his her there here what
+which who whom how why when where so than then too very just also not no can could would should will
+about into over under after before while because more most some any all each other such only own same
+both few many much do does did done have has had having get got make made one two like""".split())
+
+
+def about_me() -> str:
+    """The applicant's own notes on interests and motivations, if they wrote any."""
+    try:
+        return ABOUT_PATH.read_text(encoding="utf-8").strip()[:ABOUT_MAX]
+    except OSError:
+        return ""
+
+
+def save_about_me(text: str) -> None:
+    ABOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ABOUT_PATH.write_text(text.strip()[:ABOUT_MAX] + "\n", encoding="utf-8")
+
+
+def style_problems(text: str, company: str = "") -> list[str]:
+    """Concrete reasons a draft reads as machine-written, for a rewrite pass."""
+    problems = []
+    for rx in _TELL_RX:
+        m = rx.search(text)
+        if m:
+            problems.append(f'uses the stock phrase "{m.group(0)}"')
+    if "—" in text or " -- " in text:
+        problems.append("uses an em dash")
+    if ";" in text:
+        problems.append("uses a semicolon")
+    words = re.findall(r"[a-z][a-z'-]+", text.lower())
+    counts: dict[str, int] = {}
+    for w in words:
+        if w not in _STOP and len(w) > 3:
+            counts[w] = counts.get(w, 0) + 1
+    # Repeated stems too: "connection" / "connects", "build" / "building".
+    stems: dict[str, set[str]] = {}
+    for w in counts:
+        stems.setdefault(w[:6], set()).add(w)
+    company_words = {w.lower() for w in re.findall(r"[A-Za-z]+", company)}
+    # People repeat short words ("want", "love") naturally. What reads as
+    # machine-written is long formal words echoing each other ("capabilities",
+    # "experience", "connection" / "connects"), so those may appear once and
+    # everything else twice. Names (ElevenMusic, React) may appear twice too.
+    def limit(w: str) -> int:
+        return 1 if len(w) >= 7 else 2
+    repeated = sorted({w for w, c in counts.items() if c > limit(w) and w not in company_words}
+                      | {"/".join(sorted(v)) for k, v in stems.items()
+                         if len(v) > 1 and max(map(len, v)) >= 7 and not (v & company_words)})
+    if repeated:
+        problems.append("repeats words: " + ", ".join(repeated[:6]))
+    if company:
+        n = len(re.findall(re.escape(company), text, re.I))
+        if n > 2:
+            problems.append(f"names {company} {n} times")
+    return problems
+
+
+REWRITE_INSTRUCTIONS = """Rewrite each answer below so it sounds like the applicant wrote it themselves. Keep every fact exactly as it is and add no new ones. Fix the listed problems and follow the voice rules. Keep each answer about the same length and within its character limit.
+
+""" + VOICE + """
+
+Return one entry per id with the rewritten text in "answer"."""
+
+REWRITE_SCHEMA = {
+    "type": "object",
+    "properties": {"answers": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"id": {"type": "string"}, "answer": {"type": "string"}},
+        "required": ["id", "answer"], "additionalProperties": False}}},
+    "required": ["answers"],
+    "additionalProperties": False,
+}
+
+
+def humanize(items: list[dict], backend: str, company: str = "") -> list[dict]:
+    """One rewrite pass over answers that still read as machine-written.
+
+    items: [{"id", "answer", "max_chars"}]. Returns the same list with
+    rewritten answers where the rewrite came back cleaner, plus "style_notes"
+    listing whatever problems remain so the dashboard can point them out."""
+    flagged = [dict(i, problems=style_problems(i["answer"], company)) for i in items]
+    todo = [i for i in flagged if i["problems"]]
+    if todo:
+        lines = []
+        for i in todo:
+            limit = f" (at most {i['max_chars']} characters)" if i.get("max_chars") else ""
+            lines.append(f"[id {i['id']}]{limit}\nproblems: {'; '.join(i['problems'])}\nanswer: {i['answer']}")
+        prompt = REWRITE_INSTRUCTIONS + "\n\nANSWERS\n" + "\n\n".join(lines)
+        try:
+            if backend == "ollama":
+                raw, _ = _ollama_json("You return only the requested JSON.", prompt, REWRITE_SCHEMA, temperature=0.6)
+            elif backend == "chatgpt":
+                raw, _ = _codex_json(prompt, REWRITE_SCHEMA)
+            else:
+                raw, _ = _claude_json(prompt, REWRITE_SCHEMA)
+        except BackendError:
+            raw = {}
+        better = {str(a.get("id")): str(a.get("answer", "")).strip() for a in (raw or {}).get("answers", [])}
+        for i in todo:
+            new = _fit(better.get(str(i["id"]), ""), int(i.get("max_chars") or 0))
+            # Keep the rewrite only if it really is cleaner.
+            if new and len(style_problems(new, company)) < len(i["problems"]):
+                i["answer"] = new
+                i["problems"] = style_problems(new, company)
+    return [dict({k: v for k, v in i.items() if k != "problems"}, style_notes=i["problems"]) for i in flagged]
+
+
+# --------------------------------------------------------------------------
 # Drafting answers to application questions ("Why this company?")
 
 DRAFT_INSTRUCTIONS = """You draft one answer to a question on a job application, written as the applicant, using their resume and the job posting. The applicant reviews and edits it before sending.
 
 Rules
-1. Use only facts from the resume. Never invent employers, projects, numbers, dates, skills or personal details. If the resume doesn't support something the question asks about, answer honestly with what it does show instead of making something up.
-2. Answer the question that was asked, specifically for this company and role: connect one or two concrete things from the resume to what the posting asks for.
-3. Plain, direct first person. No greeting, sign-off or headings, and no bullet points unless the question asks for a list. Avoid filler such as "I am excited to", "passionate", "leverage", "thrilled", "synergy".
+1. Use only facts from the resume and from ABOUT THE APPLICANT. Never invent employers, projects, numbers, dates, skills, interests or personal details. If neither supports something the question asks about, answer honestly with what they do show instead of making something up.
+2. Answer the question that was asked, for this company and role.
+3. First person. No greeting, sign-off or headings, and no bullet points unless the question asks for a list.
 4. Length: {length}.
-5. Put only the answer text in the "answer" field."""
+5. Put only the answer text in the "answer" field.
+
+""" + VOICE
 
 DRAFT_SCHEMA = {
     "type": "object",
@@ -313,7 +463,7 @@ DRAFT_BACKENDS = ("chatgpt", "claude-code", "ollama")
 def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0) -> tuple[str, str]:
     """(instructions, material) for drafting one answer."""
     length = (f"at most {max_chars} characters, including spaces; aim for about {int(max_chars * 0.8)}"
-              if max_chars else "about 120 to 180 words, or shorter if the question asks for something brief")
+              if max_chars else "about 90 to 130 words in one or two short paragraphs, or shorter if the question asks for something brief")
     parts = [f"QUESTION\n{question.strip()}"]
     extra = context.strip()
     if extra and extra != question.strip():
@@ -322,7 +472,12 @@ def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: st
     if jd.strip():
         parts.append(f"JOB POSTING\n{jd.strip()[:20000]}")
     parts.append(f"RESUME\n{rt.plain(master_tex)}")
-    return DRAFT_INSTRUCTIONS.format(length=length), "\n\n".join(parts)
+    about = about_me()
+    if about:
+        parts.append(f"ABOUT THE APPLICANT (their own words: interests and motivations you may use)\n{about}")
+    # .replace, not .format: the voice rules contain literal braces-free text but
+    # may gain some, and only {length} is a placeholder.
+    return DRAFT_INSTRUCTIONS.replace("{length}", length), "\n\n".join(parts)
 
 
 def build_draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0) -> str:
@@ -343,11 +498,13 @@ def _fit(text: str, max_chars: int) -> str:
 ANSWERS_INSTRUCTIONS = """You fill in the remaining questions on one job application, as the applicant, using their resume, their profile and the job posting. The applicant reviews every answer before submitting.
 
 Rules
-1. Never invent experience, employers, projects, numbers, skills, awards or dates. Use only what the resume and profile say, plus plain inferences from them (someone living in Boston is not a California resident; a May 2026 graduate can start around June 2026; someone whose resume doesn't list this company has not worked there).
+1. Never invent experience, employers, projects, numbers, skills, awards, dates, interests or personal details. Use only what the resume, the profile and ABOUT THE APPLICANT say, plus plain inferences from them (someone living in Boston is not a California resident; a May 2026 graduate can start around June 2026; someone whose resume doesn't list this company has not worked there).
 2. If the answer depends on something only the applicant knows and the resume and profile don't settle it (offer deadlines, family ties to employees, consent to recordings or data sharing, legal declarations), return an empty answer so the applicant answers it.
 3. Choice questions: "answer" must be copied exactly from that question's options, or empty. For "multi" questions put every option that applies in "choices" (exact option text) and leave "answer" empty. Otherwise leave "choices" empty.
-4. Short text questions get short answers (a date, a year, a name, a few words). Open questions get a specific answer that ties the applicant's real experience to this company and role: about 80 to 150 words unless the question asks for less, and never more than its character limit. Plain first person; no greeting, no headings, no filler such as "I am excited to", "passionate", "leverage".
-5. Return one entry per question id."""
+4. Short text questions get short answers (a date, a year, a name, a few words). Open questions get a specific answer for this company and role: about 80 to 150 words unless the question asks for less, and never more than its character limit. First person; no greeting, no headings. Write open answers by the voice rules below.
+5. Return one entry per question id.
+
+""" + VOICE
 
 ANSWERS_SCHEMA = {
     "type": "object",
@@ -380,7 +537,11 @@ def answers_prompt(master_tex: str, job: dict, profile: dict, questions: list[di
     parts = [ANSWERS_INSTRUCTIONS, f"JOB: {job.get('title', '')} at {job.get('company', '')}"]
     if jd.strip():
         parts.append(f"JOB POSTING\n{jd.strip()[:15000]}")
-    parts += [f"PROFILE\n{prof}", f"RESUME\n{rt.plain(master_tex)}", "QUESTIONS\n" + "\n".join(qs)]
+    parts += [f"PROFILE\n{prof}", f"RESUME\n{rt.plain(master_tex)}"]
+    about = about_me()
+    if about:
+        parts.append(f"ABOUT THE APPLICANT (their own words: interests and motivations you may use)\n{about}")
+    parts.append("QUESTIONS\n" + "\n".join(qs))
     return "\n\n".join(parts)
 
 
@@ -414,6 +575,16 @@ def answer_questions(master_tex: str, job: dict, profile: dict, questions: list[
             answer = _fit(answer, int(q.get("max_chars") or 0))
         if answer or choices:
             out.append({"id": str(q["id"]), "answer": answer, "choices": choices})
+    # Open text answers get the voice check; short and choice answers don't need it.
+    open_ids = {str(q["id"]) for q in questions if not q.get("options")}
+    long = [{"id": a["id"], "answer": a["answer"], "max_chars": byid[a["id"]].get("max_chars")}
+            for a in out if a["id"] in open_ids and len(a["answer"]) > 120]
+    if long:
+        fixed = {i["id"]: i for i in humanize(long, backend, job.get("company", ""))}
+        for a in out:
+            if a["id"] in fixed:
+                a["answer"] = fixed[a["id"]]["answer"]
+                a["style_notes"] = fixed[a["id"]]["style_notes"]
     return {"answers": out, "backend": backend, "model": model, "seconds": round(time.time() - started, 1)}
 
 
@@ -434,7 +605,9 @@ def draft_answer(master_tex: str, job: dict, question: str, context: str, jd: st
     answer = _fit(str((raw or {}).get("answer", "")), max_chars)
     if not answer:
         raise BackendError("The model returned an empty answer. Try again.")
-    return {"answer": answer, "backend": backend, "model": model, "seconds": round(time.time() - started, 1)}
+    checked = humanize([{"id": "1", "answer": answer, "max_chars": max_chars}], backend, job.get("company", ""))[0]
+    return {"answer": checked["answer"], "style_notes": checked["style_notes"], "backend": backend,
+            "model": model, "seconds": round(time.time() - started, 1)}
 
 
 _LOGIN_CACHE: dict[str, tuple[float, bool]] = {}
