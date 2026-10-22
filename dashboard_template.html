@@ -415,8 +415,20 @@
   /* Simple view: one line of reasons per job; the rest sits behind Details. */
   .reason { grid-column: 1 / -1; font-size: 13px; color: var(--muted); }
   .reason b { color: var(--text); font-weight: 600; }
-  .why-box { display: grid; gap: 4px; }
+  .why-box { display: grid; gap: 6px; }
   .why-box p { margin: 0; }
+  .why-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+  .why-grid { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; }
+  .why-grid dt { color: var(--muted); }
+  .why-grid dd { margin: 0; overflow-wrap: anywhere; }
+  .why-bad { color: var(--warn); }
+  button.linkish { border: 0; background: none; padding: 0; min-height: 0; color: var(--accent); font-size: 13px;
+    text-decoration: underline; text-underline-offset: 2px; }
+  button.linkish:hover { background: none; color: var(--text); }
+  .score-help dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; font-size: 13px; }
+  .score-help dt { font-weight: 600; }
+  .score-help dd { margin: 0; color: var(--muted); }
+  @media (max-width: 600px) { .why-grid, .score-help dl { grid-template-columns: 1fr; gap: 2px; } .why-grid dd, .score-help dd { margin-bottom: 6px; } }
   body.simple .adv-only { display: none !important; }
   .hidden-note { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; color: var(--muted); margin: -4px 2px 10px; }
   .hidden-note button { font-size: 12px; padding: 3px 9px; }
@@ -592,6 +604,27 @@
       </div>
       <p class="note">Changed your details? Make the bookmark again; it carries the details from when it was made.</p>
     </div>
+  </div>
+</dialog>
+
+<dialog id="scoreHelp" aria-labelledby="scoreHelpTitle">
+  <div class="dlg-head">
+    <h2 id="scoreHelpTitle">How scores work</h2>
+    <button type="button" class="ghost" id="closeScoreHelp" aria-label="Close">Close</button>
+  </div>
+  <div class="dlg-body score-help">
+    <p>A score is how much of what a posting asks for is on your resume. It's worked out on this computer, from the posting's own words.</p>
+    <dl>
+      <dt>Skills</dt>
+      <dd>The skills and tools named in the posting's requirements are checked word for word against your resume. Required ones count fully and nice-to-have ones half; rare skills (Rust, CUDA) count more than ones nearly every posting names (Git). Sentences with no concrete skill, like "strong communication", aren't scored, since a resume can't settle them.</dd>
+      <dt>Few skills</dt>
+      <dd>Every score is mixed with a few average skills at half credit, so matching 3 of 3 can't look as sure as 14 of 21. That's why even a perfect match stays under 100%, and a posting that names little stays near the middle.</dd>
+      <dt>Experience</dt>
+      <dd>Your years come from the dates on your resume, internships counting half. A posting asking for more lowers the score; one that doesn't say lowers it a little.</dd>
+      <dt>Degree</dt>
+      <dd>Shown for your information, not part of the score.</dd>
+    </dl>
+    <p>Missing a skill you have? Add it under <b>Review skills</b>, or fix your years there. Scores update at once.</p>
   </div>
 </dialog>
 
@@ -1023,36 +1056,35 @@ function scoreReason(sc, j) {
 }
 
 // The score in full, for a job's Details.
+// One posting's score as its facts, a row each; how scoring works in general
+// is in the "How scores work" dialog, the same for every posting.
 function scoreWhy(sc, j) {
-  const box = el("div", { class: "why-box" });
-  box.append(el("p", { class: "section-h", text: `Why ${sc.pct}%` }),
-    el("p", { text: `The score checks which skills and tools from the posting appear word for word on your resume. ` +
-      `Required ones and rarer ones count more; nice-to-have ones count half. Your resume has ${sc.share}% of them, ` +
-      "weighted that way." }));
-  // What the rest of the score is: the missing keywords, the ones that count most first.
-  const missing = (kind) => (sc.items || []).filter((i) => !i.ok && (kind === "pref" ? i.kind === "pref" : i.kind !== "pref"))
+  const items = sc.items || [];
+  const missing = (pref) => items.filter((i) => !i.ok && (i.kind === "pref") === pref)
     .sort((a, b) => (b.weight || 0) - (a.weight || 0)).map((i) => i.k);
-  const req = missing("req"), pref = missing("pref");
-  if (req.length || pref.length) {
-    box.append(el("p", {}, el("b", { text: "Missing from your resume: " }),
-      [req.length ? `${req.join(", ")} (required)` : "", pref.length ? `${pref.join(", ")} (nice to have)` : ""]
-        .filter(Boolean).join("; ") + ". Add any you really have, to your resume or under Review skills."));
-  } else if ((sc.items || []).length) {
-    box.append(el("p", { text: "Every skill and tool the posting lists is on your resume." }));
+  const req = missing(false), pref = missing(true);
+  const rows = [];
+  const row = (name, ...value) => rows.push(el("dt", { text: name }), el("dd", {}, ...value));
+  const bad = (text) => el("span", { class: "why-bad", text });
+  if (items.length) {
+    const have = items.length - req.length - pref.length;
+    row("Skills", `${have} of ${items.length} on your resume`,
+      ...(req.length ? [" · missing ", bad(req.join(", ")), " (required)"] : []),
+      ...(pref.length ? [req.length ? "; " : " · missing ", el("span", { text: pref.join(", ") }), " (nice to have)"] : []));
   }
-  if (sc.share > sc.cov) {
-    box.append(el("p", { text: "Every score is also held a little below that, more when a posting names only a few skills, " +
-      "since matching 4 of 4 says less than 14 of 21. So a perfect keyword match still shows under 100%." }));
+  if (sc.thin) row("Few skills", `Only ${items.length} listed, so the score stays near the middle`);
+  if (j.min_yoe != null) {
+    row("Experience", `Asks ${j.min_yoe}+ year${j.min_yoe === 1 ? "" : "s"}, you have ${yearsText()}`,
+      ...(sc.exp.ok === false ? [" · ", bad("lowers the score")] : []));
+  } else {
+    row("Experience", j.entry_hint ? "Entry level, no years asked" : "Not stated · counts a little against");
   }
-  if (sc.exp.v < 1) {
-    box.append(el("p", { text: sc.exp.ok === false
-      ? `It's lowered because the posting asks for ${j.min_yoe}+ years of experience and your resume shows ${yearsText()}. ` +
-        "You can correct your years under Review skills."
-      : "It's lowered a little because the posting doesn't say how many years it wants." }));
-  }
-  if (sc.thin) box.append(el("p", { text: "The posting names fewer than four skills, so the score is pulled toward the middle: there's too little to go on." }));
-  if (sc.degree) box.append(el("p", { text: `Degree (not part of the score): ${sc.degree.label}.` }));
-  return box;
+  if (sc.degree) row("Degree", sc.degree.label.charAt(0).toUpperCase() + sc.degree.label.slice(1) + " · not scored");
+  return el("div", { class: "why-box" },
+    el("div", { class: "why-head" }, el("p", { class: "section-h", text: `Why ${sc.pct}%` }),
+      el("button", { type: "button", class: "linkish", text: "How scores work", onclick: () => openDialog($("scoreHelp")) }),
+      state.resume ? el("button", { type: "button", class: "linkish", text: "Review skills", onclick: openSkills }) : null),
+    el("dl", { class: "why-grid" }, ...rows));
 }
 
 // ---------------------------------------------------------------- resume parsing
@@ -2037,6 +2069,7 @@ $("clearSample").addEventListener("click", () => { for (const i of $("sampleForm
 $("openKit").addEventListener("click", () => { renderKit(); openDialog($("kit")); });
 $("closeKit").addEventListener("click", () => $("kit").close());
 $("closeSkills").addEventListener("click", () => $("skillsDlg").close());
+$("closeScoreHelp").addEventListener("click", () => $("scoreHelp").close());
 $("addSkillBtn").addEventListener("click", addSkill);
 $("addSkill").addEventListener("keydown", (e) => { if (e.key === "Enter") addSkill(); });
 $("fromResume").addEventListener("click", () => {
