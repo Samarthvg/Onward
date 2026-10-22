@@ -7,40 +7,40 @@
 <script>try { const t = JSON.parse(localStorage.getItem("jr:theme")); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <style>
   :root {
-    --bg: #f7f6f4; --surface: #ffffff; --surface-2: #fbfaf9; --text: #1c1b1a; --muted: #66625c;
-    --line: #e6e3df; --accent: #c2410c; --accent-ink: #ffffff; --accent-soft: #fdeee6;
-    --warn: #b42318; --warn-soft: #fdecea; --ok: #1f7a4d; --ok-soft: #e3f4ea;
-    --new: #c2410c; --new-soft: #fdeee6; --chip: #efedea;
-    --h1b: #1d5fa8; --h1b-soft: #e5effa;
-    --hi: #1f7a4d; --mid: #9a6200; --lo: #6b6762;
-    --control: #d0ccc6; --rule: #efedea;
+    --bg: #f5ecdd; --surface: #fffaf3; --surface-2: #fbf3e7; --text: #2b1b14; --muted: #6b5646;
+    --line: #e7d9c5; --accent: #a24a1a; --accent-ink: #ffffff; --accent-soft: #f6e2cc;
+    --warn: #a3261c; --warn-soft: #f8e0d9; --ok: #3d6b2e; --ok-soft: #e6eed8;
+    --new: #a24a1a; --new-soft: #f6e2cc; --chip: #f0e4d2;
+    --h1b: #2a5b8f; --h1b-soft: #e3eaf2;
+    --hi: #3d6b2e; --mid: #8a5a00; --lo: #76665a;
+    --control: #d5c3ab; --rule: #efe3d2;
     /* Information badges, each its own tint: remote, pay, level, age. */
-    --teal: #0f6b63; --teal-soft: #dff3f1; --amber: #8a5300; --amber-soft: #fdf1dc;
-    --slate: #3d5a80; --slate-soft: #e7edf5; --rose: #9d2f53; --rose-soft: #fbe9ef;
+    --teal: #1f6b5e; --teal-soft: #dceee6; --amber: #85510a; --amber-soft: #f5e6cc;
+    --slate: #405a7a; --slate-soft: #e5e9ee; --rose: #8e2f4c; --rose-soft: #f5e1e5;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #151514; --surface: #1d1c1b; --surface-2: #242322; --text: #eceae6; --muted: #a39f98;
-      --line: #2f2d2b; --accent: #ff9a5c; --accent-ink: #1f1006; --accent-soft: #3a2316;
-      --warn: #ff8f7a; --warn-soft: #3a1f1b; --ok: #6fcf97; --ok-soft: #1c3326;
-      --new: #ff9a5c; --new-soft: #3a2316; --chip: #282725;
-      --h1b: #8db8ec; --h1b-soft: #1d2a3b;
-      --hi: #6fcf97; --mid: #e9b949; --lo: #8f8b84;
-      --control: #48453f; --rule: #282725;
-      --teal: #5fd4c4; --teal-soft: #163331; --amber: #f2c06b; --amber-soft: #3a2c14;
-      --slate: #9fb8dc; --slate-soft: #1f2a3a; --rose: #f2a0bb; --rose-soft: #3a1f2a;
+      --bg: #150c0c; --surface: #1f1512; --surface-2: #281c17; --text: #f2e7d9; --muted: #b9a594;
+      --line: #3a2a22; --accent: #e3a467; --accent-ink: #1d0f08; --accent-soft: #3d2817;
+      --warn: #ff9c87; --warn-soft: #3d1d18; --ok: #a3cf86; --ok-soft: #22301a;
+      --new: #e3a467; --new-soft: #3d2817; --chip: #2c1f19;
+      --h1b: #93bbea; --h1b-soft: #1d2a3b;
+      --hi: #a3cf86; --mid: #eab955; --lo: #a3948a;
+      --control: #5a4436; --rule: #2c1f19;
+      --teal: #7bd3c3; --teal-soft: #163330; --amber: #f2c06b; --amber-soft: #3a2c14;
+      --slate: #abc0dc; --slate-soft: #222a36; --rose: #f0a8be; --rose-soft: #3a1f28;
     }
   }
   :root[data-theme="dark"] {
-    --bg: #151514; --surface: #1d1c1b; --surface-2: #242322; --text: #eceae6; --muted: #a39f98;
-    --line: #2f2d2b; --accent: #ff9a5c; --accent-ink: #1f1006; --accent-soft: #3a2316;
-    --warn: #ff8f7a; --warn-soft: #3a1f1b; --ok: #6fcf97; --ok-soft: #1c3326;
-    --new: #ff9a5c; --new-soft: #3a2316; --chip: #282725;
-    --h1b: #8db8ec; --h1b-soft: #1d2a3b;
-    --hi: #6fcf97; --mid: #e9b949; --lo: #8f8b84;
-    --control: #48453f; --rule: #282725;
-    --teal: #5fd4c4; --teal-soft: #163331; --amber: #f2c06b; --amber-soft: #3a2c14;
-    --slate: #9fb8dc; --slate-soft: #1f2a3a; --rose: #f2a0bb; --rose-soft: #3a1f2a;
+    --bg: #150c0c; --surface: #1f1512; --surface-2: #281c17; --text: #f2e7d9; --muted: #b9a594;
+    --line: #3a2a22; --accent: #e3a467; --accent-ink: #1d0f08; --accent-soft: #3d2817;
+    --warn: #ff9c87; --warn-soft: #3d1d18; --ok: #a3cf86; --ok-soft: #22301a;
+    --new: #e3a467; --new-soft: #3d2817; --chip: #2c1f19;
+    --h1b: #93bbea; --h1b-soft: #1d2a3b;
+    --hi: #a3cf86; --mid: #eab955; --lo: #a3948a;
+    --control: #5a4436; --rule: #2c1f19;
+    --teal: #7bd3c3; --teal-soft: #163330; --amber: #f2c06b; --amber-soft: #3a2c14;
+    --slate: #abc0dc; --slate-soft: #222a36; --rose: #f0a8be; --rose-soft: #3a1f28;
   }
   * { box-sizing: border-box; }
   body {
