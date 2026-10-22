@@ -152,6 +152,15 @@ class Resume:
         return self._terms[t]
 
 
+def too_few_to_judge(sc: dict) -> bool:
+    """A posting that names too few skills for its score to mean much, and
+    whose required skills (and years) the resume has: match thresholds don't
+    leave it out, since its score can only sit near the middle. The
+    dashboard's tooFewToJudge is the same rule."""
+    return bool(sc.get("thin")) and sc.get("exp", {}).get("ok") is not False and \
+        all(i["ok"] for i in sc.get("items", []) if i["kind"] != "pref")
+
+
 def score_job(job: dict, resume: Resume, skill_w: dict, term_w: dict, weights: dict | None = None) -> dict:
     w_ = {**WEIGHTS, **(weights or {})}
     kw = job.get("kw") or []

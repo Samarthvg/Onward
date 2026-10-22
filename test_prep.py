@@ -536,6 +536,25 @@ class QueueAgeTests(Base):
         self.assertNotIn("Coveredco", self.items())
         self.assertEqual([i["company"] for i in self.prep.items(("expired",))], ["Coveredco"])
 
+    def test_too_few_skills_to_judge_still_queues(self):
+        """A posting naming one skill the resume has scores near the middle; a
+        high threshold doesn't leave it out."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            with conn:
+                radar.store(conn, [job("Thinco", "Software Engineer, New Grad", "Boston, MA", "Experience with Python",
+                                       pref="", jid=107)], self.now)
+            stats = radar.corpus_stats(conn)
+            radar.save_scoring(conn, radar.load_for_dashboard(conn, self.now, None, H1BStub(), stats), stats, self.now)
+        finally:
+            conn.close()
+        self.prep.save_settings({"threshold": 95})
+        self.prep.scan(self.now)
+        it = self.items()
+        self.assertIn("Thinco", it)
+        self.assertLess(it["Thinco"]["score"], 95)
+        self.assertNotIn("Coveredco", it, "a judged posting under the threshold stays out")
+
     def test_limit_is_a_setting(self):
         set_posted(self.db_path, "Coveredco", self.now - 10 * 86400)
         self.prep.save_settings({"max_age_days": 14})

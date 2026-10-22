@@ -155,7 +155,7 @@ for (const r of input.resumes) {
   const ctx = { years, degree: resumeDegree(r.text),
     hasTerm: (t) => { if (!cache.has(t)) cache.set(t, termRegex(t).test(r.text)); return cache.get(t); } };
   out.push({ name: r.name, skills: [...have].sort(), years, degree: ctx.degree,
-    scores: input.jobs.map((j) => scoreJob(j, have, ctx)) });
+    scores: input.jobs.map((j) => { const s = scoreJob(j, have, ctx); if (s.pct != null) s.unjudged = tooFewToJudge(s); return s; }) });
 }
 process.stdout.write(JSON.stringify(out));
 """
@@ -201,10 +201,20 @@ class ParityTests(unittest.TestCase):
                         continue
                     for k in ("cov", "thin", "req", "pref", "degree", "matched", "missing", "exp"):
                         self.assertEqual(got[k], w[k], k)
+                    self.assertEqual(match.too_few_to_judge(got), w["unjudged"], "too few to judge")
                     self.assertEqual([(i["k"], i["ok"]) for i in got["items"]],
                                      [(i["k"], i["ok"]) for i in w["items"]])
                     for a, b in zip(got["items"], w["items"]):
                         self.assertAlmostEqual(a["weight"], b["weight"], places=9)
+
+    def test_too_few_to_judge(self):
+        item = lambda k, ok, kind="req": {"k": k, "ok": ok, "kind": kind, "weight": 1.0}
+        sc = {"thin": True, "exp": {"v": 0.8, "label": "years not stated"},
+              "items": [item("Python", True, "pref"), item("Agile", False, "pref")]}
+        self.assertTrue(match.too_few_to_judge(sc), "only nice-to-haves missing")
+        self.assertFalse(match.too_few_to_judge({**sc, "items": sc["items"] + [item("Go", False)]}), "a required one missing")
+        self.assertFalse(match.too_few_to_judge({**sc, "exp": {"v": 0.5, "ok": False}}), "asks for more years")
+        self.assertFalse(match.too_few_to_judge({**sc, "thin": False}), "enough skills to judge by the score")
 
     def test_fixtures_cover_the_interesting_cases(self):
         jobs, resumes, skill_w, term_w = fixtures()

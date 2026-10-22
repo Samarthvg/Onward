@@ -109,5 +109,14 @@ class KeywordTests(unittest.TestCase):
         self.assertEqual(d, {"level": "bachelor", "or_equivalent": True})
 
 
+class YearsTests(unittest.TestCase):
+    def test_years_in_sentences_and_forms(self):
+        self.assertEqual(radar.min_years("3+ years of experience with Java"), 3)
+        # Home Depot's form layout: the number on the next line, as a bullet.
+        form = "Minimum Years of Work Experience:\n• 1\nPreferred Years of Work Experience:\n• No additional years of experience"
+        self.assertEqual(radar.min_years(form), 1)
+        self.assertIsNone(radar.min_years("Minimum Years of Work Experience:\n• None"))
+
+
 if __name__ == "__main__":
     unittest.main()

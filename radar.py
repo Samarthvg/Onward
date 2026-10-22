@@ -206,8 +206,14 @@ YES_SPONSOR = re.compile(
     re.I,
 )
 
+# Form-style postings (Home Depot's): "Minimum Years of Work Experience:" with
+# the number on the next line, often as a bullet.
+YOE_FIELD = re.compile(r"\bminimum years of (?:work |relevant |professional )?experience\s*:?\s*(?:[-\u2022*\u00b7]\s*)?(\d{1,2})\b",
+                       re.I)
+
+
 def min_years(text: str) -> int | None:
-    years = []
+    years = [int(m.group(1)) for m in YOE_FIELD.finditer(text) if int(m.group(1)) < 20]
     for m in YOE.finditer(text):
         g = m.group(1).lower()
         n = NUMBER_WORDS.get(g) or (int(g) if g.isdigit() else None)

@@ -554,7 +554,7 @@
         <dt>Skills</dt>
         <dd>The skills and tools in a posting's requirements are checked word for word against your resume. Required ones count fully and nice-to-have ones half. Rare skills (Rust, CUDA) count more than ones nearly every posting names (Git). Sentences with no concrete skill, like "strong communication", aren't scored, since a resume can't settle them.</dd>
         <dt>Confidence</dt>
-        <dd>Every score is mixed with a few average skills at half credit, so matching 3 of 3 can't look as sure as 14 of 21. A posting that names only a few skills stays near the middle, and even a perfect match stays under 100%.</dd>
+        <dd>Every score is mixed with a few average skills at half credit, so matching 3 of 3 can't look as sure as 14 of 21. A posting that names only a few skills stays near the middle, and even a perfect match stays under 100%. So that such a posting isn't lost, a match filter or the apply queue's minimum never leaves it out when you have the skills and years it requires.</dd>
         <dt>Experience</dt>
         <dd>Your years come from the dates on your resume, internships counting half. A posting asking for more lowers the score; one that doesn't say lowers it a little.</dd>
         <dt>Degree</dt>
@@ -1038,6 +1038,13 @@ function scoreJob(job, have, ctx) {
   };
 }
 
+// Same rule as match.too_few_to_judge: a score that can only sit near the
+// middle doesn't decide whether a posting is shown or queued, once the resume
+// has the skills (and years) it requires.
+function tooFewToJudge(sc) {
+  return !!sc && sc.thin && sc.exp.ok !== false && (sc.items || []).every((i) => i.ok || i.kind === "pref");
+}
+
 let scores = new Map();
 function rescore() {
   scores = new Map();
@@ -1104,7 +1111,8 @@ function scoreSection(sc, j) {
       ...(have.length ? [el("span", { class: "kwlbl", text: "You have" }), ...chips(have, "ok")] : []),
       ...(miss.length ? [el("span", { class: "kwlbl", text: "Missing" }), ...chips(miss, "miss")] : [])));
   }
-  if (sc.thin) row("Confidence", `Low: the posting names only ${items.length} skill${items.length === 1 ? "" : "s"}, so the score stays near the middle`);
+  if (sc.thin) row("Confidence", `Low: the posting names only ${items.length} skill${items.length === 1 ? "" : "s"}, so the score stays near the middle` +
+    (tooFewToJudge(sc) ? ". You have the ones it requires, so match filters don't hide it." : ""));
   if (j.min_yoe != null) {
     row("Experience", `Asks ${j.min_yoe}+ year${j.min_yoe === 1 ? "" : "s"}, you have ${yearsText()}`,
       ...(sc.exp.ok === false ? [" · ", el("span", { class: "why-bad", text: "lowers the score" })] : []));
@@ -1752,7 +1760,7 @@ function hiddenBy(j, now, V, hasResume, hours = state.hours) {
   if (state.hidedone && state.marks[j.url]) return "hidedone";
   if (hasResume && state.minMatch > 0) {
     const sc = scores.get(j);
-    if (!sc || sc.pct == null || sc.pct < state.minMatch) return "minMatch";
+    if (!sc || sc.pct == null || (sc.pct < state.minMatch && !tooFewToJudge(sc))) return "minMatch";
   }
   return null;
 }
@@ -2553,8 +2561,9 @@ function queueItem(it) {
   const name = `${it.title} at ${it.company}`;
   const s = (queue.data && queue.data.settings) || {};
   // Why it's here at all, then what was decided for it.
-  lines.push(el("div", { class: "qline reason", text: `In your queue because it's a ${it.score}% match` +
-    (s.threshold != null ? `, at or above the ${s.threshold}% you set in the queue settings.` : ".") }));
+  lines.push(el("div", { class: "qline reason", text: s.threshold != null && it.score < s.threshold
+    ? `In your queue though it's a ${it.score}% match: the posting names too few skills to judge, and you have the ones it requires.`
+    : `In your queue because it's a ${it.score}% match` + (s.threshold != null ? `, at or above the ${s.threshold}% you set in the queue settings.` : ".") }));
 
   if (it.state === "ready") {
     if (it.choice === "tailored" && it.changes) {

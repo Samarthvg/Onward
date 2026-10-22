@@ -233,6 +233,12 @@ class Preparer:
         return (row[0], json.loads(row[1]), json.loads(row[2])) if row else None
 
     @staticmethod
+    def wanted(sc: dict, s: dict) -> bool:
+        """At or above the queue's threshold, or too few skills named to judge
+        while the resume has the ones it requires."""
+        return sc["pct"] is not None and (sc["pct"] >= s["threshold"] or match.too_few_to_judge(sc))
+
+    @staticmethod
     def eligible(job: dict, s: dict) -> str | None:
         """Why a job is filtered out, or None."""
         if s["needs_sponsorship"] and (job["sponsorship"] == "no" or job["no_opt"]):
@@ -309,7 +315,7 @@ class Preparer:
                     j = self._job(row)
                     sc = match.score_job(j, resume, skill_w, term_w, weights)
                     conn.execute("UPDATE prep SET score = ? WHERE job_key = ?", (sc["pct"], j["key"]))
-                    if sc["pct"] is None or sc["pct"] < s["threshold"] or self.eligible(j, s):
+                    if not self.wanted(sc, s) or self.eligible(j, s):
                         conn.execute("DELETE FROM prep WHERE job_key = ? AND state = 'queued'", (j["key"],))
                 # Only jobs one of the user's roles wants.
                 rows = conn.execute(
@@ -324,7 +330,7 @@ class Preparer:
                 for row in rows:
                     j = self._job(row)
                     sc = match.score_job(j, resume, skill_w, term_w, weights)
-                    if sc["pct"] is None or sc["pct"] < s["threshold"] or self.eligible(j, s):
+                    if not self.wanted(sc, s) or self.eligible(j, s):
                         continue
                     decision, reason = decide(sc, master_of(j), s)
                     conn.execute("INSERT INTO prep (job_key, state, score, created, updated, decision, reason) "
