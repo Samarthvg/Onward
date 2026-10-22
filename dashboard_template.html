@@ -72,15 +72,16 @@
   .help dt { font-weight: 600; }
   .help dd { margin: 0; }
   @media (max-width: 600px) { .help dl { grid-template-columns: 1fr; gap: 2px; } .help dd { margin-bottom: 8px; } }
-  body:not(.view-queue) #qhead, body.view-queue #filters, body:not(.view-jobs):not(.view-today) .rail-r #nextUp { display: none; }
-  /* Today: the picks and, beside them, the resume and what's ready; the filters are All jobs'. */
-  body.view-today .rail-l { display: none; }
-  @media (min-width: 1200px) { body.view-today .layout { grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: "main right"; } }
-  .today-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-bottom: 12px; }
-  .today-head > div { margin-right: auto; }
-  .today-head h2 { font-size: 22px; margin: 0 0 2px; }
-  .today-head .status { margin: 0; }
-  .today-head select { width: auto; }
+  body:not(.view-queue) #qhead, body.view-queue #filters { display: none; }
+  /* The Apply queue: today's picks first, outlined in the accent, then the rest of the queue. */
+  .picks { border: 1.5px solid var(--accent); border-radius: 10px; padding: 14px 14px 4px; margin-bottom: 20px; background: var(--accent-soft); }
+  .picks-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-bottom: 12px; }
+  .picks-head > div { margin-right: auto; }
+  .picks-head h2, .queue-h { font-size: 20px; margin: 0 0 2px; }
+  .picks-head .status { margin: 0; }
+  .picks-head select { width: auto; }
+  .picks .list { margin-bottom: 10px; }
+  .queue-h { margin: 0 0 10px; }
   .status-r { margin: 0; font-size: 13px; color: var(--muted); }
   .status-r b { color: var(--text); font-weight: 600; }
   .searchbar { display: flex; gap: 8px; margin-bottom: 10px; }
@@ -103,22 +104,12 @@
   @media (max-width: 1199px) {
     .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "right" "left" "main"; gap: 12px; }
     .rail { position: static; max-height: none; overflow: visible; }
-    .rail-r #nextUp, .rail-r #radarPanel { display: none; }
+    .rail-r #radarPanel { display: none; }
     .wn, .seg .ws + .wl { display: none; }
     .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
     .controls .panel-h, .controls .filter-label { display: none; }
     .filter-group, .checks-v { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   }
-  /* The queue's ready list in the right rail. */
-  .nu-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
-  .nu-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 10px 0; border-top: 1px solid var(--rule); }
-  .nu-list li:first-child { border-top: 0; padding-top: 0; }
-  .nu-list .t { font-size: 13px; font-weight: 600; color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
-  .nu-list .t:hover { text-decoration: underline; }
-  .nu-list .c { font-size: 12px; color: var(--muted); grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .nu-list .p { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .nu-list .p.hi { color: var(--hi); } .nu-list .p.mid { color: var(--mid); } .nu-list .p.lo { color: var(--lo); }
-  .nu-foot { display: flex; gap: 8px; flex-wrap: wrap; }
   /* The resume in the rail: what it is on top, its buttons under it. */
   .rail-r .resume-bar > span:not(.spacer), .rail-r .resume-bar > .note { flex-basis: 100%; }
   .rail-r .resume-bar .spacer { display: none; }
@@ -510,9 +501,8 @@
     <div class="hbtns">
       <select id="roleSel" aria-label="Role" hidden></select>
       <nav class="viewtabs" id="viewTabs" aria-label="Pages" hidden>
-        <button type="button" data-view="today" aria-current="page">Today <span class="qcount" id="pickCount" hidden></span></button>
+        <button type="button" data-view="queue" aria-current="page">Apply queue <span class="qcount" id="qcount" hidden></span></button>
         <button type="button" data-view="jobs">All jobs</button>
-        <button type="button" data-view="queue">Apply queue <span class="qcount" id="qcount" hidden></span></button>
         <button type="button" data-view="help">How it works</button>
         <button type="button" data-view="settings">Settings</button>
       </nav>
@@ -563,7 +553,24 @@
   <main id="main" tabindex="-1">
   <div id="notices" role="status"></div>
   <section id="queueView" hidden>
-    <ul class="list" id="qlist"></ul>
+    <section class="picks" id="picksBox" aria-labelledby="picksTitle">
+      <div class="picks-head">
+        <div>
+          <h2 id="picksTitle">Today's picks</h2>
+          <p class="status" id="picksSub"></p>
+        </div>
+        <label class="filter-label" for="pickN">Show</label>
+        <select id="pickN">
+          <option value="5">5 a day</option>
+          <option value="10">10 a day</option>
+          <option value="15">15 a day</option>
+          <option value="20">20 a day</option>
+        </select>
+      </div>
+      <ul class="list" id="picks" aria-label="Today's picks"></ul>
+    </section>
+    <h2 class="queue-h" id="restTitle">Also ready</h2>
+    <ul class="list" id="qlist" aria-labelledby="restTitle"></ul>
   </section>
   <section id="settingsView" hidden aria-labelledby="settingsTitle"></section>
   <section id="helpView" class="help" hidden aria-labelledby="helpTitle">
@@ -601,7 +608,7 @@
     </section>
     <section aria-labelledby="helpToday">
       <h3 id="helpToday">Today's picks</h3>
-      <p>The few new postings most worth applying to: from the last 2 days (7 when that's too few), at 60% match or more, best first. Postings you've applied to or dismissed, that rule out sponsorship or OPT for your visa, or that ask for more years than you have are left out. Choose how many a day at the top of the page. "Resume ready" means the Apply queue has prepared it.</p>
+      <p>The few new postings most worth applying to, at the top of the Apply queue: from the last 2 days (7 when that's too few), at 60% match or more, best first. Postings you've applied to or dismissed, that rule out sponsorship or OPT for your visa, or that ask for more years than you have are left out. One the queue has prepared shows its resume and answers; any other, Tailor and Apply. Choose how many a day beside the heading.</p>
     </section>
     <section aria-labelledby="helpQueue">
       <h3 id="helpQueue">Apply queue</h3>
@@ -622,27 +629,11 @@
         <dt>The posting's words</dt>
         <dd>"No sponsorship" and "no OPT" come from the posting itself, quoted under its details. They outrank the company's history.</dd>
         <dt>H-1B history</dt>
-        <dd>From USCIS's H-1B Employer Data Hub: how many H-1Bs the company had approved in the two newest fiscal years, refreshed every three months as USCIS adds a quarter. "New" are new H-1B jobs; the rest are extensions, transfers and amendments. None found can mean the company files under another legal name (Meta Platforms, not Facebook).</dd>
+        <dd>From USCIS's <a href="https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub" target="_blank" rel="noopener">H-1B Employer Data Hub</a>: how many H-1Bs the company had approved in the two newest fiscal years, refreshed every three months as USCIS adds a quarter. "New" are new H-1B jobs; the rest are extensions, transfers and amendments. None found can mean the company files under another legal name (Meta Platforms, not Facebook).</dd>
       </dl>
     </section>
   </section>
   <section id="setupView" hidden aria-labelledby="setupTitle"></section>
-  <section id="todayView" hidden aria-labelledby="todayTitle">
-    <div class="today-head">
-      <div>
-        <h2 id="todayTitle">Today's picks</h2>
-        <p class="status" id="todaySub"></p>
-      </div>
-      <label class="filter-label" for="pickN">Show</label>
-      <select id="pickN" aria-label="How many picks">
-        <option value="5">5 a day</option>
-        <option value="10">10 a day</option>
-        <option value="15">15 a day</option>
-        <option value="20">20 a day</option>
-      </select>
-    </div>
-    <ul class="list" id="picks" aria-label="Today's picks"></ul>
-  </section>
   <div id="jobsView">
   <div class="searchbar">
     <input type="search" id="q" placeholder="Filter by company, title, city, skill" aria-label="Filter">
@@ -655,7 +646,6 @@
 
   <aside class="rail rail-r" aria-label="Your resume and next applications">
     <div class="resume-bar" id="resumeBar"></div>
-    <section class="panel" id="nextUp" aria-labelledby="nextUpH" hidden></section>
     <section class="panel" id="radarPanel" aria-labelledby="radarPanelH">
       <h2 class="panel-h" id="radarPanelH">Last search</h2>
       <p class="status-r" id="statusR"></p>
@@ -1602,7 +1592,6 @@ function evidence(j) {
     const d2 = el("dl");
     d2.append(el("dt", { text: "H-1B record" }), el("dd", {}, el("code", { text: h.employer }), ` (${how})`));
     d2.append(el("dt", { text: "USCIS approvals" }), el("dd", { text: yrs }));
-    d2.append(el("dt", { text: "Source" }), el("dd", {}, el("a", { href: "https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub", target: "_blank", rel: "noopener", text: "USCIS H-1B Employer Data Hub" })));
     ev.append(d2);
   } else {
     ev.append(el("div", { class: "note", text: `No H-1B approvals found for "${j.company}" in USCIS FY${DATA.meta.h1b_years.join("/FY")} data.` }));
@@ -1751,10 +1740,6 @@ function jobCard(j, now, V, hasResume) {
   const reason = hasResume ? scoreReason(sc, j, adv) : null;
   const li = el("li", { class: "job" + (mark ? " done" : "") }, head, right, side, reason);
 
-  const visaWhy = () => signals.length
-    ? el("div", { class: "why-box" }, el("p", { class: "section-h", text: "Why these visa badges" }),
-        ...signals.map((s) => el("p", {}, el("b", { text: s.text + ": " }), s.why)))
-    : null;
 
   if (adv) {
     // Advanced: everything on the card, as before, plus the reasons.
@@ -1780,12 +1765,8 @@ function jobCard(j, now, V, hasResume) {
     actions.append(...markButtons(j, mark));
     li.append(...[skillsRow, badges,
       sc && sc.pct != null ? lazyDetails("Score and skills", () => scoreSection(sc, j), fk("kw")) : null,
-      lazyDetails(V.sponsor ? "Why is this new? Proof and H-1B details" : "Why is this new? Proof", () => {
-        const ev = evidence(j);
-        const w = visaWhy();
-        if (w) ev.append(w);
-        return ev;
-      }, fk("proof"))].filter(Boolean));
+      lazyDetails(V.sponsor ? "Why is this new? Proof and H-1B details" : "Why is this new? Proof",
+        () => postingFacts(j, null, V), fk("proof"))].filter(Boolean));
     return li;
   }
 
@@ -1808,7 +1789,8 @@ function jobCard(j, now, V, hasResume) {
 // A posting's own facts, the same in All jobs and the Apply queue: its score
 // and skills, then its date and visa evidence.
 function postingFacts(j, sc, V) {
-  const signals = visaSignals(j, V);
+  // The H-1B badges' reasons are the approvals shown above them; the posting's own words need theirs.
+  const signals = visaSignals(j, V).filter((x) => !/\bh1b\b/.test(x.cls));
   const ev = evidence(j);
   if (signals.length) {
     ev.append(el("div", { class: "why-box" }, el("p", { class: "section-h", text: "Why these visa badges" }),
@@ -1959,7 +1941,7 @@ function render() {
 
   renderResumeBar();
   renderSearchControls();
-  renderPicks();
+  if (state.view === "queue" && queue.data) renderQueue();
   for (const b of $("window").querySelectorAll("button")) b.setAttribute("aria-pressed", String(+b.dataset.h === state.hours));
   $("sort").value = state.sort;
   $("minMatch").value = String(state.minMatch);
@@ -1991,19 +1973,22 @@ function picks(now) {
   return { list: list.slice(0, n), more: Math.max(0, list.length - n), days };
 }
 
+// The picks lead the Apply queue: one the queue has prepared shows as its queue
+// row (resume, answers, Open application), any other as its job card. The
+// rest of the queue follows, without them. Returns the picks' keys.
 function renderPicks() {
   const now = Date.now() / 1000;
   const { list, more, days } = picks(now);
-  $("pickCount").hidden = !list.length;
-  $("pickCount").textContent = String(list.length);
-  if (state.view !== "today") return;
+  if (state.view !== "queue") return new Set(list.map((j) => j.key));
   $("pickN").value = String(state.pickN);
-  $("todaySub").textContent = !state.resume ? "Upload your resume to get picks: they're the new postings that fit it best."
+  $("picksSub").textContent = !state.resume ? "Upload your resume to get picks: the new postings that fit it best."
     : list.length ? `Your ${list.length} best new fit${list.length === 1 ? "" : "s"} from the last ${days} days` +
-      (more ? `, of ${list.length + more} that qualify` : "") + ". Applied or dismissed ones drop off; All jobs has everything."
+      (more ? `, of ${list.length + more} that qualify` : "") + ". Applied or dismissed ones drop off."
     : "No new postings from the last 7 days fit well enough yet. All jobs has everything.";
   const V = visa();
-  keepFocus(() => $("picks").replaceChildren(...list.map((j) => jobCard(j, now, V, true))));
+  const inQueue = new Map((queue.data ? queue.data.items : []).map((i) => [i.key, i]));
+  keepFocus(() => $("picks").replaceChildren(...list.map((j) => inQueue.has(j.key) ? queueItem(inQueue.get(j.key)) : jobCard(j, now, V, true))));
+  return new Set(list.map((j) => j.key));
 }
 
 function setHours(h) { state.hours = h; store.set("hours", h); render(); }
@@ -2616,10 +2601,10 @@ async function loadQueue() {
 }
 
 function showView(v) {
-  state.view = v === "help" || v === "jobs" ? v : (v === "queue" || v === "settings" || v === "setup") && HELPER ? v
-    : HELPER ? "today" : "jobs";
+  state.view = v === "help" || v === "jobs" ? v : (v === "settings" || v === "setup") && HELPER ? v
+    : HELPER ? "queue" : "jobs";
   if (setupNeeded() && state.view !== "settings") state.view = "setup";
-  const hash = state.view === "today" ? "" : "#" + state.view;
+  const hash = state.view === "queue" ? "" : "#" + state.view;
   if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname);
   // Saved settings rebuilt the job list on the helper: load the new one.
   if (state.view !== "settings" && cfg.rendered) { location.reload(); return; }
@@ -2627,10 +2612,9 @@ function showView(v) {
   $("settingsView").hidden = state.view !== "settings";
   $("helpView").hidden = state.view !== "help";
   $("jobsView").hidden = state.view !== "jobs";
-  $("todayView").hidden = state.view !== "today";
   $("setupView").hidden = state.view !== "setup";
   document.body.classList.toggle("in-setup", state.view === "setup");
-  for (const v of ["today", "jobs", "queue", "settings", "help"]) document.body.classList.toggle("view-" + v, state.view === v);
+  for (const v of ["jobs", "queue", "settings", "help"]) document.body.classList.toggle("view-" + v, state.view === v);
   if (state.view === "settings") openSettings();
   if (state.view === "setup") openSetup();
   for (const b of $("viewTabs").querySelectorAll("button")) {
@@ -2784,9 +2768,8 @@ function renderQueue() {
   const ready = d ? d.items.filter((i) => i.state === "ready").length : 0;
   $("qcount").hidden = !ready;
   $("qcount").textContent = String(ready);
-  renderNextUp();
-  if (state.view === "today") renderPicks();     // their "Resume ready" badges
   if (state.view !== "queue") return;
+  const picked = renderPicks();
   const head = $("qhead"), list = $("qlist");
   if (!d) {
     head.replaceChildren("The local helper isn't responding, so the queue is unavailable.");
@@ -2806,36 +2789,14 @@ function renderQueue() {
     !d.scoring && state.resume ? el("span", { class: "note", text: "Syncing your resume to the helper…" }) : null,
     el("button", { type: "button", text: "Queue settings", onclick: openPrefs }),
   ].filter(Boolean));
-  const items = d.items;
-  keepFocus(() => list.replaceChildren(...(items.length ? items.map(queueItem) : [el("li", { class: "empty", text: !s.enabled
+  const items = d.items.filter((i) => !picked.has(i.key));
+  $("restTitle").hidden = !items.length && !!picked.size;
+  keepFocus(() => list.replaceChildren(...(items.length ? items.map(queueItem) : picked.size ? [] : [el("li", { class: "empty", text: !s.enabled
     ? "Preparing jobs is turned off. Press Settings above and turn on Prepare jobs to have good matches tailored here."
     : d.radar_updated
       ? `Nothing to apply to yet. New postings at ${s.threshold}%+ match are prepared here after each search.`
         + (state.resume ? "" : " Upload your resume on All jobs first: the queue only takes jobs it can score.")
       : "The queue starts after the next search." })])));
-}
-
-// The right rail on All jobs: the best prepared jobs, one click from their forms.
-function renderNextUp() {
-  const box = $("nextUp"), d = queue.data;
-  box.hidden = !HELPER || !d;
-  if (box.hidden) return;
-  const ready = d.items.filter((i) => i.state === "ready");
-  const top = ready.slice().sort((a, b) => b.score - a.score).slice(0, 4);
-  const cls = (p) => (p >= 70 ? "hi" : p >= 50 ? "mid" : "lo");
-  keepFocus(() => box.replaceChildren(...[
-    el("h2", { class: "panel-h", id: "nextUpH", text: "Ready to apply" }),
-    top.length ? el("ul", { class: "nu-list" }, ...top.map((it) => el("li", {},
-      el("a", { class: "t", href: it.apply_url, target: "_blank", rel: "noopener", text: it.title, title: `${it.title} at ${it.company}`,
-        "data-fk": `nu:${it.key}`, "aria-label": `Open application: ${it.title} at ${it.company} (new tab)` }),
-      el("span", { class: "p " + cls(it.score), text: it.score + "%" }),
-      el("span", { class: "c", text: it.company + (it.choice === "tailored" ? " · tailored resume" : "") }))))
-      : el("p", { class: "note", text: d.settings.enabled
-        ? `Nothing ready yet. Postings at ${d.settings.threshold}%+ match from the last ${d.settings.max_age_days} days are prepared here after each search.`
-        : "Preparing jobs is off. Turn it on in the Apply queue's settings." }),
-    el("div", { class: "nu-foot" }, el("button", { type: "button", "data-fk": "nu:all",
-      text: ready.length > top.length ? `See all ${ready.length} in the queue` : "Open the queue", onclick: () => showView("queue") })),
-  ]));
 }
 
 function openPrefs() {
@@ -2886,7 +2847,7 @@ function openPrefs() {
 
 $("closePrefs").addEventListener("click", () => $("prefsDlg").close());
 $("viewTabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) showView(b.dataset.view); });
-$("pickN").addEventListener("change", (e) => { state.pickN = +e.target.value; store.set("pickN", state.pickN); renderPicks(); });
+$("pickN").addEventListener("change", (e) => { state.pickN = +e.target.value; store.set("pickN", state.pickN); renderQueue(); });
 window.addEventListener("hashchange", () => showView(location.hash.slice(1)));
 
 // ---------------------------------------------------------------- settings page
