@@ -278,6 +278,32 @@ class WindowTests(TmpHome):
             self.assertEqual(app.window_command(), [sys.executable, "--window"])
 
 
+class PreviewTests(TmpHome):
+    """preview.py's copy of the installed app's data."""
+
+    def test_copy_is_whole_and_never_prepares_or_updates(self):
+        import preview
+        src, dst = self.home / "installed", self.home / "copy"
+        (src / "resume").mkdir(parents=True)
+        (src / "resume" / "master.tex").write_text("tex", encoding="utf-8")
+        config.Store(src / "settings.json", src).update({"queue": {"enabled": True}})
+        conn = sqlite3.connect(src / "jobs.db")
+        conn.execute("CREATE TABLE t (x)")
+        conn.execute("INSERT INTO t VALUES (1)")
+        conn.commit()
+        conn.close()
+        (dst / "stale").mkdir(parents=True)
+        preview.copy_data(src, dst)
+        self.assertEqual((dst / "resume" / "master.tex").read_text(encoding="utf-8"), "tex")
+        copied = sqlite3.connect(dst / "jobs.db")
+        self.addCleanup(copied.close)
+        self.assertEqual(copied.execute("SELECT x FROM t").fetchall(), [(1,)])
+        s = config.Store(dst / "settings.json", dst).load()
+        self.assertEqual((s["queue"]["enabled"], s["app"]["check_updates"]), (False, False))
+        self.assertTrue(config.Store(src / "settings.json", src).load()["queue"]["enabled"], "the original is untouched")
+        self.assertFalse((dst / "stale").exists(), "a fresh copy replaces the old one")
+
+
 class AutostartTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
