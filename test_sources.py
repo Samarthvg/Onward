@@ -469,6 +469,21 @@ class StateTests(unittest.TestCase):
         rows = self.conn.execute("SELECT key, first_seen FROM jobs").fetchall()
         self.assertEqual(rows, [(posting.key, 1000.0)])
 
+    def test_renamed_company_keeps_its_row_and_links(self):
+        self.conn.execute("CREATE TABLE prep (job_key TEXT PRIMARY KEY, state TEXT NOT NULL)")
+        self.conn.execute("CREATE TABLE tailored (id TEXT PRIMARY KEY, job_key TEXT NOT NULL)")
+        url = "https://cdk.wd1.myworkdayjobs.com/CDK/job/Austin-TX-USA/Associate-Software-Engineer_JR9204"
+        old = self.job(company="Cdk", url=url, source="workday")
+        radar.store(self.conn, [old], 1000.0)
+        self.conn.execute("INSERT INTO prep VALUES (?, 'ready')", (old.key,))
+        self.conn.execute("INSERT INTO tailored VALUES ('t1', ?)", (old.key,))
+        new = self.job(company="CDK Global", url=url, source="workday")
+        self.assertEqual(radar.store(self.conn, [new], 2000.0), 0)           # the same job, not a new one
+        self.assertEqual(self.conn.execute("SELECT key, company, first_seen FROM jobs").fetchall(),
+                         [(new.key, "CDK Global", 1000.0)])
+        self.assertEqual(self.conn.execute("SELECT job_key FROM prep").fetchall(), [(new.key,)])
+        self.assertEqual(self.conn.execute("SELECT job_key FROM tailored").fetchall(), [(new.key,)])
+
     def test_throttle_cooldown_grows_then_clears(self):
         board = "workday:accenture.wd103/AccentureCareers"
 

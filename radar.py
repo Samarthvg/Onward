@@ -993,7 +993,9 @@ def fetch_workday(token: str) -> list[Job]:
     tenant = host_part.split(".")[0]
     base = f"https://{host_part}.myworkdayjobs.com"
     cxs = f"{base}/wday/cxs/{tenant}/{site}"
-    company = display_name(tenant)
+    # Sites of one tenant can belong to different companies (talentmanagementsolution
+    # hosts Jonas Software and Perseus Group), so a name for the site wins.
+    company = DISPLAY_NAMES.get(token) or display_name(tenant)
     cutoff = time.time() - FETCH_DAYS * 86400
     out: list[Job] = []
     total = 0
@@ -1720,6 +1722,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS jobs_posted ON jobs(posted_at);
 CREATE INDEX IF NOT EXISTS jobs_first_seen ON jobs(first_seen);
 CREATE INDEX IF NOT EXISTS jobs_last_seen ON jobs(last_seen);
+CREATE INDEX IF NOT EXISTS jobs_url ON jobs(url);
 CREATE TABLE IF NOT EXISTS runs (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     started  REAL NOT NULL,
@@ -1823,21 +1826,36 @@ def migrate(conn: sqlite3.Connection) -> None:
 
 
 def store(conn: sqlite3.Connection, jobs: list[Job], now: float) -> int:
+    keys = [j.key for j in jobs]
+    # A posting already stored under another key moves to its new one, keeping
+    # its row, first_seen, tailored resumes and queue state: a bare Simplify
+    # listing once its posting is read, or a posting whose company name changed
+    # (a board's proper name replacing one guessed from its token). If the new
+    # key is already stored too, the old row folds into it.
+    moves = [(j.listing_key, j) for j in jobs if j.listing_key]
+    by_url = {j.url: j for j in jobs}
+    moves += [(old, by_url[url]) for old, url in conn.execute(
+        "SELECT key, url FROM jobs WHERE url IN (SELECT value FROM json_each(?)) "
+        "AND key NOT IN (SELECT value FROM json_each(?))", (json.dumps(list(by_url)), json.dumps(keys)))]
     existing = {row[0] for row in conn.execute(
         "SELECT key FROM jobs WHERE key IN (SELECT value FROM json_each(?))",
-        (json.dumps([j.key for j in jobs] + [j.listing_key for j in jobs if j.listing_key]),))}
-    # A job first stored as a bare Simplify listing moves to its posting's key
-    # once that posting is read, keeping its row and first_seen; if the posting
-    # is already stored (from its own board), the listing row folds into it.
-    for j in jobs:
-        if not j.listing_key:
+        (json.dumps(keys + [old for old, _ in moves]),))}
+    linked = {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('prep', 'tailored')")}
+    for old, j in moves:
+        if old == j.key:
             continue
         conn.execute("UPDATE OR IGNORE jobs SET key = ?, company = ?, title = ?, location = ?, remote = ? "
-                     "WHERE key = ?", (j.key, j.company, j.title, j.location, j.remote, j.listing_key))
+                     "WHERE key = ?", (j.key, j.company, j.title, j.location, j.remote, old))
         conn.execute("UPDATE jobs SET first_seen = MIN(first_seen, (SELECT first_seen FROM jobs WHERE key = ?)) "
                      "WHERE key = ? AND EXISTS (SELECT 1 FROM jobs WHERE key = ?)",
-                     (j.listing_key, j.key, j.listing_key))
-        conn.execute("DELETE FROM jobs WHERE key = ?", (j.listing_key,))
+                     (old, j.key, old))
+        conn.execute("DELETE FROM jobs WHERE key = ?", (old,))
+        if "prep" in linked:
+            conn.execute("UPDATE OR IGNORE prep SET job_key = ? WHERE job_key = ?", (j.key, old))
+            conn.execute("DELETE FROM prep WHERE job_key = ?", (old,))
+        if "tailored" in linked:
+            conn.execute("UPDATE tailored SET job_key = ? WHERE job_key = ?", (j.key, old))
     # posted_at and its evidence always mirror what the source says right now,
     # so the dashboard never shows a timestamp the Verify link can't back up.
     # first_seen is never overwritten: it is the radar's own independent record.
@@ -1872,7 +1890,8 @@ def store(conn: sqlite3.Connection, jobs: list[Job], now: float) -> int:
         [{**asdict(j), "now": now} for j in jobs],
     )
     conn.execute("DELETE FROM jobs WHERE last_seen < ?", (now - PURGE_AFTER_DAYS * 86400,))
-    return len({j.key for j in jobs if j.key not in existing and j.listing_key not in existing})
+    moved = {j.key for old, j in moves if old in existing}
+    return len({j.key for j in jobs if j.key not in existing and j.key not in moved})
 
 
 DASHBOARD_COLS = [
