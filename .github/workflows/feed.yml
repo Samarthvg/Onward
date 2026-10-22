@@ -1,0 +1,40 @@
+# The shared job feed's search: packaging/feed/run_feed.py, which restores the
+# search's database from R2, searches, and publishes the feed to R2.
+#
+# Started every 30 minutes by the Cloudflare Worker in packaging/feed/worker
+# (GitHub's own schedule runs late under load), with an hourly schedule as a
+# fallback in case the Worker stops. Does nothing until the R2 secrets are set.
+name: Job feed
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 * * * *"
+
+# One search at a time; a run started while one is going waits for it.
+concurrency:
+  group: job-feed
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install the R2 client
+        run: pip install boto3==1.43.6
+      - name: Search and publish
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          FEED_BUCKET: ${{ vars.FEED_BUCKET }}
+          STATE_BUCKET: ${{ vars.STATE_BUCKET }}
+        run: python packaging/feed/run_feed.py

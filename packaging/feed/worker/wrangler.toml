@@ -1,0 +1,13 @@
+# The Worker that starts the "Job feed" workflow every 30 minutes, off the
+# top of the hour, when GitHub is busiest. Deploy: see packaging/feed/README.md.
+name = "onward-feed-trigger"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[triggers]
+crons = ["7,37 * * * *"]
+
+[vars]
+REPO = "Samarthvg/Onward"
+WORKFLOW = "feed.yml"
+REF = "main"

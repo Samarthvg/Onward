@@ -112,6 +112,9 @@ and copy `public/` to any static host or CDN, `index.json` last, so it only ever
 already there. Old change files and snapshots are deleted as new ones are written: two days of changes
 are kept, and a copy further behind reads the snapshot again.
 
+[packaging/feed/README.md](packaging/feed/README.md) sets this up for free: GitHub Actions runs the search,
+a Cloudflare Worker starts it every 30 minutes, and Cloudflare R2 holds the feed and the search's database.
+
 ## Running from source
 
 Python 3.11 or newer; the core needs no packages. `python app.py` runs the tray app (`pip install -r

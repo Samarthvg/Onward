@@ -153,9 +153,9 @@ def publish(conn: sqlite3.Connection, out_dir: Path | str, now: float, *, boards
         sha, size = _write_gz(out / "snapshots" / f"{version}.json.gz", {
             "format": FORMAT, "version": version, "generated": now,
             "postings": [current[k] for k in sorted(current)]})
-        snapshots = [s for s in index.get("snapshots") or [] if s["version"] < version]
-        snapshots = snapshots[-(KEEP_SNAPSHOTS - 1):] + [{"version": version, "path": f"snapshots/{version}.json.gz",
-                                                          "sha256": sha, "bytes": size}]
+        older = [s for s in index.get("snapshots") or [] if s["version"] < version]
+        snapshots = older[max(0, len(older) - (KEEP_SNAPSHOTS - 1)):] + [
+            {"version": version, "path": f"snapshots/{version}.json.gz", "sha256": sha, "bytes": size}]
         changes = changes[-KEEP_CHANGES:]
     else:
         changes, snapshots = index["changes"], index["snapshots"]
