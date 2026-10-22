@@ -271,6 +271,10 @@ class App:
     def open_dashboard(self, *_) -> None:
         show_dashboard(self.url(), self.store.home)
 
+    def open_in_browser(self, *_) -> None:
+        """For tabs side by side, or the browser's own tools."""
+        webbrowser.open(self.url())
+
     def search_now(self, *_) -> None:
         if not self.server.SCHEDULER.run_now("tray"):
             self.notify("A search is already running.")
@@ -352,6 +356,7 @@ class App:
 
         menu = pystray.Menu(
             item("Open dashboard", self.open_dashboard, default=True),
+            item("Open in browser", self.open_in_browser, visible=lambda _: has_window_support()),
             sep, *(line(i) for i in range(5)), sep,
             item("Search for jobs now", self.search_now, enabled=lambda _: not self.server.SCHEDULER.run),
             item("Start at login", self.toggle_login, checked=lambda _: bool(self.server.APP_STATE.get("autostart"))),

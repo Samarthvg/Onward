@@ -119,5 +119,5 @@ a Cloudflare Worker starts it every 30 minutes, and Cloudflare R2 holds the feed
 
 Python 3.11 or newer; the core needs no packages. `python app.py` runs the tray app (`pip install -r
 packaging/requirements.txt` for the tray icon and the API-key models; without them it runs without an icon).
-`python app.py --headless` runs without a tray, `python radar.py` does one search, `python server.py` serves only
+`python app.py --window` opens the dashboard in its own window, `python app.py --headless` runs without a tray, `python radar.py` does one search, `python server.py` serves only
 the dashboard. Tests: `python -m unittest`. Building the installers: see [packaging/README.md](packaging/README.md).
