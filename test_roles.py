@@ -43,12 +43,12 @@ def legacy_swe_title(title: str) -> bool:
 
 
 def legacy_keep(title: str, location: str, country, description: str) -> bool:
-    if not (legacy_swe_title(title) and radar.is_entry_title(title)):
+    if not (legacy_swe_title(title) and filters.is_entry_title(title)):
         return False
-    if not radar.us_location(location, country):
+    if not filters.us_location(location, country):
         return False
     yoe = radar.min_years(description)
-    return not (yoe is not None and yoe >= 3 and not radar.ENTRY_HINT.search(title))
+    return not (yoe is not None and yoe >= 3 and not filters.ENTRY_HINT.search(title))
 
 
 REQ = "Requirements\n• Python and SQL\n"
@@ -102,8 +102,8 @@ TRICKY_TITLES = [
 
 def facts(c, t, loc, country, desc) -> filters.Facts:
     yoe = radar.min_years(desc)
-    return filters.Facts(c, t, loc, country, bool(radar.REMOTE.search(loc)), desc, yoe,
-                         bool(radar.ENTRY_HINT.search(t)), filters.pay_range(desc))
+    return filters.Facts(c, t, loc, country, bool(filters.REMOTE.search(loc)), desc, yoe,
+                         bool(filters.ENTRY_HINT.search(t)), filters.pay_range(desc))
 
 
 def role(**kw) -> dict:
@@ -144,8 +144,8 @@ class SeededRoleTests(unittest.TestCase):
     def test_prefilters_agree_with_old_ones(self):
         search = filters.Search()
         for _, t, loc, country, _ in POSTINGS:
-            self.assertEqual(search.title_wanted(t), legacy_swe_title(t) and radar.is_entry_title(t), t)
-            self.assertEqual(search.location_wanted(loc, country), radar.us_location(loc, country), loc)
+            self.assertEqual(search.title_stage(t) is None, legacy_swe_title(t) and filters.is_entry_title(t), t)
+            self.assertEqual(search.location_wanted(loc, country), filters.us_location(loc, country), loc)
         self.assertEqual(search.only_country(), "US")
         self.assertFalse(search.wants_level("intern"))
 
@@ -290,7 +290,6 @@ class RoleTests(unittest.TestCase):
         self.assertEqual(picked(block), [("Software Engineer I", "Pittsburgh, PA"), ("Software Development Engineer", "Seattle, WA / Vancouver, BC")])
         everywhere = filters.Search([config.ROLE.default], blocked=["ACME"])
         self.assertFalse(any(everywhere.matching(facts(*p)) for p in POSTINGS if p[0] == "Acme"))
-        self.assertFalse(everywhere.company_wanted("Acme"))
 
     def test_pay_parsing(self):
         cases = {

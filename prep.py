@@ -69,7 +69,6 @@ def migrate(conn) -> None:
 
 # The queue's settings are settings.json "queue" (config.QUEUE has each one's
 # meaning and range); they used to live in resume/prep.json.
-DEFAULTS = config.QUEUE.default
 STALE_AFTER = 2 * 86400          # radar.py's STALE_AFTER_DAYS: unseen this long means closed
 MAX_ATTEMPTS = 2
 NOTIFY_EVERY = 30 * 60           # while the queue is still working, at most one toast per half hour

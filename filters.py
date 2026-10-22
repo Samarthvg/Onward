@@ -553,9 +553,6 @@ class Search:
         self.roles = [Role.from_settings(r) for r in (roles or [DEFAULT_ROLE])]
         self.blocked = {norm_company(c) for c in blocked}
 
-    def title_wanted(self, title: str) -> bool:
-        return any(r.title_ok(title) for r in self.roles)
-
     def title_stage(self, title: str) -> str | None:
         """Why no role wants a title: "title" when no role's keywords fit it,
         "level" when some do but none of those roles wants its seniority.
@@ -568,9 +565,6 @@ class Search:
 
     def location_wanted(self, location: str, country: str | None = None, remote: bool = False) -> bool:
         return any(r.location_ok(location, country, remote) for r in self.roles)
-
-    def company_wanted(self, company: str) -> bool:
-        return norm_company(company) not in self.blocked and any(r.company_ok(company) for r in self.roles)
 
     def wants_level(self, level: str) -> bool:
         return any(level in r.seniority for r in self.roles)

@@ -58,15 +58,6 @@ class FileLock:
         self._f.close()
         self._f = None
 
-    def held_elsewhere(self) -> bool:
-        """Whether another process holds the lock right now."""
-        if self._f:
-            return False
-        if self.acquire():
-            self.release()
-            return False
-        return True
-
     def __enter__(self):
         return self
 

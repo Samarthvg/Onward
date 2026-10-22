@@ -5,7 +5,6 @@ R2's API through botocore's stubber), and readers following along.
 Run: python -m unittest test_feed_run
 """
 
-import gzip
 import io
 import json
 import os

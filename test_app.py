@@ -235,9 +235,11 @@ class RealRunTests(TmpHome):
         self.assertEqual(out.stdout.strip(), "True")
         lock = oslock.FileLock(path)
         self.assertTrue(lock.acquire(), "a lock left by a finished process doesn't block")
-        self.assertTrue(oslock.FileLock(path).held_elsewhere())
+        other = oslock.FileLock(path)
+        self.assertFalse(other.acquire(), "one holder at a time")
         lock.release()
-        self.assertFalse(oslock.FileLock(path).held_elsewhere())
+        self.assertTrue(other.acquire())
+        other.release()
 
 
 # --------------------------------------------------------------------------

@@ -31,7 +31,6 @@ import json
 import os
 import re
 import sqlite3
-import time
 import urllib.parse
 import urllib.request
 from pathlib import Path

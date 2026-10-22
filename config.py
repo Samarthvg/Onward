@@ -659,11 +659,6 @@ class Store:
         rid = rid or s["active_role"]
         return next((r for r in s["roles"] if r["id"] == rid), s["roles"][0])
 
-    def resume_for(self, rid: str | None = None) -> Path:
-        """The master .tex a role tailors from."""
-        name = self.role(rid)["resume"] if rid else ""
-        return self.path_for("resume_dir") / (name or "master.tex")
-
 
 def merge(base: dict, patch: dict) -> dict:
     out = dict(base)

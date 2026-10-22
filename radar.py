@@ -43,9 +43,7 @@ import filters
 import oslock
 import reqparse
 # Title and location rules live in filters.py with the user's roles.
-from filters import (ENTRY_HINT, NON_US, NOT_ENTRY, REMOTE, US_CITIES, US_MARKER,  # noqa: F401
-                     US_STATE_NAMES, US_STATES, is_entry_title,
-                     is_swe_title, us_location)
+from filters import ENTRY_HINT, REMOTE
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "jobs.db"

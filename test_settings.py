@@ -260,12 +260,11 @@ class PathTests(Tmp):
         st.update({"paths": {"db": str(other), "resume_dir": "cv"}})
         self.assertEqual(st.path_for("db"), other)
         self.assertEqual(st.path_for("resume_dir"), self.dir / "cv")
-        self.assertEqual(st.resume_for(), self.dir / "cv" / "master.tex")
 
     def test_role_resume(self):
         st = self.store()
         st.update({"roles": [{**config.ROLE.default, "resume": "master-data.tex"}]})
-        self.assertEqual(st.resume_for("software"), self.dir / "resume" / "master-data.tex")
+        self.assertEqual(st.role("software")["resume"], "master-data.tex")
         with self.assertRaises(config.SettingsError):
             st.update({"roles": [{**config.ROLE.default, "resume": "../../etc/passwd"}]})
 

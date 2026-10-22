@@ -611,12 +611,6 @@ def answers_prompt(master_tex: str, job: dict, profile: dict, questions: list[di
     return ANSWERS_RULES + voice_rules(v), "\n\n".join(parts)
 
 
-def estimate_answers(master_tex: str, job: dict, profile: dict, questions: list[dict], jd: str, backend: str,
-                     exact: bool = True) -> dict | None:
-    instructions, material = answers_prompt(master_tex, job, profile, questions, jd)
-    return estimate(backend, instructions, material, "answers", questions=len(questions), exact=exact)
-
-
 def _total(costs: list[float]) -> float | None:
     return round(sum(costs), 4) if costs else None
 

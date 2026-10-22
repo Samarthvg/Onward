@@ -7,6 +7,7 @@ once misread.
 
 import unittest
 
+import filters
 import radar
 import reqparse
 
@@ -84,10 +85,10 @@ class TitleTests(unittest.TestCase):
     def test_titles(self):
         for title in self.KEEP:
             with self.subTest(title=title):
-                self.assertTrue(radar.is_swe_title(title) and radar.is_entry_title(title))
+                self.assertTrue(filters.is_swe_title(title) and filters.is_entry_title(title))
         for title in self.DROP:
             with self.subTest(title=title):
-                self.assertFalse(radar.is_swe_title(title) and radar.is_entry_title(title))
+                self.assertFalse(filters.is_swe_title(title) and filters.is_entry_title(title))
 
 
 class KeywordTests(unittest.TestCase):
