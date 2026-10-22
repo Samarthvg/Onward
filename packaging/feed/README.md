@@ -27,9 +27,9 @@ though this stays inside the free tier (at the time of writing: 10 GB stored, a 
 million reads a month, no charge for downloads). Check Cloudflare's pricing page before you start.
 
 1. **R2 buckets.** In the Cloudflare dashboard, under R2, create two buckets:
-   - `onward-feed`, the feed. Under its settings, turn on the public `r2.dev` address. Cloudflare limits
-     how fast `r2.dev` serves and says it isn't for production; it's fine for a first few hundred users.
-     Later, connect a domain of your own to the bucket instead.
+   - `onward-feed`, the feed. Under its settings, Public access, allow the **Public Development URL**
+     (`https://pub-<id>.r2.dev`). Cloudflare limits how fast it serves and says it isn't for production;
+     it's fine for a first few hundred users. Later, connect a domain of your own to the bucket instead.
    - `onward-feed-state`, the search's database. Leave it private.
 2. **An R2 API token.** Under R2, Manage API tokens, create one with "Object Read & Write" for those two
    buckets only. Note the Access Key ID, the Secret Access Key and your account ID.
@@ -48,7 +48,9 @@ million reads a month, no charge for downloads). Check Cloudflare's pricing page
    npx wrangler deploy
    ```
 
-   The Worker's logs, in the Cloudflare dashboard, show each start or GitHub's reason for refusing one.
+   The first `wrangler` command on an account may ask for a `workers.dev` subdomain: any free name will do,
+   since this Worker has no public address (`workers_dev = false`). The Worker's logs, in the Cloudflare
+   dashboard, show each start or GitHub's reason for refusing one.
 5. **Point Onward at it.** In Settings, under Radar (advanced settings), set the feed address to the
    bucket's `r2.dev` address, e.g. `https://pub-<id>.r2.dev/`.
 

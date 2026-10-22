@@ -204,11 +204,13 @@
     return prepared;
   }
 
-  /** The tailored PDF when one was prepared and chosen, under the stored resume's file name; else the stored resume. */
+  /** The tailored PDF when one was prepared and chosen, under the name the helper gives it
+   * (Firstname_Lastname_Company_Resume.pdf), else the stored resume's; without one, the stored resume. */
   function resumeFor(prep, master) {
     if (!prep || !prep.resume || !prep.resume.data) return master;
     const base = master && master.name ? master.name.replace(/\.[a-z0-9]+$/i, "") : "Resume";
-    return { name: base + ".pdf", type: "application/pdf", data: prep.resume.data, updated: Date.now(), tailored: true };
+    const name = /^[\w.-]{1,150}\.pdf$/i.test(prep.resume.name || "") ? prep.resume.name : base + ".pdf";
+    return { name, type: "application/pdf", data: prep.resume.data, updated: Date.now(), tailored: true };
   }
 
   function preparedLine(prep, items) {

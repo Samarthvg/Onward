@@ -89,6 +89,16 @@ class UpdateTests(unittest.TestCase):
         radar.update_h1b(later + 365 * 86400, self.hub({2027: 3, 2026: 8}))
         self.assertEqual(sorted(f.name for f in self.dir.glob("h1b-FY*.csv")), ["h1b-FY2026.csv", "h1b-FY2027.csv"])
 
+    def test_a_download_cut_short_is_finished_the_next_day(self):
+        radar.update_h1b(self.now, self.hub({2026: 7}))      # FY2025 never came
+        for f in self.dir.glob("h1b-FY*.csv"):
+            os.utime(f, (self.now, self.now))
+        self.assertFalse(radar.h1b_due(self.now + 3600))
+        self.assertTrue(radar.h1b_due(self.now + 2 * 86400))
+        self.asked.clear()
+        self.assertEqual(radar.update_h1b(self.now + 2 * 86400, self.hub({2026: 7, 2025: 9})), [2026, 2025])
+        self.assertEqual(self.asked, [2027, 2025], "the saved year isn't fetched again")
+
     def test_force(self):
         radar.update_h1b(self.now, self.hub({2026: 7, 2025: 9}))
         self.asked.clear()

@@ -43,7 +43,7 @@ async function test(name, fn) {
 
 const job = { key: "mock|job", company: "Mock Co", title: "Software Engineer, New Grad" };
 const tailored = (answers = []) => ({ job, state: "ready", choice: "tailored", answers,
-  resume: { name: "Mock_Co_Software_Engineer_20261020.pdf", data: TAILORED.toString("base64") } });
+  resume: { name: "Testy_McTestface_Mock_Co_Resume.pdf", data: TAILORED.toString("base64") } });
 
 await test("greenhouse: attaches the prepared resume and fills answers drafted ahead", async (page) => {
   helper.prepared = tailored([
@@ -59,8 +59,8 @@ await test("greenhouse: attaches the prepared resume and fills answers drafted a
   await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001");
   const text = await runFill(page);
   expectState("prepared gh", await page.evaluate(() => window.__mockState()), {
-    // The stored resume's file name, the tailored file's bytes.
-    resume: "fake-resume.pdf:" + TAILORED.length,
+    // Attached under the helper's name for it (Firstname_Lastname_Company_Resume.pdf), with the tailored bytes.
+    resume: "Testy_McTestface_Mock_Co_Resume.pdf:" + TAILORED.length,
     why: "I build developer tools. (TEST)", question_8: "June 2026", question_7: "No",
     question_6: null, question_5: null, first_name: "Testy",
   });
@@ -79,7 +79,7 @@ await test("ashby: attaches the prepared resume, fills drafted radios and essays
   await page.goto("https://jobs.ashbyhq.com/mockco/abc-123/application");
   const text = await runFill(page);
   expectState("prepared ashby", await page.evaluate(() => window.__mockState()), {
-    _systemfield_resume: "fake-resume.pdf:" + TAILORED.length, team: "Platform", cd46f09e: "The Raft paper. (TEST)",
+    _systemfield_resume: "Testy_McTestface_Mock_Co_Resume.pdf:" + TAILORED.length, team: "Platform", cd46f09e: "The Raft paper. (TEST)",
     "086af02e": "yes", _systemfield_name: "Testy McTestface",
   });
   expect("prepared ashby: nothing submitted", (await page.evaluate(() => window.__submitted)) === 0, text);

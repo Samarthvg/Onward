@@ -49,7 +49,7 @@ The extension asks to read and change data on the four ATS sites, plus `127.0.0.
 Open the options page (Firefox: `about:addons` → Onward Autofill → Preferences; Chrome: right-click the toolbar icon → Options).
 
 - **Resume:** choose your PDF once. It's stored in the extension and attached to each form's resume field. Each site still reads it its own way; check the result.
-- **Profile:** press **Import from dashboard** to copy the Apply kit details from the Onward dashboard. The helper must be running; if no dashboard tab is open, the extension opens one in the background. Or press **Copy for extension** in the dashboard's Apply kit and paste the result here. Import only fills empty fields here.
+- **Profile:** press **Import from dashboard** to copy your Apply kit details from Onward. Onward must be running: the details come from it directly (an older Onward is read through a dashboard tab, opened in the background if none is). Or press **Copy for extension** in the dashboard's Apply kit and paste the result here. Import only fills empty fields here.
 - **Standard answers:** work authorization, sponsorship now and later, unrestricted authorization, citizenship, relocation, age, how you heard about the job. Each starts as **Ask me each time**, and such questions are left for you until you set an answer.
 - **Voluntary self-identification:** gender, race, veteran, disability and the rest default to **Decline to answer**. If a form has no decline option, the question is left for you.
 
@@ -62,19 +62,18 @@ On an application form, press the **Autofill** button in the bottom-right corner
   - On Workday, if your resume has more jobs or schools than the form shows, Fill this step adds rows with the section's Add button. It never presses Next.
   - Rows the site already filled, for example from Workday's "Autofill with Resume", are matched to your resume by company or school name and left as they are. If they differ from your resume, the panel shows **Replace with my resume** for that section, with **Undo**.
 - **Remembered answers:** answers you type into questions the extension doesn't know are saved, keyed by the question's wording. The next time the same question appears, short answers are filled in again and long written answers are offered with a **Use saved answer** button. Edit or delete them under **Saved answers** in the options.
-- **AI answers for the rest:** after filling, the questions nothing saved could answer are sent in one batch to the helper on your ChatGPT login (or the backend chosen under Drafting answers). This covers choice questions, short answers and essays. Answers are filled in with an amber outline and an "AI answer, check it" tag. The model uses only your resume, profile and the posting, and leaves questions it can't know (offer deadlines, consents, family ties) for you. Sponsorship, demographic, salary, legal and consent questions are never sent, and neither are work-history or education fields (job title, company, dates, role description, school, degree, field of study, GPA). Turn this off under Drafting answers, or pick the Manual backend.
-- **Drafts:** writing questions ("Why do you want to work here?") get a **Draft an answer** button. The draft goes into the field for you to edit and is never sent anywhere else. Drafting uses the Onward helper (`pythonw server.py`), your master resume uploaded in the dashboard, the job description (looked up from the posting's URL in `jobs.db`, otherwise read from the page), and your choice of backend:
+- **AI answers for the rest:** after filling, the questions nothing saved could answer are sent in one batch to Onward, which answers them with the AI you chose in its settings (your ChatGPT or Claude login, or an OpenAI or Anthropic API key) or the backend chosen under Drafting answers. This covers choice questions, short answers and essays. Answers are filled in with an amber outline and an "AI answer, check it" tag. The model uses only your resume, profile and the posting, and leaves questions it can't know (offer deadlines, consents, family ties) for you. Sponsorship, demographic, salary, legal and consent questions are never sent, and neither are work-history or education fields (job title, company, dates, role description, school, degree, field of study, GPA). Turn this off under Drafting answers, or pick the Manual backend.
+- **Drafts:** writing questions ("Why do you want to work here?") get a **Draft an answer** button. The draft goes into the field for you to edit and is never sent anywhere else. Drafting uses Onward (the installed app, or `python server.py` from source), your master resume, your "About me" notes, the job description (looked up from the posting's URL, otherwise read from the page), and your choice of backend:
   - ChatGPT, through `codex` on your ChatGPT login;
   - Claude, through the `claude` CLI on your Claude login;
+  - an OpenAI or Anthropic API key saved in Onward's settings, billed to that key within its monthly budget;
   - **Manual**, which shows a prompt to paste into any chat.
-
-  The paid Anthropic API is never used for drafts.
 
 ## Apply queue
 
-The Onward helper prepares good matches before you open them (see **Apply queue** in the dashboard): after each radar run, new postings at or above your match threshold get a resume tailored to them, or a note that your master resume already fits, plus drafts for the custom questions their form publishes (Greenhouse, Lever and Ashby). When you open one of these forms:
+Onward prepares your best matches before you open them (see **Apply queue** in the dashboard): after each search, new postings from the last 7 days at or above your minimum match, up to the number you set (15 to start), get a resume tailored to them, or a note that your master resume already fits, plus drafts for the custom questions their form publishes (Greenhouse, Lever and Ashby). When you open one of these forms:
 
-- The resume field gets the tailored PDF, under your stored resume's file name. If you chose **Use master instead**, the job wasn't prepared, or the helper isn't running, it gets your stored resume as before. The panel says which one it attached.
+- The resume field gets the tailored PDF, named `Firstname_Lastname_Company_Resume.pdf` (your name from the Apply kit). If you chose **Use master instead**, the job wasn't prepared, or Onward isn't running, it gets your stored resume as before. The panel says which one it attached.
 - Questions with a drafted answer are filled and marked like any AI answer (amber outline, "AI answer, check it"). The extension's own rules still decide which questions those may be: sponsorship, work authorization, demographic, salary, legal and consent questions only ever take your saved answers.
 - After you press Submit, the ATS's "application received" page marks the job applied in Onward, and the panel offers the next job in the queue. Greenhouse and Lever have their own confirmation URLs; for Ashby and Workday the thank-you message only counts in a tab that showed an Onward job's form.
 
@@ -104,7 +103,7 @@ The extension never:
 | `src/background.js` | Toolbar button, shortcut, and the only code that calls the helper. Remembers which job each tab's form belongs to (session storage), for the confirmation page. |
 | `src/options/` | Options page. |
 
-The helper side is `/api/draft` in `server.py` and `draft_answer()` in `tailor.py`; the apply queue's `/api/prepared` and `/api/applied` are in `server.py`, backed by `prep.py`. The endpoint accepts requests from the dashboard's origin, or from an extension origin that sends the `X-JobRadar-Client: autofill` header. Websites can't send that header without a CORS preflight, which the helper never answers.
+The helper side is `/api/draft` in `server.py` and `draft_answer()` in `tailor.py`; the apply queue's `/api/prepared` and `/api/applied` are in `server.py`, backed by `prep.py`; Import from dashboard reads `/api/state`. The endpoint accepts requests from the dashboard's origin, or from an extension origin that sends the `X-JobRadar-Client: autofill` header. Websites can't send that header without a CORS preflight, which the helper never answers.
 
 ## Tests
 
@@ -118,6 +117,6 @@ From `extension/test` (run `npm install` once):
 | `node dashboard-import.mjs` | Profile import from the running dashboard, both ways. Needs the helper running. |
 | `node run-mocks.mjs --real-draft` | One real draft through your ChatGPT login. |
 | `node prepared.mjs` | The apply queue, with a fake helper: prepared resume and drafted answers on the Greenhouse and Ashby mocks, the master fallback, and confirmation pages. Part of `npm test`. |
-| `python test_draft_endpoint.py` | Who may call `/api/draft`, on a spare port. Run from the `jobradar` folder. |
+| `python test_draft_endpoint.py` | Who may call `/api/draft`, on a spare port. Run from the repository root. |
 
-Workday mocks follow commonly seen `data-automation-id` names. Real Workday tenants vary, and a live Workday form needs an account, so Workday hasn't been checked on a live site. If a live Workday step misses fields, look at the input's `data-automation-id` and its `formField-*` wrapper in devtools.
+Workday mocks follow commonly seen `data-automation-id` names. Real Workday tenants vary and a live Workday form needs an account, so the automated tests can't cover live Workday; it has been used on real Workday applications by hand. If a live Workday step misses fields, look at the input's `data-automation-id` and its `formField-*` wrapper in devtools.

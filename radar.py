@@ -2190,9 +2190,13 @@ def h1b_files() -> list[tuple[int, Path]]:
 
 
 def h1b_due(now: float) -> bool:
-    """No Data Hub years saved yet, or the newest is older than H1B_REFRESH."""
+    """No Data Hub years saved yet; only one (a download cut short), tried
+    again a day later; or the newest older than H1B_REFRESH."""
     hub = [f for _, f in h1b_files() if f.name.startswith("h1b-FY")]
-    return not hub or now - max(f.stat().st_mtime for f in hub) > H1B_REFRESH
+    if not hub:
+        return True
+    age = now - max(f.stat().st_mtime for f in hub)
+    return age > H1B_REFRESH or (len(hub) < 2 and age > 86400)
 
 
 def h1b_open(year: int):

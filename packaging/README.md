@@ -17,6 +17,9 @@ installer format:
 - **Tray icon.** The app's tray icon is [pystray](https://github.com/moses-palmer/pystray). It uses the Win32
   API through ctypes, AppKit on macOS and Xlib/AppIndicator on Linux, and PyInstaller bundles each of those
   backends (`onward.spec` names them).
+- **Dashboard window.** `Onward --window` shows the dashboard with [pywebview](https://pywebview.flowrl.com):
+  Edge WebView2 through pythonnet on Windows, WebKit on macOS. It runs as its own process, started from the
+  tray. The Linux AppImage doesn't bundle a web view, so there the dashboard opens in the browser.
 - **Clean updates.** Neither tool updates an installed app, so updating lives in the app (`updates.py`):
   - It checks GitHub Releases once a day.
   - On Windows it downloads the new installer, verifies its SHA-256 against the release's `SHA256SUMS` (and,
@@ -40,10 +43,13 @@ install folder). Linux needs `appimagetool` on PATH.
 
 ## Release
 
-1. Bump `VERSION` in `appinfo.py`, commit, and tag it: `git tag v0.2.0 && git push --tags`.
+1. Bump `VERSION` in `appinfo.py`, commit, and tag it: `git tag v0.1.4 && git push origin main v0.1.4`.
 2. `.github/workflows/release.yml` builds all three installers, writes one `SHA256SUMS` for them and publishes
-   the GitHub release. The app's update check reads exactly that release.
-3. Set `GITHUB_REPO` in `appinfo.py` to `owner/repo` once. Until then the update check is off.
+   the GitHub release. The app's update check reads exactly that release; pre-releases are skipped, so a test
+   build can be published as one without reaching anyone.
+3. `GITHUB_REPO` in `appinfo.py` names the repository (`Samarthvg/Onward`). Empty, the update check is off.
+
+Before tagging, check the changes with `python preview.py` (see the main README) and run the tests.
 
 The release also carries the Autofill extension (`packaging/extension.py`, run first by the workflow):
 
@@ -111,8 +117,9 @@ AppImages aren't signed by default. If you want to, sign the AppImage with your 
 
 ## What was tested
 
-- The Windows build from this spec: built with PyInstaller 6.22.3. The frozen app served the dashboard, copied
-  the extension to its data folder, found TeX and the ChatGPT login, turned on Start at login, and ran a full
-  search through its own `--radar` child process.
-- Not yet run: the Inno Setup installer, and the macOS and Linux builds. Neither tool was available on the
-  machine this was written on. The release workflow builds both on GitHub's runners.
+- **Windows:** the release installers (0.1.1 to 0.1.3) have been installed and upgraded in place on Windows 11,
+  silently with `/SILENT /RELAUNCH=1` as the updater runs them, keeping the data folder. The frozen app serves
+  the dashboard, opens its window, copies the extension to its data folder, finds TeX and the ChatGPT login,
+  turns on Start at login, and runs searches through its own `--radar` child process.
+- **macOS and Linux:** the release workflow builds both on GitHub's runners on every release, but neither has
+  been installed and run on a real machine yet.
