@@ -10,11 +10,17 @@ Built for Firefox first (Manifest V3). The same folder loads in Chrome and Edge.
 
 ### Firefox (release)
 
-The easiest way: Onward's setup steps (or Settings, **Run setup again**) have an **Install in Firefox** button
-that installs the signed add-on shipped with the app. Each GitHub release also has it as
-`onward-autofill-<version>.xpi`: drag it into Firefox. A signed copy stays installed and updates itself.
+Install the signed add-on once; it stays installed and updates itself from the GitHub releases. Any of:
 
-Release Firefox only runs signed extensions permanently. Without signing, you can load it until Firefox restarts:
+- Onward's setup steps (or Settings, **Run setup again**): **Install in Firefox**.
+- With Onward running, open <http://127.0.0.1:8765/api/extension.xpi> in Firefox, then **Continue to
+  installation** and **Add**.
+- From a GitHub release, drag `onward-autofill-<version>.xpi` into Firefox.
+
+In `about:addons` it shows its version with no "temporary" label.
+
+**Only for working on the extension itself:** a copy you changed isn't signed, and release Firefox runs unsigned
+extensions only until it restarts. Remove the signed copy first, since both have the same id:
 
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Press **Load Temporary Add-on…** and choose `extension/manifest.json`.
