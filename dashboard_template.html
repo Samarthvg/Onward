@@ -457,7 +457,9 @@
     .viewtabs { overflow-x: auto; max-width: 100%; }
     .viewtabs button { white-space: nowrap; }
     li.job { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; }
-    li.job > .side { grid-column: 1 / -1; grid-row: auto; flex-direction: row-reverse; justify-content: space-between; align-items: center; order: 1; }
+    li.job > .side { grid-column: 1 / -1; grid-row: auto; flex-direction: row-reverse; flex-wrap: wrap; justify-content: space-between; align-items: center; order: 1; }
+    /* Four buttons don't fit beside the age: they take a full row of their own, left to right. */
+    li.job > .side > .actions { flex: 1 1 auto; justify-content: flex-start; }
     li.job > details.evidence { order: 2; }
     /* The master resume line is detail on a phone; it would push the first job down. */
     .resume-bar.has > .note { display: none; }
@@ -1081,30 +1083,36 @@ const yearsText = () => scoredYears < 1 ? "less than a year" : `about ${scoredYe
 const listOf = (xs, max = 3) => xs.length <= max ? xs.join(", ").replace(/, ([^,]*)$/, " and $1")
   : `${xs.slice(0, max).join(", ")} and ${xs.length - max} more`;
 
-// Why a job scored what it did, in one line for the card.
-function scoreReason(sc, j) {
+// Why a job scored what it did, in one line for the card. Brief leaves out
+// what the advanced card's breakdown line already shows: skill counts, the
+// missing skills and experience.
+function scoreReason(sc, j, brief = false) {
   if (!sc) return null;
   if (sc.pct == null) {
     return el("div", { class: "reason", text: sc.noJd
       ? "No score: this site doesn't share the job description. Open the posting to judge it yourself."
       : "No score: the posting doesn't name specific skills or tools to check your resume against." });
   }
+  const skills = (k) => `skill${k === 1 ? "" : "s"}`;
   const bits = [];
-  if (sc.req.of) bits.push(sc.req.have === sc.req.of ? `you have all ${sc.req.of} required skill${sc.req.of === 1 ? "" : "s"}`
-    : `you have ${sc.req.have} of the ${sc.req.of} required skills`);
-  else if (sc.pref.of) bits.push(`you have ${sc.pref.have} of the ${sc.pref.of} skills it lists`);
-  if (sc.exp.ok === false) bits.push(`it asks for ${j.min_yoe}+ years and you have ${yearsText()}`);
+  if (!brief && sc.req.of) {
+    bits.push(sc.req.have < sc.req.of ? `you have ${sc.req.have} of ${sc.req.of} required ${skills(sc.req.of)}`
+      : sc.req.of === 1 ? "you have the 1 required skill" : `you have all ${sc.req.of} required skills`);
+  } else if (!brief && sc.pref.of) {
+    bits.push(`you have ${sc.pref.have} of ${sc.pref.of} ${skills(sc.pref.of)} it lists`);
+  }
+  if (!brief && sc.exp.ok === false) bits.push(`it asks for ${j.min_yoe}+ years and you have ${yearsText()}`);
   const missReq = sc.items.filter((i) => !i.ok && i.kind !== "pref").map((i) => i.k);
   const missPref = sc.items.filter((i) => !i.ok && i.kind === "pref").map((i) => i.k);
   // Whatever pulled the score down, most telling first.
   const parts = [bits.join(", but "),
-    missReq.length ? `missing ${listOf(missReq)}` : missPref.length && sc.pct < 70 ? `missing nice-to-have ${listOf(missPref)}` : "",
+    brief ? "" : missReq.length ? `missing ${listOf(missReq)}` : missPref.length && sc.pct < 70 ? `missing nice-to-have ${listOf(missPref)}` : "",
     sc.thin ? "it names only a few skills, so this is a rough guess"
       : !missReq.length && !missPref.length && sc.exp.v < 1 && sc.exp.ok !== false ? "it doesn't say how many years it wants, which lowers the score a little" : "",
   ].filter(Boolean);
   const line = parts.join(". ").replace(/\. ([a-z])/g, (m, c) => ". " + c.toUpperCase());
   return el("div", { class: "reason" }, el("b", { text: sc.pct >= 70 ? "Strong match" : sc.pct >= 50 ? "Partial match" : "Weak match" }),
-    line ? ": " + line + "." : ".");
+    line ? ": " + line + "." : "");
 }
 
 // The score in full, for a job's Details.
@@ -1472,8 +1480,9 @@ function payLabel(j) {
 function isSponsor(j) {
   if (!visa().sponsor) return false;
   if (j.sponsorship === "no") return false;
+  // Renewals alone (no new approvals) don't show it sponsors new hires.
   const t = h1bTier(j.h1b);
-  return t === "strong" || t === "some" || j.sponsorship === "yes";
+  return ((t === "strong" || t === "some") && j.h1b.initial > 0) || j.sponsorship === "yes";
 }
 
 // ---------------------------------------------------------------- evidence
@@ -1572,7 +1581,14 @@ function visaSignals(j, V) {
   const year = h ? `FY${h.year}` : "";
   if ((tier === "strong" || tier === "some") && j.sponsorship === "no") {
     out.push({ cls: "badge", text: "Files H-1B, but not for this role",
-      why: `${h.employer} got ${n(h.initial)} new H-1B approvals in ${year} (USCIS data), but this posting says it won't sponsor.${quote}` });
+      why: `${h.employer} got ${n(h.initial + h.continuing)} H-1B approvals in ${year} (USCIS data), but this posting says it won't sponsor.${quote}` });
+  } else if ((tier === "strong" || tier === "some") && !h.initial) {
+    // Only extensions for people it already employs: no sign it sponsors new hires.
+    out.push({ cls: "badge h1b small",
+      text: `H-1B renewals only · none new FY${String(h.year).slice(2)}${h.match === "ambiguous" ? "?" : ""}`,
+      why: `USCIS records show ${h.employer} got ${n(h.continuing)} continuing H-1B approvals in ${year} but no new ones, ` +
+        "so it renews visas for people it already employs but didn't sponsor new hires that year." +
+        (h.match === "ambiguous" ? " Several employers share this name; check it's the same company." : "") });
   } else if (tier === "strong" || tier === "some") {
     out.push({ cls: "badge h1b" + (tier === "some" ? " small" : ""),
       text: `H-1B sponsor · ${n(h.initial)} new FY${String(h.year).slice(2)}${h.match === "ambiguous" ? "?" : ""}`,
@@ -1688,7 +1704,7 @@ function jobCard(j, now, V, hasResume) {
   const head = el("div", { class: "head" },
     el("a", { class: "title", href: j.url, target: "_blank", rel: "noopener", text: j.title, "data-fk": fk("title") }), meta);
   meta.append(...ageBadges(j, now));
-  const reason = hasResume ? scoreReason(sc, j) : null;
+  const reason = hasResume ? scoreReason(sc, j, adv) : null;
   const li = el("li", { class: "job" + (mark ? " done" : "") }, head, right, side, reason);
 
   const visaWhy = () => signals.length
@@ -1702,9 +1718,10 @@ function jobCard(j, now, V, hasResume) {
     let skillsRow = null;
     if (sc && sc.pct != null) {
       skillsRow = el("div", { class: "row skills-line" });
+      const counts = [sc.req.of ? `Required ${sc.req.have}/${sc.req.of}` : null,
+        sc.pref.of ? `Nice-to-have ${sc.pref.have}/${sc.pref.of}` : null].filter(Boolean);
       const parts = [
-        el("b", { text: `Required ${sc.req.have}/${sc.req.of}` }),
-        sc.pref.of ? `Nice-to-have ${sc.pref.have}/${sc.pref.of}` : null,
+        ...counts.map((t, i) => i ? t : el("b", { text: t })),
         el("span", { class: sc.exp.ok === false ? "miss" : "", text: "Experience: " + sc.exp.label }),
         sc.degree ? el("span", { class: sc.degree.ok ? "" : "miss", text: "Degree: " + sc.degree.label }) : null,
       ].filter(Boolean);
