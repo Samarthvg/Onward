@@ -167,6 +167,30 @@ class TitleKeywordTests(unittest.TestCase):
         order = filters.TitleRules(["full stack", "- manager"])
         self.assertTrue(order.matches("Full Stack Manager"), "the first line that fits decides")
 
+    def test_language_names(self):
+        r = filters.TitleRules(["c++/c#/.net + developer/engineer"])
+        self.assertEqual(len(r.rules[0][1]), 2, "the + in c++ doesn't split the line")
+        for title in ["C++ Developer", "C/C++ Engineer", "C# Developer", ".NET Developer", "ASP.NET Engineer"]:
+            self.assertTrue(r.matches(title), title)
+        self.assertFalse(r.matches("C Developer"))
+        self.assertFalse(r.matches("Java Developer"))
+
+    def test_decide_names_the_line(self):
+        lines = ["- test engineer*", "", "software + engineer"]
+        r = filters.TitleRules(lines)
+        self.assertEqual(r.decide("Software Engineer"), (2, True), "blank lines still count")
+        self.assertEqual(r.decide("Software Test Engineer"), (0, False))
+        self.assertEqual(r.decide("Designer"), (None, False))
+
+    def test_keyword_warnings(self):
+        self.assertEqual(filters.keyword_warnings(["- manager", "software + engineer"]), [])
+        w = filters.keyword_warnings(["software + engineer", "---", "data + /x", "- staff"])
+        self.assertEqual(len(w), 3, w)
+        self.assertIn("Line 2", w[0])
+        self.assertIn("Line 3", w[1])
+        self.assertIn("Line 4", w[2])
+        self.assertIn("finds nothing", filters.keyword_warnings(["- a", "- b"])[-1])
+
     def test_templates_are_only_title_keywords(self):
         self.assertEqual(template("blank"), [])
         self.assertIs(template("software"), filters.SOFTWARE_KEYWORDS)
@@ -222,6 +246,11 @@ class RoleTests(unittest.TestCase):
             "New Grad or Intern, Software Engineer": {"intern", "entry"},
             "Contract Software Engineer": set(),
             "Software Engineer III": {"senior"},
+            "Member of Technical Staff": {"entry", "mid"},
+            "Member of Technical Staff, New Grad": {"entry"},
+            "Senior Member of Technical Staff": {"senior"},
+            "Principal Member of the Technical Staff": {"senior"},
+            "Member of Technical Staff Intern": {"intern"},
         }
         for title, want in cases.items():
             self.assertEqual(filters.title_levels(title), want, title)

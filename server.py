@@ -797,6 +797,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._keys(data)
         if path == "/api/estimate":
             return self._estimate(data)
+        if path == "/api/titles/check":
+            return self._titles_check(data)
         if path.startswith("/api/companies/"):
             return self._companies(path.rsplit("/", 1)[-1], data)
         if path == "/api/draft":
@@ -1025,6 +1027,22 @@ class Handler(BaseHTTPRequestHandler):
         ai.save_key(provider, key)
         PREP.poke()
         return self._json(200, {"provider": provider, "key": ai.key_status(provider), "warning": warning, "undo": undo_id()})
+
+    def _titles_check(self, data: dict):
+        """The role editor's title keyword helper: notes on lines that won't
+        do what they seem to, and which line decides a sample title."""
+        raw = data.get("lines")
+        lines = [str(x)[:1000] for x in raw[:200]] if isinstance(raw, list) else []
+        out = {"warnings": filters.keyword_warnings(lines)}
+        title = str(data.get("title") or "").strip()[:300]
+        if title:
+            line, keep = filters.TitleRules(lines).decide(title)
+            wanted = data.get("seniority")
+            levels = sorted(filters.title_levels(title))
+            out["title"] = {"line": None if line is None else line + 1, "text": None if line is None else lines[line].strip(),
+                            "keep": keep, "levels": levels,
+                            "level_ok": bool(set(levels) & set(wanted)) if isinstance(wanted, list) else None}
+        return self._json(200, out)
 
     def _estimate(self, data: dict):
         """What tailoring one job would cost on a paid API, before running it.

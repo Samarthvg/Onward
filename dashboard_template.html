@@ -343,7 +343,7 @@
   .kw-verdict.drop { color: var(--warn); }
   .kw-verdict code, .kw-warns code { font: 12px ui-monospace, Consolas, monospace; }
   .kw-warns { margin: 0; padding-left: 18px; color: var(--warn); font-size: 12px; display: grid; gap: 3px; }
-  @media (max-width: 560px) { .kw-guide td:first-child { white-space: normal; } }
+  @media (max-width: 560px) { .kw-guide th:nth-child(3), .kw-guide td:nth-child(3) { display: none; } }
   .checks { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
   .checks label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
   .checks input, .radios input { accent-color: var(--accent); }
@@ -2801,9 +2801,9 @@ function keywordField(label, keywords, getLevels) {
       ex("recruit*", "a word starting this way", "Recruiter, Recruiting"),
       ex("- manager/director", "leaves these titles out", "skips “Engineering Manager”")),
     el("ul", {},
-      el("li", { text: "Put “-” lines above the lines they should win over: “- test engineer” first, then “software + engineer”." }),
+      el("li", { text: "Put “-” lines above the lines they should win over: “- test engineer” first, then “software + engineer”." }),
       el("li", { text: "Capitals and punctuation don't matter: “Full-Stack” is “full stack”. C++, C# and .NET work as written." }),
-      el("li", { text: "Leave seniority to Level: no need for “- senior” or “- intern” lines here." }),
+      el("li", { text: "Leave seniority to Level: no need for “- senior” or “- intern” lines here." }),
       el("li", { text: "Not sure a line works? Type a real title in “Try a title” below." })));
   const howto = el("button", { type: "button", class: "howto", text: "How these work", "aria-expanded": "false",
     "aria-controls": guide.id, title: "Show how to write title keywords",
@@ -2833,13 +2833,13 @@ function keywordField(label, keywords, getLevels) {
         verdict.replaceChildren(`Line ${t.line} fits it (`, quote(t.text), `), but it reads as ${lvl || "not a regular job"}, which this role's Level leaves out.`);
       } else if (t.keep) {
         verdict.className = "kw-verdict keep";
-        verdict.replaceChildren(`✓ Kept by line ${t.line}: `, quote(t.text));
+        verdict.replaceChildren(`Kept by line ${t.line}: `, quote(t.text));
       } else if (t.line) {
         verdict.className = "kw-verdict drop";
-        verdict.replaceChildren(`✗ Left out by line ${t.line}: `, quote(t.text));
+        verdict.replaceChildren(`Left out by line ${t.line}: `, quote(t.text));
       } else {
         verdict.className = "kw-verdict drop";
-        verdict.textContent = "✗ Left out: no line fits this title. Add a line for it, or check the spelling.";
+        verdict.textContent = "Left out: no line fits this title. Add a line for it, or check the spelling.";
       }
     }, 250);
   };

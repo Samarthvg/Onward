@@ -33,8 +33,20 @@ from typing import Iterable
 WORD = re.compile(r"[a-z0-9]+")
 
 
+# Language names that punctuation would otherwise erase: "C++" reads as the
+# word "cpp" in titles and keywords alike, so "c++ + developer" works too.
+LANG_NAMES = ((re.compile(r"(?<![a-z0-9])c\+\+", re.I), " cpp "), (re.compile(r"(?<![a-z0-9])([cf])#", re.I), r" \1sharp "),
+              (re.compile(r"\.net(?![a-z0-9])", re.I), " dotnet "))
+
+
+def spell_languages(text: str) -> str:
+    for rx, sub in LANG_NAMES:
+        text = rx.sub(sub, text)
+    return text
+
+
 def title_words(title: str) -> list[str]:
-    return WORD.findall((title or "").lower())
+    return WORD.findall(spell_languages((title or "").lower()))
 
 
 def _phrase(text: str) -> tuple[tuple[str, bool], ...] | None:
@@ -62,21 +74,54 @@ class TitleRules:
 
     def __init__(self, lines: Iterable[str]) -> None:
         self.rules: list[tuple[bool, list[list[tuple]]]] = []
-        for line in lines:
-            line = (line or "").strip()
+        self.line_of: list[int] = []    # each rule's index among the given lines
+        for i, line in enumerate(lines):
+            line = spell_languages((line or "").strip())
             drop = line.startswith("-")
             parts = [[p for p in (_phrase(alt) for alt in part.split("/")) if p]
                      for part in (line[1:] if drop else line).split("+")]
             parts = [p for p in parts if p]
             if parts:
                 self.rules.append((not drop, parts))
+                self.line_of.append(i)
+
+    def decide(self, title: str) -> tuple[int | None, bool]:
+        """The index of the line that decides the title, and whether it keeps
+        it; (None, False) when no line fits."""
+        words = title_words(title)
+        for (keep, parts), i in zip(self.rules, self.line_of):
+            if all(any(_has(words, ph) for ph in alts) for alts in parts):
+                return i, keep
+        return None, False
 
     def matches(self, title: str) -> bool:
-        words = title_words(title)
-        for keep, parts in self.rules:
-            if all(any(_has(words, ph) for ph in alts) for alts in parts):
-                return keep
-        return False
+        return self.decide(title)[1]
+
+
+def keyword_warnings(lines: list[str]) -> list[str]:
+    """Plain-language notes on title keyword lines that won't do what they
+    look like they do. Line numbers count from 1, blank lines included."""
+    out = []
+    rules = TitleRules(lines)
+    used = set(rules.line_of)
+    last_keep = max((i for (keep, _), i in zip(rules.rules, rules.line_of) if keep), default=None)
+    for i, line in enumerate(lines):
+        line = (line or "").strip()
+        if not line:
+            continue
+        n = f"Line {i + 1} (“{line if len(line) <= 40 else line[:38] + '…'}”)"
+        body = spell_languages(line[1:] if line.startswith("-") else line)
+        if i not in used:
+            out.append(f"{n} has no words in it, so it does nothing.")
+        elif "+" in body and any(not p.strip() or p.strip()[0] == "/" or p.strip()[-1] == "/" for p in body.split("+")):
+            out.append(f"{n}: “+” means “and also”, but one side of a “+” here is empty, "
+                       "so the line may not find what you expect.")
+        elif line.startswith("-") and last_keep is not None and i > last_keep:
+            out.append(f"{n} leaves titles out, but no line below it looks for any, so it changes nothing. "
+                       "Move it above the lines it should win over.")
+    if rules.rules and last_keep is None:
+        out.append("Every line starts with “-”, so this role finds nothing. Add a line for the titles you want.")
+    return out
 
 
 ROLE_WORD = "engineer/engineering/developer/sde/swe/programmer"
@@ -165,7 +210,14 @@ SENIOR = re.compile(
 NOT_EMPLOYEE = re.compile(r"\b(contract(or)?|part[- ]time)\b", re.I)
 
 
+# "Member of Technical Staff" is a flat title at many labs, held from new
+# grad up; its "staff" is not the Staff level. It reads as "MTS", so only a
+# level beside it ("Senior MTS", "MTS 3") counts.
+TECH_STAFF = re.compile(r"\b(?:member\s+of\s+(?:the\s+)?)?technical\s+staff\b", re.I)
+
+
 def is_entry_title(title: str) -> bool:
+    title = TECH_STAFF.sub("MTS", title)
     if ENTRY_HINT.search(title) and ENTRY_PHRASE.search(title):
         return True
     return not NOT_ENTRY.search(title)
@@ -174,6 +226,7 @@ def is_entry_title(title: str) -> bool:
 def title_levels(title: str) -> set[str]:
     """Levels a title can be, before the description is read. A title with
     no level words ("Software Engineer") could be entry or mid."""
+    title = TECH_STAFF.sub("MTS", title)
     if NOT_EMPLOYEE.search(title):
         return set()
     levels = set()
