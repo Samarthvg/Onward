@@ -3,6 +3,8 @@
 name = "onward-feed-trigger"
 main = "worker.js"
 compatibility_date = "2026-10-01"
+# It only runs on its Cron Trigger, so it gets no public workers.dev address.
+workers_dev = false
 
 [triggers]
 crons = ["7,37 * * * *"]
