@@ -7,33 +7,40 @@
 <script>try { const t = JSON.parse(localStorage.getItem("jr:theme")); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <style>
   :root {
-    --bg: #f6f5f1; --surface: #ffffff; --surface-2: #faf9f6; --text: #1d1d1b; --muted: #6b6a64;
-    --line: #e4e2db; --accent: #2f6b4f; --accent-ink: #ffffff; --accent-soft: #e3efe8;
-    --warn: #9a3b1e; --warn-soft: #f7e6df; --ok: #2f6b4f; --ok-soft: #e3efe8;
-    --new: #b5590f; --new-soft: #fbeedd; --chip: #efede7;
-    --h1b: #1f5fa8; --h1b-soft: #e2ecf8;
-    --hi: #2f6b4f; --mid: #8a6a12; --lo: #6f6e68;
-    --control: #cfccc3; --rule: #eceae4;
+    --bg: #f7f6f4; --surface: #ffffff; --surface-2: #fbfaf9; --text: #1c1b1a; --muted: #66625c;
+    --line: #e6e3df; --accent: #c2410c; --accent-ink: #ffffff; --accent-soft: #fdeee6;
+    --warn: #b42318; --warn-soft: #fdecea; --ok: #1f7a4d; --ok-soft: #e3f4ea;
+    --new: #c2410c; --new-soft: #fdeee6; --chip: #efedea;
+    --h1b: #1d5fa8; --h1b-soft: #e5effa;
+    --hi: #1f7a4d; --mid: #9a6200; --lo: #6b6762;
+    --control: #d0ccc6; --rule: #efedea;
+    /* Information badges, each its own tint: remote, pay, level, age. */
+    --teal: #0f6b63; --teal-soft: #dff3f1; --amber: #8a5300; --amber-soft: #fdf1dc;
+    --slate: #3d5a80; --slate-soft: #e7edf5; --rose: #9d2f53; --rose-soft: #fbe9ef;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #151614; --surface: #1d1e1b; --surface-2: #232420; --text: #ecebe6; --muted: #9b9a93;
-      --line: #2e2f2b; --accent: #7cc3a0; --accent-ink: #10201a; --accent-soft: #23352c;
-      --warn: #f0a084; --warn-soft: #3a241c; --ok: #7cc3a0; --ok-soft: #23352c;
-      --new: #f2b36b; --new-soft: #3a2b18; --chip: #262724;
+      --bg: #151514; --surface: #1d1c1b; --surface-2: #242322; --text: #eceae6; --muted: #a39f98;
+      --line: #2f2d2b; --accent: #ff9a5c; --accent-ink: #1f1006; --accent-soft: #3a2316;
+      --warn: #ff8f7a; --warn-soft: #3a1f1b; --ok: #6fcf97; --ok-soft: #1c3326;
+      --new: #ff9a5c; --new-soft: #3a2316; --chip: #282725;
       --h1b: #8db8ec; --h1b-soft: #1d2a3b;
-      --hi: #7cc3a0; --mid: #e3c46d; --lo: #8b8a83;
-      --control: #44453f; --rule: #262724;
+      --hi: #6fcf97; --mid: #e9b949; --lo: #8f8b84;
+      --control: #48453f; --rule: #282725;
+      --teal: #5fd4c4; --teal-soft: #163331; --amber: #f2c06b; --amber-soft: #3a2c14;
+      --slate: #9fb8dc; --slate-soft: #1f2a3a; --rose: #f2a0bb; --rose-soft: #3a1f2a;
     }
   }
   :root[data-theme="dark"] {
-    --bg: #151614; --surface: #1d1e1b; --surface-2: #232420; --text: #ecebe6; --muted: #9b9a93;
-    --line: #2e2f2b; --accent: #7cc3a0; --accent-ink: #10201a; --accent-soft: #23352c;
-    --warn: #f0a084; --warn-soft: #3a241c; --ok: #7cc3a0; --ok-soft: #23352c;
-    --new: #f2b36b; --new-soft: #3a2b18; --chip: #262724;
+    --bg: #151514; --surface: #1d1c1b; --surface-2: #242322; --text: #eceae6; --muted: #a39f98;
+    --line: #2f2d2b; --accent: #ff9a5c; --accent-ink: #1f1006; --accent-soft: #3a2316;
+    --warn: #ff8f7a; --warn-soft: #3a1f1b; --ok: #6fcf97; --ok-soft: #1c3326;
+    --new: #ff9a5c; --new-soft: #3a2316; --chip: #282725;
     --h1b: #8db8ec; --h1b-soft: #1d2a3b;
-    --hi: #7cc3a0; --mid: #e3c46d; --lo: #8b8a83;
-    --control: #44453f; --rule: #262724;
+    --hi: #6fcf97; --mid: #e9b949; --lo: #8f8b84;
+    --control: #48453f; --rule: #282725;
+    --teal: #5fd4c4; --teal-soft: #163331; --amber: #f2c06b; --amber-soft: #3a2c14;
+    --slate: #9fb8dc; --slate-soft: #1f2a3a; --rose: #f2a0bb; --rose-soft: #3a1f2a;
   }
   * { box-sizing: border-box; }
   body {
@@ -204,6 +211,10 @@
   .badge.yes { background: var(--ok-soft); color: var(--ok); }
   .badge.h1b { background: var(--h1b-soft); color: var(--h1b); font-weight: 600; }
   .badge.h1b.small { font-weight: 500; }
+  .badge.remote { background: var(--teal-soft); color: var(--teal); }
+  .badge.pay { background: var(--amber-soft); color: var(--amber); }
+  .badge.level { background: var(--slate-soft); color: var(--slate); }
+  .badge.age { background: var(--rose-soft); color: var(--rose); }
   .skills-line { font-size: 13px; color: var(--muted); }
   .skills-line .breakdown { flex-basis: 100%; }
   .kwlist { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -290,7 +301,7 @@
   .viewtabs button { border-color: transparent; background: transparent; color: var(--muted); min-height: 30px; }
   .viewtabs button:hover { color: var(--text); background: transparent; border-color: transparent; }
   .viewtabs button[aria-current="page"] { background: var(--surface); border-color: var(--control); color: var(--text); font-weight: 600; }
-  .qcount { font-size: 12px; font-weight: 600; padding: 0 7px; border-radius: 999px; background: var(--accent-soft); color: var(--ok); font-variant-numeric: tabular-nums; }
+  .qcount { font-size: 12px; font-weight: 600; padding: 0 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-variant-numeric: tabular-nums; }
   .qhead { display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
   .qhead > button { justify-self: start; }
   .qhead b { color: var(--text); }
@@ -1615,10 +1626,10 @@ function visaSignals(j, V) {
 function otherBadges(j, mark) {
   return [
     j.fresh ? el("span", { class: "badge new", text: "New this run" }) : null,
-    j.pay_min ? el("span", { class: "badge", text: "Pay " + payLabel(j) }) : null,
-    j.remote ? el("span", { class: "badge", text: "Remote" }) : null,
-    j.entry_hint ? el("span", { class: "badge", text: "Entry level" }) : null,
-    j.min_yoe != null ? el("span", { class: "badge", text: j.min_yoe + "+ yrs" }) : null,
+    j.pay_min ? el("span", { class: "badge pay", text: "Pay " + payLabel(j) }) : null,
+    j.remote ? el("span", { class: "badge remote", text: "Remote" }) : null,
+    j.entry_hint ? el("span", { class: "badge level", text: "Entry level" }) : null,
+    j.min_yoe != null ? el("span", { class: "badge level", text: j.min_yoe + "+ yrs" }) : null,
     mark ? el("span", { class: "badge", text: mark === "applied" ? "Applied" : "Dismissed" }) : null,
   ].filter(Boolean);
 }
@@ -1782,12 +1793,12 @@ function ageBadges(j, now) {
   const out = [];
   const weeks = Math.floor((now - when(j)) / (7 * 86400));
   if (weeks >= 3) {
-    out.push(el("span", { class: "badge", text: `Up ${weeks} weeks`, title: `Posted ${fmt(when(j))}. ` + (j.program
+    out.push(el("span", { class: "badge age", text: `Up ${weeks} weeks`, title: `Posted ${fmt(when(j))}. ` + (j.program
       ? "A hiring program like this takes applications for a season, but the longer it has been up, the more of its places are filled."
       : "A role up this long has often been filled already.") }));
   }
   if (j.repost) {
-    out.push(el("span", { class: "badge", text: "Reposted", title: `Taken down and put up again. First posted ${fmt(j.repost.first)}` +
+    out.push(el("span", { class: "badge age", text: "Reposted", title: `Taken down and put up again. First posted ${fmt(j.repost.first)}` +
       (j.repost.times > 1 ? `; it has gone up ${j.repost.times + 1} times.` : ".") +
       " A role that keeps coming back is often one they hire for all year." }));
   }
