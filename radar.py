@@ -38,6 +38,7 @@ from typing import Callable
 from pathlib import Path
 
 import config
+import feed
 import filters
 import oslock
 import reqparse
@@ -2324,6 +2325,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--render", action="store_true", help="rebuild the dashboard from stored jobs, no fetching")
     ap.add_argument("--status-file", help="keep this run's progress in this JSON file")
     ap.add_argument("--funnel", action="store_true", help="show where the last run's postings dropped out")
+    ap.add_argument("--feed-out", metavar="DIR", help="after the run, publish the shared job feed into DIR")
     args = ap.parse_args(argv)
 
     global STATUS
@@ -2362,15 +2364,32 @@ def main(argv: list[str] | None = None) -> int:
     try:
         discover.migrate(conn)
         tracked, tracked_names = discover.tracked(conn, started)
+        # The shared feed, when there is one: it searched the boards, so this
+        # copy only reads the companies its user added. A feed that can't be
+        # read or has gone stale means searching everything here, as before.
+        pulled = None
+        url = SETTINGS["radar"]["feed_url"]
+        if url and not args.check and not args.feed_out:
+            STATUS.set(phase="syncing")
+            try:
+                pulled = feed.pull(conn, url, started)
+            except feed.FeedError as e:
+                log(f"feed: {e}; searching every board from here this run")
     finally:
         conn.close()
-    companies = load_companies(SETTINGS, tracked, tracked_names)
+    companies = load_companies(SETTINGS, None if pulled else tracked, None if pulled else tracked_names)
     DISPLAY_NAMES.update(companies.pop("display_names", {}))
     h1b_aliases = companies.pop("h1b_aliases", {})
+    if pulled:
+        added = SETTINGS["companies"]["added"]
+        companies = {src: [t for t in toks if t in added.get(src, [])] if src in FETCHERS else toks
+                     for src, toks in companies.items()}
+        log(f"feed: version {pulled['version']}{' (snapshot)' if pulled['snapshot'] else ''}, "
+            f"{pulled['upserted']} postings added or changed, {pulled['closed']} closed")
     if args.check:
         cooling = {}        # --check tries every board, cooling down or not
     STATUS.set(phase="fetching", done=0, total=0, jobs=0)
-    res = fetch_all(companies, set(cooling), simplify=SETTINGS["radar"]["simplify_feed"],
+    res = fetch_all(companies, set(cooling), simplify=SETTINGS["radar"]["simplify_feed"] and not pulled,
                     progress=lambda done, total, n: STATUS.set(done < total, done=done, total=total, jobs=n))
     jobs = dedupe(res.jobs)
     missing, failed = res.missing, res.failed
@@ -2404,10 +2423,14 @@ def main(argv: list[str] | None = None) -> int:
                                 res.kept, res.missing, started)
             finished = time.time()
             boards = (sum(len(set(v)) for k, v in companies.items() if k in FETCHERS)
-                      + int(SETTINGS["radar"]["simplify_feed"]))
+                      + int(SETTINGS["radar"]["simplify_feed"] and not pulled))
+            if pulled:
+                boards += pulled["boards"]
+                new += pulled["new"]
+            n_failed = len(failed) + len(missing) + (pulled["failed"] if pulled else 0)
             conn.execute(
                 "INSERT INTO runs (started, finished, boards, failed, matched, new) VALUES (?,?,?,?,?,?)",
-                (started, finished, boards, len(failed) + len(missing), len(jobs), new),
+                (started, finished, boards, n_failed, len(jobs), new),
             )
             conn.executemany("INSERT OR REPLACE INTO run_funnel VALUES (?, ?, ?, ?, ?)",
                              [(started, *row) for row in FUNNEL.rows()])
@@ -2415,8 +2438,13 @@ def main(argv: list[str] | None = None) -> int:
         with conn:
             build_dashboard(conn, h1b, {
                 "started": started, "generated": finished, "previous_run": prev, "first_run": first_run or started,
-                "boards": boards, "failed": len(failed), "missing": len(missing),
+                "boards": boards, "failed": n_failed - len(missing), "missing": len(missing),
                 "new": new if prev is not None else 0})
+        if args.feed_out:
+            STATUS.set(phase="publishing")
+            index = feed.publish(conn, args.feed_out, finished, boards=boards, failed=n_failed,
+                                 stale_days=STALE_AFTER_DAYS, window_days=max(DASHBOARD_DAYS, PROGRAM_DAYS))
+            log(f"feed: published version {index['version']}, {index['postings']} postings")
     finally:
         conn.close()
 
@@ -2426,7 +2454,8 @@ def main(argv: list[str] | None = None) -> int:
     slow = sorted(res.seconds.items(), key=lambda kv: -kv[1])[:5]
     log(f"  boards: {len(res.attempted)} read, {sum(len(b) for b in tracked.values())} of them discovered; "
         "slowest " + ", ".join(f"{b} {s:.0f}s" for b, s in slow))
-    discover_step(discover)
+    if not pulled:
+        discover_step(discover)     # with a feed, its search finds new boards
     for f in failed:
         log(f"  failed {f}")
     for m in missing:

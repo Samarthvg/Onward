@@ -1,0 +1,16 @@
+{
+  "version": 6,
+  "roles": [
+    {
+      "id": "feed",
+      "name": "Shared feed: software roles, internship to mid level, US",
+      "seniority": ["intern", "entry", "mid"],
+      "countries": ["US"],
+      "visa": {"status": "authorized"}
+    }
+  ],
+  "active_role": "feed",
+  "radar": {"workers": 48, "simplify_feed": true},
+  "queue": {"enabled": false},
+  "setup": {"done": true}
+}

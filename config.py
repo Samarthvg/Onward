@@ -360,6 +360,9 @@ SCHEMA = Obj({
         "workers": Int(24, 1, 64),
         "timeout": Int(25, 5, 120),
         "simplify_feed": Bool(True),            # SimplifyJobs New-Grad listings
+        # A shared job feed (feed.py) read instead of searching every board
+        # here; empty means search them all from this computer.
+        "feed_url": Str("", 500, pattern=r"(https://\S+|http://(127\.0\.0\.1|localhost)(:\d+)?(/\S*)?|file:\S+)?"),
         "interval_minutes": Int(30, 10, 1440),  # how often the app fetches
     }),
     "companies": Obj({

@@ -3288,6 +3288,7 @@ function radarCard() {
   const workers = number(r.workers, 1, 64, 1), timeout = number(r.timeout, 5, 120, 1);
   const simplify = el("input", { type: "checkbox" });
   simplify.checked = r.simplify_feed;
+  const feedUrl = text(r.feed_url, "https://… (empty: search every board from here)");
   return el("section", { class: "card", "aria-labelledby": "radarH" },
     el("h3", { id: "radarH", text: "Radar" }),
     el("div", { class: "fields" },
@@ -3297,9 +3298,12 @@ function radarCard() {
       field("Closed when unseen for (days)", stale),
       field("Forget postings after (days)", purge), field("Boards read at once", workers), field("Request timeout (seconds)", timeout),
       el("div", { class: "field" }, el("label", { class: "toggle" }, simplify, "Read the SimplifyJobs New-Grad list"),
-        el("p", { class: "note", text: "Catches companies no board here covers." }))),
+        el("p", { class: "note", text: "Catches companies no board here covers." })),
+      field("Shared job feed address", feedUrl, "A shared search's results, read instead of searching every board " +
+        "from this computer. Companies you added are still searched from here. If the feed can't be read or stops " +
+        "updating, Onward searches every board itself until it's back.", { wide: true })),
     saveBar("Save radar settings", () => postSettings({ radar: { dashboard_days: +days.value, program_days: +programDays.value, stale_after_days: +stale.value,
-      purge_after_days: +purge.value, workers: +workers.value, timeout: +timeout.value, simplify_feed: simplify.checked } }, "the radar settings"),
+      purge_after_days: +purge.value, workers: +workers.value, timeout: +timeout.value, simplify_feed: simplify.checked, feed_url: feedUrl.value.trim() } }, "the radar settings"),
       "Saved the radar settings. They're used from the next search.", "the radar settings"));
 }
 

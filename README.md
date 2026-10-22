@@ -82,8 +82,35 @@ What leaves your computer:
 - Tectonic's download, if you chose it.
 - Whatever you send to the AI provider you chose: your resume, your details and the posting.
 - Phone notifications, if you set up an ntfy topic.
+- Downloads of a shared job feed, if you set one in Settings. Only downloads: the feed learns nothing about
+  your roles, resume or applications.
 
 Nothing is sent to Onward itself.
+
+## Shared job feed
+
+Searching about 4,000 company boards every 30 minutes is the same work on every computer. A shared feed
+does it once: one search publishes its postings as static files, and every copy of Onward downloads them
+instead of searching. Scoring, roles, tailoring and the apply queue stay on each computer. `feed.py` has
+the details.
+
+**Reading a feed.** Put its address in Settings, under Radar (advanced settings), or in `settings.json` as
+`radar.feed_url`. A new copy downloads the whole snapshot once (a few MB per thousand postings); after
+that each run downloads only what changed. Companies you added yourself are still searched from your
+computer. If the feed can't be read, a file doesn't match its checksum, or the feed hasn't updated for
+3 hours, Onward searches every board itself that run, as it does without a feed.
+
+**Publishing one.** Give the search its own data folder with a broad role, since each reader filters by
+its own roles: copy [packaging/feed/feed-settings.json](packaging/feed/feed-settings.json) there as
+`settings.json`. It covers software roles from internship to mid level in the US. Then every 30 minutes:
+
+```
+ONWARD_HOME=/srv/onward-feed python radar.py --feed-out /srv/onward-feed/public
+```
+
+and copy `public/` to any static host or CDN, `index.json` last, so it only ever names files that are
+already there. Old change files and snapshots are deleted as new ones are written: two days of changes
+are kept, and a copy further behind reads the snapshot again.
 
 ## Running from source
 
