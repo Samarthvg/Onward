@@ -579,8 +579,6 @@
         <dd>A role up for weeks has often been filled already. A repost is a role taken down and put up again with a new date; it counts as new, and its badge says when it first went up.</dd>
       </dl>
     </section>
-    <section aria-labelledby="helpVisa">
-      <h3 id="helpVisa">Visa badges</h3>
     <section aria-labelledby="helpQueue">
       <h3 id="helpQueue">Apply queue</h3>
       <dl>
@@ -594,6 +592,8 @@
         <dd>Tailoring and drafting each use one of the day's model runs (Queue settings); when they run out, the rest wait for tomorrow.</dd>
       </dl>
     </section>
+    <section aria-labelledby="helpVisa">
+      <h3 id="helpVisa">Visa badges</h3>
       <dl>
         <dt>The posting's words</dt>
         <dd>"No sponsorship" and "no OPT" come from the posting itself, quoted under its details. They outrank the company's history.</dd>
@@ -1761,6 +1761,21 @@ function jobCard(j, now, V, hasResume) {
   return li;
 }
 
+// A posting's own facts, the same in All jobs and the Apply queue: its score
+// and skills, then its date and visa evidence.
+function postingFacts(j, sc, V) {
+  const signals = visaSignals(j, V);
+  const ev = evidence(j);
+  if (signals.length) {
+    ev.append(el("div", { class: "why-box" }, el("p", { class: "section-h", text: "Why these visa badges" }),
+      ...signals.map((s) => el("p", {}, el("b", { text: s.text + ": " }), s.why))));
+  }
+  return [sc && sc.pct != null ? scoreSection(sc, j) : null, ev].filter(Boolean);
+}
+
+let jobsByKey = null;
+const jobByKey = (key) => (jobsByKey ||= new Map(DATA.jobs.map((j) => [j.key, j]))).get(key);
+
 // How long it has been up, once that's long enough to matter, and whether
 // it was taken down and put up again.
 function ageBadges(j, now) {
@@ -1777,21 +1792,6 @@ function ageBadges(j, now) {
       " A role that keeps coming back is often one they hire for all year." }));
   }
   return out;
-// A posting's own facts, the same in All jobs and the Apply queue: its score
-// and skills, then its date and visa evidence.
-function postingFacts(j, sc, V) {
-  const signals = visaSignals(j, V);
-  const ev = evidence(j);
-  if (signals.length) {
-    ev.append(el("div", { class: "why-box" }, el("p", { class: "section-h", text: "Why these visa badges" }),
-      ...signals.map((s) => el("p", {}, el("b", { text: s.text + ": " }), s.why))));
-  }
-  return [sc && sc.pct != null ? scoreSection(sc, j) : null, ev].filter(Boolean);
-}
-
-let jobsByKey = null;
-const jobByKey = (key) => (jobsByKey ||= new Map(DATA.jobs.map((j) => [j.key, j]))).get(key);
-
 }
 
 // Why a job isn't in the list: the first filter that leaves it out.
