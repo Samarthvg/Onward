@@ -22,13 +22,13 @@ jobs:
   extension:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0          # earlier tags, for the version check
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
       - name: web-ext
@@ -49,7 +49,7 @@ jobs:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
         run: python packaging/extension.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: extension
           path: |
@@ -68,12 +68,12 @@ jobs:
       HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERT_PFX != '' }}
       HAS_MACOS_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Signed extension, bundled with the app
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: extension
           path: extension/web-ext-artifacts
@@ -121,7 +121,7 @@ jobs:
 
       - name: Build
         run: python packaging/build.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: installer-${{ runner.os }}
           path: |
@@ -137,14 +137,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
       - name: Checksums
         working-directory: dist
         run: sha256sum * > SHA256SUMS && cat SHA256SUMS
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           generate_release_notes: true

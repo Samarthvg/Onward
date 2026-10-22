@@ -4,7 +4,7 @@ installers (packaging/) and the update check."""
 NAME = "Onward"
 SLUG = "onward"                 # file names, the Linux autostart entry, package ids
 TAGLINE = "Fresh entry-level job postings, a tailored resume and an apply queue, on your own computer"
-VERSION = "0.1.0"                       # bump with each release; tags are v<VERSION>
+VERSION = "0.1.1"                       # bump with each release; tags are v<VERSION>
 BUNDLE_ID = "io.github.onward"    # macOS bundle and LaunchAgent label
 
 # "owner/repo" on GitHub. Releases there are what the update check reads and
