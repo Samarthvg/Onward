@@ -1912,7 +1912,7 @@ function masterLine() {
   if (!m) return el("div", { class: "note", style: "flex-basis:100%", text: "Upload a .tex resume to enable tailoring. It becomes your master resume." });
   const tagged = m.entries.filter((e) => e.tagged.length).length;
   return el("div", { class: "note", style: "flex-basis:100%" },
-    "Master resume for tailoring: ", el("b", { text: m.name || "master.tex" }),
+    "Resume for tailoring: ", el("b", { text: m.name || "master.tex" }),
     m.own ? ` (for \u201c${roleName(state.search)}\u201d)` : "",
     ` · ${m.entries.length} entries · ${m.pages || "?"} page${m.pages === 1 ? "" : "s"}`,
     tagged ? ` · ${tagged} with hidden skill tags` : " · no hidden skill tags yet",
@@ -1932,7 +1932,7 @@ function renderResumeBar() {
   }
   const have = resumeSkills();
   bar.replaceChildren(...[
-    el("span", {}, "Scoring against ", el("b", { text: state.resume.name }), ` · ${have.size} skills`),
+    el("span", {}, "Resume for match scores: ", el("b", { text: state.resume.name }), ` · ${have.size} skills found`),
     el("button", { type: "button", class: "ghost", text: "Review skills", onclick: openSkills }),
     el("span", { class: "spacer" }),
     el("button", { type: "button", text: "Replace", onclick: () => $("resumeFile").click() }),

@@ -432,11 +432,33 @@ class EndpointTests(Base):
         self.assertEqual(st, 200, data)
         self.assertEqual(data["choice"], "tailored")
         self.assertTrue(base64.b64decode(data["resume"]["data"]).startswith(b"%PDF"))
+        # Attached as Firstname_Lastname_Company_Resume.pdf (the profile here has a first name only).
+        self.assertEqual(data["resume"]["name"], "Testy_Tailorco_Resume.pdf")
         self.assertEqual(len(data["answers"]), 2)
         # Master chosen: no PDF, so the extension attaches its own.
         url2 = "https://job-boards.greenhouse.io/embed/job_app?for=coveredco&token=102"
         st, data = self.call("/api/prepared?url=" + urllib.request.quote(url2, safe=""), headers=self.EXT)
         self.assertEqual((st, data["choice"], data["resume"]), (200, "master", None))
+
+    def test_tailored_pdf_downloads_under_the_attached_name(self):
+        pdf = self.items()["Tailorco"]["pdf"]
+        p = mock.patch.object(server, "OUT_DIR", self.resume_dir / "tailored")
+        p.start()
+        self.addCleanup(p.stop)
+        self.assertNotEqual(pdf, "Testy_Tailorco_Resume.pdf", "stored under a unique name")
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/files/{pdf}", headers={"Host": f"127.0.0.1:{self.port}"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            self.assertEqual(r.headers["Content-Disposition"], 'inline; filename="Testy_Tailorco_Resume.pdf"')
+
+    def test_name_from_the_apply_kit_or_the_resume(self):
+        server.save_dash_state("profile", {"firstName": "Ada", "lastName": "Lovelace"}, 1)
+        self.assertEqual(server.resume_file_name("The Home Depot"), "Ada_Lovelace_The_Home_Depot_Resume.pdf")
+        # No Apply kit name: the resume's own first line, when it's a name.
+        with mock.patch.object(server, "dash_state", lambda: {}), \
+                mock.patch.object(self.prep, "scoring", lambda: {"text": "Ada Lovelace\nLondon, UK\nada@example.com"}):
+            self.assertEqual(server.resume_file_name("Acme"), "Ada_Lovelace_Acme_Resume.pdf")
+        with mock.patch.object(server, "dash_state", lambda: {}), mock.patch.object(self.prep, "scoring", lambda: None):
+            self.assertEqual(server.resume_file_name("Acme"), "Acme_Resume.pdf")
 
     def test_only_the_extension_gets_prepared_data(self):
         url = urllib.request.quote("https://job-boards.greenhouse.io/tailorco/jobs/101", safe="")

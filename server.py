@@ -433,6 +433,30 @@ def save_dash_state(key: str, value, at: float) -> dict:
         return data[key]
 
 
+NAME_LINE = re.compile(r"[A-Z][A-Za-z'.-]+(?: [A-Z][A-Za-z'.-]+){1,3}")
+
+
+def applicant_name() -> str:
+    """The applicant's name, for the files employers see: the Apply kit's,
+    else the one the queue keeps for drafts, else the first line of the
+    scored resume that looks like a name. Empty when there's none."""
+    scoring = PREP.scoring() or {}
+    for prof in ((dash_state().get("profile") or {}).get("value") or {}, scoring.get("profile") or {}):
+        name = " ".join(str(prof.get(k) or "").strip() for k in ("firstName", "lastName")).strip()
+        if name:
+            return name
+    lines = [ln.strip() for ln in str(scoring.get("text") or "").splitlines() if ln.strip()][:5]
+    return next((ln for ln in lines if NAME_LINE.fullmatch(ln)), "")
+
+
+def resume_file_name(company: str) -> str:
+    """Firstname_Lastname_Company_Resume.pdf: what a tailored resume is called
+    when it's attached to an application or downloaded. The stored file keeps
+    its own unique name, so two for one company never collide."""
+    bits = [tailor._slug(p) for p in (applicant_name(), company) if p and p.strip()]
+    return "_".join(bits + ["Resume"]) + ".pdf"
+
+
 def file_state(*paths: Path) -> dict[str, str | None]:
     """Files as they are now, for an undo: base64 contents, None if missing."""
     out = {}
@@ -762,8 +786,16 @@ class Handler(BaseHTTPRequestHandler):
             if f.parent != OUT_DIR.resolve() or not f.exists():
                 return self._err(HTTPStatus.NOT_FOUND, "Not found")
             if name.endswith(".pdf"):
+                # A tailored resume downloads under the name it's attached with.
+                conn = db()
+                try:
+                    row = conn.execute("SELECT j.company FROM tailored t JOIN jobs j ON j.key = t.job_key "
+                                       "WHERE t.pdf = ?", (name,)).fetchone()
+                finally:
+                    conn.close()
+                shown = resume_file_name(row[0]) if row else name
                 return self._send(200, f.read_bytes(), "application/pdf",
-                                  {"Content-Disposition": f'inline; filename="{name}"'})
+                                  {"Content-Disposition": f'inline; filename="{shown}"'})
             return self._send(200, f.read_bytes(), "application/x-tex; charset=utf-8",
                               {"Content-Disposition": f'attachment; filename="{name}"'})
 
@@ -1130,7 +1162,7 @@ class Handler(BaseHTTPRequestHandler):
         p = PREP.prepared(job["key"]) or {"state": None, "choice": "master", "pdf": None, "answers": []}
         pdf = p.pop("pdf")
         return self._json(200, {"job": {"key": job["key"], "company": job["company"], "title": job["title"]},
-                                **p, "resume": {"name": pdf.name, "data": base64.b64encode(pdf.read_bytes()).decode()}
+                                **p, "resume": {"name": resume_file_name(job["company"]), "data": base64.b64encode(pdf.read_bytes()).decode()}
                                 if pdf else None})
 
     def _resume_entries(self, page_url: str):
