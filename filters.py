@@ -201,6 +201,9 @@ ENTRY_PHRASE = re.compile(r"new grad|entry|junior|early career|university", re.I
 PROGRAM = re.compile(
     r"\b(20[2-3][0-9]|new[- ]?grad\w*|new college|(?:university|college|recent) grad\w*|"
     r"early[- ]career|entry[- ]level|campus|class of)\b", re.I)
+# What makes an intern title a new-grad one as well.
+INTERN_AND_ENTRY = re.compile(r"\b(new[- ]?grad\w*|new college|(?:university|college|recent) grad\w*|"
+                              r"entry[- ]level|early[- ]career|junior|full[- ]time)\b", re.I)
 # The words NOT_ENTRY rejects, so entry-level filtering stays as it was.
 INTERN = re.compile(r"\b(intern|internship|internships|co-?op|apprentice)\b", re.I)
 SENIOR = re.compile(
@@ -232,7 +235,9 @@ def title_levels(title: str) -> set[str]:
     levels = set()
     if INTERN.search(title):
         levels.add("intern")
-        if not (ENTRY_HINT.search(title) and ENTRY_PHRASE.search(title)):
+        # Entry too only for a combined posting ("New Grad / Intern"): "Intern
+        # Opportunities for University Students" is an internship.
+        if not INTERN_AND_ENTRY.search(title):
             return levels
     if is_entry_title(title):
         levels.add("entry")

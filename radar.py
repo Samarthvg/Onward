@@ -53,7 +53,16 @@ COMPANIES_PATH = ROOT / "companies.json"
 LOG_PATH = ROOT / "radar.log"
 SKILLS_PATH = ROOT / "skills.json"
 H1B_DIR = ROOT / "data"
-H1B_YEARS = (2023, 2022)    # newest bulk exports USCIS publishes without a login
+# H-1B employer history comes from USCIS's H-1B Employer Data Hub, a Tableau
+# dashboard whose "H1B Public" sheet exports any fiscal year as CSV, one row
+# per employer and kind of decision. The newest two years with data are kept,
+# each reduced to approvals per employer (h1b-FY<year>.csv), and refreshed
+# every 90 days as USCIS adds a quarter. The bulk files USCIS published until
+# FY2023 are the fallback when the dashboard can't be read.
+H1B_EXPORT = "https://bigdataanalyticspub-sb.uscis.dhs.gov/views/H1BEmployerDataHub-Final/H1BPublic.csv"
+H1B_YEAR_FIELD = "Fiscal Year   "      # the dashboard's own field name, trailing spaces and all
+H1B_REFRESH = 90 * 86400
+H1B_LEGACY_YEARS = (2023, 2022)
 H1B_URL = "https://www.uscis.gov/sites/default/files/document/data/h1b_datahubexport-{year}.csv"
 
 SIMPLIFY_URL = (
@@ -2107,10 +2116,7 @@ class H1BIndex:
     @classmethod
     def load(cls, aliases: dict[str, str] | None = None) -> "H1BIndex":
         idx = cls(aliases)
-        for year in H1B_YEARS:
-            path = H1B_DIR / f"h1b_datahubexport-{year}.csv"
-            if not path.exists():
-                continue
+        for year, path in h1b_files():
             idx.years.append(year)
             with path.open(encoding="utf-8-sig", newline="") as f:
                 for row in csv.DictReader(f):
@@ -2167,12 +2173,108 @@ def _summary(rec: dict, match: str, candidates: int) -> dict:
             "match": match, "candidates": candidates}
 
 
-def update_h1b() -> None:
-    """USCIS sits behind a bot filter that rejects Python's TLS fingerprint,
-    so the yearly files are fetched with curl, which ships with Windows."""
+def fiscal_year(t: float) -> int:
+    """The US federal fiscal year a moment falls in: FY2027 starts on 1 October 2026."""
+    d = datetime.fromtimestamp(t)
+    return d.year + (d.month >= 10)
+
+
+def h1b_files() -> list[tuple[int, Path]]:
+    """The saved years, newest first: the Data Hub's, else the old bulk files."""
+    hub = sorted(((int(m.group(1)), f) for f in H1B_DIR.glob("h1b-FY*.csv")
+                  if (m := re.fullmatch(r"h1b-FY(\d{4})\.csv", f.name))), reverse=True)
+    if hub:
+        return hub[:2]
+    return [(y, H1B_DIR / f"h1b_datahubexport-{y}.csv") for y in H1B_LEGACY_YEARS
+            if (H1B_DIR / f"h1b_datahubexport-{y}.csv").exists()]
+
+
+def h1b_due(now: float) -> bool:
+    """No Data Hub years saved yet, or the newest is older than H1B_REFRESH."""
+    hub = [f for _, f in h1b_files() if f.name.startswith("h1b-FY")]
+    return not hub or now - max(f.stat().st_mtime for f in hub) > H1B_REFRESH
+
+
+def h1b_open(year: int):
+    """The Data Hub's export of one fiscal year, as a text stream."""
+    import io
+    url = H1B_EXPORT + "?" + urllib.parse.quote(H1B_YEAR_FIELD) + "=" + str(year)
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    return io.TextIOWrapper(urllib.request.urlopen(req, timeout=300), encoding="utf-8-sig", newline="")
+
+
+def h1b_totals(lines) -> dict[str, list[int]]:
+    """Approvals per employer from a Data Hub export: [initial, continuing].
+    Initial is new employment (a new H-1B); continuing is every other kind
+    of approval (extensions, transfers in, amendments, concurrent jobs)."""
+    totals: dict[str, list[int]] = {}
+    reader = csv.reader(lines)
+    head = [h.strip() for h in next(reader, [])]
+    if not head:
+        return totals
+    try:
+        name, kind, value = (head.index(h) for h in ("Employer (Petitioner) Name", "Measure Names", "Measure Values"))
+    except ValueError as e:
+        raise RuntimeError(f"the H-1B Data Hub export changed its columns: {head}") from e
+    for row in reader:
+        if len(row) <= max(name, kind, value) or not row[name].strip() or not row[kind].endswith("Approval"):
+            continue
+        try:
+            n = int(row[value].replace(",", "") or 0)
+        except ValueError:
+            continue
+        if n:
+            t = totals.setdefault(row[name].strip(), [0, 0])
+            t[0 if row[kind].startswith("New Employment") else 1] += n
+    return totals
+
+
+def update_h1b(now: float | None = None, open_year: Callable = h1b_open, force: bool = False) -> list[int]:
+    """Saves the newest two fiscal years the Data Hub has data for, unless
+    saved within H1B_REFRESH (or `force`). Returns the years saved. When the Data Hub
+    can't be read, what's saved stays, and with nothing saved yet the old
+    bulk files are fetched instead."""
+    now = time.time() if now is None else now
+    H1B_DIR.mkdir(parents=True, exist_ok=True)
+    got = []
+    for year in range(fiscal_year(now), fiscal_year(now) - 4, -1):
+        if len(got) == 2:
+            break
+        dest = H1B_DIR / f"h1b-FY{year}.csv"
+        if not force and dest.exists() and now - dest.stat().st_mtime < H1B_REFRESH:
+            got.append(year)
+            continue
+        try:
+            with open_year(year) as lines:
+                totals = h1b_totals(lines)
+        except Exception as e:
+            log(f"h1b: couldn't read FY{year} from the Data Hub ({type(e).__name__}: {e}); keeping what's saved")
+            break
+        if not totals:
+            continue                    # no data for that year yet
+        tmp = dest.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["Employer", "Initial Approval", "Continuing Approval"])
+            w.writerows([k, *v] for k, v in sorted(totals.items()))
+        tmp.replace(dest)
+        log(f"h1b: saved FY{year} from the Data Hub ({len(totals)} employers)")
+        got.append(year)
+    if len(got) == 2:
+        for f in H1B_DIR.glob("h1b-FY*.csv"):
+            if f.name not in {f"h1b-FY{y}.csv" for y in got}:
+                f.unlink()
+    elif not h1b_files():
+        update_h1b_legacy()
+    return got
+
+
+def update_h1b_legacy() -> None:
+    """The bulk files USCIS published until FY2023. USCIS's main site sits
+    behind a bot filter that rejects Python's TLS fingerprint, so they're
+    fetched with curl, which ships with Windows."""
     import subprocess
-    H1B_DIR.mkdir(exist_ok=True)
-    for year in H1B_YEARS:
+    for year in H1B_LEGACY_YEARS:
         url = H1B_URL.format(year=year)
         dest = H1B_DIR / f"h1b_datahubexport-{year}.csv"
         tmp = dest.with_suffix(".tmp")
@@ -2373,10 +2475,12 @@ def main(argv: list[str] | None = None) -> int:
         return SKIPPED
     STATUS.set()
 
-    have_h1b = any((H1B_DIR / f"h1b_datahubexport-{y}.csv").exists() for y in H1B_YEARS)
-    if args.update_h1b or (not have_h1b and needs_visa_data(SETTINGS)):
+    if args.update_h1b or (needs_visa_data(SETTINGS) and h1b_due(time.time())):
         STATUS.set(phase="visa-data")
-        update_h1b()
+        try:
+            update_h1b(force=args.update_h1b)
+        except Exception as e:           # never stops the search; the saved years stay
+            log(f"h1b: update failed ({type(e).__name__}: {e})")
         if args.update_h1b:
             return 0
 

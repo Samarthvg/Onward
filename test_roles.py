@@ -215,6 +215,23 @@ class TitleKeywordTests(unittest.TestCase):
                 self.assertFalse(rules.matches(t), (name, t))
 
 
+class InternLevelTests(unittest.TestCase):
+    def test_intern_titles(self):
+        cases = {
+            # "University Students" is who an internship is for, not a new-grad role.
+            "Software Engineer: Fullstack Product (Web + Services) Intern Opportunities for University Students": {"intern"},
+            "Software Engineer Intern": {"intern"},
+            "Software Engineering Intern, Summer 2027": {"intern"},
+            # A combined posting is both.
+            "New Grad / Intern - Software Engineer": {"intern", "entry"},
+            "Software Engineer Intern or Full-time New Grad": {"intern", "entry"},
+            # No "intern": unchanged.
+            "Software Engineer, University Graduate": {"entry"},
+        }
+        for title, want in cases.items():
+            self.assertEqual(filters.title_levels(title), want, title)
+
+
 class RoleTests(unittest.TestCase):
     def test_data_engineer_any_us_city_no_visa_filters(self):
         data = role(id="data", name="Data engineer, any US city", title_keywords=template("data"),
