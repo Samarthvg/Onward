@@ -312,6 +312,28 @@
   .field .note { margin: 0; }
   .field.wide { grid-column: 1 / -1; }
   fieldset.field { border: 0; margin: 0; padding: 0; min-width: 0; }
+  .label-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .label-row > label { font-size: 13px; font-weight: 600; color: var(--text); }
+  button.howto { font-size: 12px; padding: 2px 9px 2px 3px; border-radius: 999px; color: var(--accent); border-color: transparent; background: var(--accent-soft); }
+  button.howto::before { content: "?"; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 11px; }
+  button.howto:hover { border-color: var(--accent); }
+  .kw-guide { display: grid; gap: 10px; padding: 12px 14px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
+  .kw-guide p { margin: 0; color: var(--text); font-size: 13px; }
+  .kw-guide table { border-collapse: collapse; width: 100%; }
+  .kw-guide th, .kw-guide td { text-align: left; vertical-align: top; padding: 6px 10px 6px 0; border-top: 1px solid var(--line); }
+  .kw-guide th { font-size: 12px; font-weight: 600; color: var(--muted); border-top: 0; }
+  .kw-guide td:first-child { white-space: nowrap; }
+  .kw-guide code { font: 12px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--chip); padding: 1px 6px; border-radius: 4px; }
+  .kw-guide ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--muted); }
+  .kw-try { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .kw-try input { flex: 1 1 240px; }
+  .kw-verdict { font-size: 13px; flex-basis: 100%; }
+  .kw-verdict.keep { color: var(--ok); }
+  .kw-verdict.drop { color: var(--warn); }
+  .kw-verdict code, .kw-warns code { font: 12px ui-monospace, Consolas, monospace; }
+  .kw-warns { margin: 0; padding-left: 18px; color: var(--warn); font-size: 12px; display: grid; gap: 3px; }
+  @media (max-width: 560px) { .kw-guide td:first-child { white-space: normal; } }
   .checks { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
   .checks label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
   .checks input, .radios input { accent-color: var(--accent); }
@@ -943,7 +965,7 @@ function scoreJob(job, have, ctx) {
   };
   items.sort((a, b) => b.weight - a.weight);
   return {
-    pct, thin, cov: Math.round(cov * 100), exp, items,
+    pct, thin, cov: Math.round(cov * 100), share: W ? Math.round(100 * M / W) : 0, exp, items,
     req: count(["title", "req"]), pref: count(["pref"]),
     degree: degreeFit(job.degree, ctx.degree),
     matched: items.filter((i) => i.ok).map((i) => i.k),
@@ -1005,7 +1027,23 @@ function scoreWhy(sc, j) {
   const box = el("div", { class: "why-box" });
   box.append(el("p", { class: "section-h", text: `Why ${sc.pct}%` }),
     el("p", { text: `The score checks which skills and tools from the posting appear word for word on your resume. ` +
-      `Required ones and rarer ones count more; nice-to-have ones count half. Your resume covers ${sc.cov}% of that.` }));
+      `Required ones and rarer ones count more; nice-to-have ones count half. Your resume has ${sc.share}% of them, ` +
+      "weighted that way." }));
+  // What the rest of the score is: the missing keywords, the ones that count most first.
+  const missing = (kind) => (sc.items || []).filter((i) => !i.ok && (kind === "pref" ? i.kind === "pref" : i.kind !== "pref"))
+    .sort((a, b) => (b.weight || 0) - (a.weight || 0)).map((i) => i.k);
+  const req = missing("req"), pref = missing("pref");
+  if (req.length || pref.length) {
+    box.append(el("p", {}, el("b", { text: "Missing from your resume: " }),
+      [req.length ? `${req.join(", ")} (required)` : "", pref.length ? `${pref.join(", ")} (nice to have)` : ""]
+        .filter(Boolean).join("; ") + ". Add any you really have, to your resume or under Review skills."));
+  } else if ((sc.items || []).length) {
+    box.append(el("p", { text: "Every skill and tool the posting lists is on your resume." }));
+  }
+  if (sc.share > sc.cov) {
+    box.append(el("p", { text: "Every score is also held a little below that, more when a posting names only a few skills, " +
+      "since matching 4 of 4 says less than 14 of 21. So a perfect keyword match still shows under 100%." }));
+  }
   if (sc.exp.v < 1) {
     box.append(el("p", { text: sc.exp.ok === false
       ? `It's lowered because the posting asks for ${j.min_yoe}+ years of experience and your resume shows ${yearsText()}. ` +
@@ -2694,6 +2732,76 @@ function field(label, input, note, opts = {}) {
     el("label", { for: input.id, text: label }), input, help);
 }
 
+// Title keywords: the box, a "How these work" guide that opens in place, a
+// box to try a title against the lines as typed, and notes on lines that
+// won't do what they look like. The server's filters.py does the matching,
+// so what the tester says is what the radar does.
+function keywordField(label, keywords, getLevels) {
+  keywords.id = keywords.id || nextId("f");
+  const ex = (code, finds, sample) => el("tr", {}, el("td", {}, el("code", { text: code })), el("td", { text: finds }), el("td", { class: "note", text: sample }));
+  const guide = el("div", { class: "kw-guide", id: keywords.id + "-guide", hidden: "" },
+    el("p", { text: "Each line describes job titles you want, or with a “-” in front, titles you don't. " +
+      "Lines are read from the top, and the first line a title fits decides. A title that fits no line is left out." }),
+    el("table", {},
+      el("tr", {}, el("th", { text: "Write" }), el("th", { text: "Finds titles with" }), el("th", { text: "For example" })),
+      ex("software engineer", "these words together, in this order", "Software Engineer II"),
+      ex("frontend/front end", "either one (“/” means or)", "Front End Developer"),
+      ex("data + engineer", "both, anywhere in the title (“+” means and)", "Engineer, Data Platform"),
+      ex("recruit*", "a word starting this way", "Recruiter, Recruiting"),
+      ex("- manager/director", "leaves these titles out", "skips “Engineering Manager”")),
+    el("ul", {},
+      el("li", { text: "Put “-” lines above the lines they should win over: “- test engineer” first, then “software + engineer”." }),
+      el("li", { text: "Capitals and punctuation don't matter: “Full-Stack” is “full stack”. C++, C# and .NET work as written." }),
+      el("li", { text: "Leave seniority to Level: no need for “- senior” or “- intern” lines here." }),
+      el("li", { text: "Not sure a line works? Type a real title in “Try a title” below." })));
+  const howto = el("button", { type: "button", class: "howto", text: "How these work", "aria-expanded": "false",
+    "aria-controls": guide.id, title: "Show how to write title keywords",
+    onclick: () => { guide.hidden = !guide.hidden; howto.setAttribute("aria-expanded", String(!guide.hidden)); } });
+
+  const sample = el("input", { type: "text", placeholder: "Try a title, e.g. Software Engineer, New Grad", spellcheck: "false",
+    "aria-label": "Try a job title against these keywords" });
+  const verdict = el("div", { class: "kw-verdict", "aria-live": "polite" });
+  const warns = el("ul", { class: "kw-warns", "aria-live": "polite", hidden: "" });
+  const quote = (t) => el("code", { text: t.length > 70 ? t.slice(0, 68) + "…" : t });
+  let timer = 0, seq = 0;
+  const check = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const mine = ++seq, title = sample.value.trim();
+      let r;
+      try { r = await api("/api/titles/check", { lines: keywords.value.split("\n"), title, seniority: getLevels ? getLevels() : null }); }
+      catch (e) { if (mine === seq) { verdict.className = "kw-verdict note"; verdict.textContent = title ? e.message : ""; } return; }
+      if (mine !== seq) return;
+      warns.replaceChildren(...r.warnings.map((w) => el("li", { text: w })));
+      warns.hidden = !r.warnings.length;
+      const t = r.title;
+      if (!t) { verdict.replaceChildren(); verdict.className = "kw-verdict"; return; }
+      const lvl = t.levels.map((x) => LABELS.seniority[x] || x).join(" or ");
+      if (t.keep && t.level_ok === false) {
+        verdict.className = "kw-verdict drop";
+        verdict.replaceChildren(`Line ${t.line} fits it (`, quote(t.text), `), but it reads as ${lvl || "not a regular job"}, which this role's Level leaves out.`);
+      } else if (t.keep) {
+        verdict.className = "kw-verdict keep";
+        verdict.replaceChildren(`✓ Kept by line ${t.line}: `, quote(t.text));
+      } else if (t.line) {
+        verdict.className = "kw-verdict drop";
+        verdict.replaceChildren(`✗ Left out by line ${t.line}: `, quote(t.text));
+      } else {
+        verdict.className = "kw-verdict drop";
+        verdict.textContent = "✗ Left out: no line fits this title. Add a line for it, or check the spelling.";
+      }
+    }, 250);
+  };
+  keywords.addEventListener("input", check);
+  sample.addEventListener("input", check);
+  check();
+  const note = el("p", { class: "note", id: keywords.id + "-note", text: "One per line. “/” means or, “+” means and, a “-” in front leaves titles out." });
+  keywords.setAttribute("aria-describedby", note.id);
+  return { node: el("div", { class: "field wide" },
+    el("div", { class: "label-row" }, el("label", { for: keywords.id, text: label }), howto),
+    guide, keywords, note, warns, el("div", { class: "kw-try" }, sample, verdict)), recheck: check };
+}
+
 function checks(legend, options, selected, note, opts = {}) {
   const box = el("div", { class: "checks" });
   const inputs = options.map(([value, label]) => {
@@ -2973,15 +3081,14 @@ function roleForm(saved) {
     afterRoleSave();
   });
 
+  const kwf = keywordField("Title keywords", keywords, levels.get);
+  levels.node.addEventListener("change", kwf.recheck);
   const adv = advanced();
   return el("div", { style: "display:grid;gap:14px" },
     el("div", { class: "fields" },
       field("Role name", name),
       field("Minimum yearly pay", pay, "Only postings that state pay are held to this."),
-      field("Title keywords", keywords,
-        "One per line, read from the top; the first line a title fits decides. “full stack/fullstack”: either phrase. " +
-        "“ios/android + engineer/developer”: both parts. A line starting with “-” leaves those titles out, " +
-        "so put it above the lines it should beat. “recruit*” matches any ending.", { wide: true }),
+      kwf.node,
       levels.node, countryField,
       field("Cities", cities, "Comma separated. Empty means any city in your countries. Remote postings count for every city."),
       work.node, visaPick.node,
@@ -3496,17 +3603,19 @@ const SETUP_RENDER = {
     const from = select([...kinds.map((t) => [t.id, t.label]), ["own", "Something else (write the titles)"]], same ? same.id : "own");
     const keywords = el("textarea", { class: "jd", rows: "6", spellcheck: "false", placeholder: "e.g. product designer/ux designer" });
     keywords.value = cur.title_keywords.join("\n");
+    let levels = null;
+    const kw = keywordField("Job titles to look for", keywords, () => levels && levels.get());
     const rules = el("details", { class: "field wide", open: same ? null : "" },
-      el("summary", { text: "Show the job titles it looks for" }),
-      field("Job titles to look for", keywords, "One per line. A posting's title has to contain one of them. " +
-        "“full stack/fullstack” means either; a line starting with “-” leaves those titles out."));
+      el("summary", { text: "Show the job titles it looks for" }), kw.node);
     from.addEventListener("change", () => {
       const t = kinds.find((x) => x.id === from.value);
-      if (!t) { keywords.value = ""; rules.open = true; keywords.focus(); return; }
+      if (!t) { keywords.value = ""; rules.open = true; keywords.focus(); kw.recheck(); return; }
       keywords.value = t.title_keywords.join("\n");
+      kw.recheck();
       if (name.value.trim() === cur.name || !name.value.trim()) name.value = t.label;
     });
-    const levels = checks("Level", d.choices.seniority.map((x) => [x, LABELS.seniority[x]]), cur.seniority, "", { wide: true });
+    levels = checks("Level", d.choices.seniority.map((x) => [x, LABELS.seniority[x]]), cur.seniority, "", { wide: true });
+    levels.node.addEventListener("change", kw.recheck);
     let countries = [...cur.countries];
     const cname = (code) => (d.choices.countries.find((c) => c.code === code) || { name: code }).name;
     const cbox = el("div", { class: "tags", "aria-live": "polite" });
