@@ -72,7 +72,15 @@
   .help dt { font-weight: 600; }
   .help dd { margin: 0; }
   @media (max-width: 600px) { .help dl { grid-template-columns: 1fr; gap: 2px; } .help dd { margin-bottom: 8px; } }
-  body:not(.view-queue) #qhead, body.view-queue #filters, body:not(.view-jobs) .rail-r #nextUp { display: none; }
+  body:not(.view-queue) #qhead, body.view-queue #filters, body:not(.view-jobs):not(.view-today) .rail-r #nextUp { display: none; }
+  /* Today: the picks and, beside them, the resume and what's ready; the filters are All jobs'. */
+  body.view-today .rail-l { display: none; }
+  @media (min-width: 1200px) { body.view-today .layout { grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: "main right"; } }
+  .today-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-bottom: 12px; }
+  .today-head > div { margin-right: auto; }
+  .today-head h2 { font-size: 22px; margin: 0 0 2px; }
+  .today-head .status { margin: 0; }
+  .today-head select { width: auto; }
   .status-r { margin: 0; font-size: 13px; color: var(--muted); }
   .status-r b { color: var(--text); font-weight: 600; }
   .searchbar { display: flex; gap: 8px; margin-bottom: 10px; }
@@ -502,7 +510,8 @@
     <div class="hbtns">
       <select id="roleSel" aria-label="Role" hidden></select>
       <nav class="viewtabs" id="viewTabs" aria-label="Pages" hidden>
-        <button type="button" data-view="jobs" aria-current="page">All jobs</button>
+        <button type="button" data-view="today" aria-current="page">Today <span class="qcount" id="pickCount" hidden></span></button>
+        <button type="button" data-view="jobs">All jobs</button>
         <button type="button" data-view="queue">Apply queue <span class="qcount" id="qcount" hidden></span></button>
         <button type="button" data-view="help">How it works</button>
         <button type="button" data-view="settings">Settings</button>
@@ -590,11 +599,15 @@
         <dd>A role up for weeks has often been filled already. A repost is a role taken down and put up again with a new date; it counts as new, and its badge says when it first went up.</dd>
       </dl>
     </section>
+    <section aria-labelledby="helpToday">
+      <h3 id="helpToday">Today's picks</h3>
+      <p>The few new postings most worth applying to: from the last 2 days (7 when that's too few), at 60% match or more, best first. Postings you've applied to or dismissed, that rule out sponsorship or OPT for your visa, or that ask for more years than you have are left out. Choose how many a day at the top of the page. "Resume ready" means the Apply queue has prepared it.</p>
+    </section>
     <section aria-labelledby="helpQueue">
       <h3 id="helpQueue">Apply queue</h3>
       <dl>
         <dt>What goes in</dt>
-        <dd>New postings from the last 7 days at or above your minimum match (Queue settings), that pass the queue's sponsorship and location filters. One that names too few skills to judge goes in when you have the ones it requires.</dd>
+        <dd>New postings from the last 7 days at or above your minimum match (Queue settings), that pass the queue's sponsorship and location filters. One that names too few skills to judge goes in when you have the ones it requires. It holds your best matches up to a number you set (15 to start); the others wait, and come in already prepared as you apply to or dismiss the ones before them.</dd>
         <dt>Resume</dt>
         <dd>Your master resume when it already has what the posting asks for, or when tailoring could only reorder it. Otherwise a tailored copy: only skills your resume backs, no new numbers, still one page. Approve it, or choose the master instead.</dd>
         <dt>Answers</dt>
@@ -614,6 +627,22 @@
     </section>
   </section>
   <section id="setupView" hidden aria-labelledby="setupTitle"></section>
+  <section id="todayView" hidden aria-labelledby="todayTitle">
+    <div class="today-head">
+      <div>
+        <h2 id="todayTitle">Today's picks</h2>
+        <p class="status" id="todaySub"></p>
+      </div>
+      <label class="filter-label" for="pickN">Show</label>
+      <select id="pickN" aria-label="How many picks">
+        <option value="5">5 a day</option>
+        <option value="10">10 a day</option>
+        <option value="15">15 a day</option>
+        <option value="20">20 a day</option>
+      </select>
+    </div>
+    <ul class="list" id="picks" aria-label="Today's picks"></ul>
+  </section>
   <div id="jobsView">
   <div class="searchbar">
     <input type="search" id="q" placeholder="Filter by company, title, city, skill" aria-label="Filter">
@@ -887,6 +916,7 @@ const state = {
   q: "",
   sort: store.get("sort", "new"),
   minMatch: store.get("minMatch", 0),
+  pickN: store.get("pickN", 10),
   remote: store.get("remote", false),
   nosp: store.get(searchKey("nosp", initialSearch), !!roleVisa(initialSearch).hide_no_sponsorship),
   h1bOnly: store.get(searchKey("h1bOnly", initialSearch), false),
@@ -1232,6 +1262,8 @@ function useResume({ name, text }) {
 
 // Puts back the resume jobs were scored against (none: null) and the sort.
 function restoreResume(prev, sort) {
+  if (prev) prev.at = Date.now();       // putting an older one back is the newest change
+  else if (HELPER) api("/api/scoring", { remove: true, at: Date.now() }).catch(() => {});
   state.resume = prev;
   if (prev) store.set("resume", prev); else store.del("resume");
   state.sort = sort; store.set("sort", sort);
@@ -1715,6 +1747,7 @@ function jobCard(j, now, V, hasResume) {
   const head = el("div", { class: "head" },
     el("a", { class: "title", href: j.url, target: "_blank", rel: "noopener", text: j.title, "data-fk": fk("title") }), meta);
   meta.append(...ageBadges(j, now));
+  if (readyKeys().has(j.key)) meta.append(el("span", { class: "badge yes", text: "Resume ready", title: "Prepared in the Apply queue" }));
   const reason = hasResume ? scoreReason(sc, j, adv) : null;
   const li = el("li", { class: "job" + (mark ? " done" : "") }, head, right, side, reason);
 
@@ -1783,6 +1816,8 @@ function postingFacts(j, sc, V) {
   }
   return [sc && sc.pct != null ? scoreSection(sc, j) : null, ev].filter(Boolean);
 }
+
+const readyKeys = () => new Set(queue.data ? queue.data.items.filter((i) => i.state === "ready").map((i) => i.key) : []);
 
 let jobsByKey = null;
 const jobByKey = (key) => (jobsByKey ||= new Map(DATA.jobs.map((j) => [j.key, j]))).get(key);
@@ -1924,11 +1959,51 @@ function render() {
 
   renderResumeBar();
   renderSearchControls();
+  renderPicks();
   for (const b of $("window").querySelectorAll("button")) b.setAttribute("aria-pressed", String(+b.dataset.h === state.hours));
   $("sort").value = state.sort;
   $("minMatch").value = String(state.minMatch);
   $("sort").disabled = !hasResume;
   $("minMatch").disabled = !hasResume;
+}
+
+// Today's picks: the few new postings most worth applying to, from the last
+// 2 days (7 when that's too few). Out: applied or dismissed, ruled out for
+// the user's visa, asking for more years than they have, under 60% (unless
+// too few skills to judge). Best match first, newest first among equals.
+const PICK_MIN = 60;
+
+function picks(now) {
+  if (!state.resume) return { list: [], days: 2 };
+  const V = visa();
+  const wanted = (j) => {
+    if (j.roles && (state.search === ALL_ROLES ? !j.roles.length : !j.roles.includes(state.search))) return false;
+    if (state.marks[j.url]) return false;
+    if (V.sponsor && (j.sponsorship === "no" || (V.opt && j.no_opt))) return false;
+    const sc = scores.get(j);
+    if (!sc || sc.pct == null || sc.exp.ok === false) return false;
+    return sc.pct >= PICK_MIN || tooFewToJudge(sc);
+  };
+  const n = state.pickN;
+  let days = 2, list = DATA.jobs.filter((j) => now - when(j) <= 2 * 86400 && wanted(j));
+  if (list.length < n) { days = 7; list = DATA.jobs.filter((j) => now - when(j) <= 7 * 86400 && wanted(j)); }
+  list.sort((a, b) => scores.get(b).pct - scores.get(a).pct || when(b) - when(a));
+  return { list: list.slice(0, n), more: Math.max(0, list.length - n), days };
+}
+
+function renderPicks() {
+  const now = Date.now() / 1000;
+  const { list, more, days } = picks(now);
+  $("pickCount").hidden = !list.length;
+  $("pickCount").textContent = String(list.length);
+  if (state.view !== "today") return;
+  $("pickN").value = String(state.pickN);
+  $("todaySub").textContent = !state.resume ? "Upload your resume to get picks: they're the new postings that fit it best."
+    : list.length ? `Your ${list.length} best new fit${list.length === 1 ? "" : "s"} from the last ${days} days` +
+      (more ? `, of ${list.length + more} that qualify` : "") + ". Applied or dismissed ones drop off; All jobs has everything."
+    : "No new postings from the last 7 days fit well enough yet. All jobs has everything.";
+  const V = visa();
+  keepFocus(() => $("picks").replaceChildren(...list.map((j) => jobCard(j, now, V, true))));
 }
 
 function setHours(h) { state.hours = h; store.set("hours", h); render(); }
@@ -2010,7 +2085,7 @@ function editResume(text, label, change) {
   const r = state.resume;
   const before = JSON.parse(JSON.stringify({ off: r.off || [], added: r.added || [], years: r.years ?? null }));
   change(r);
-  const redraw = () => { store.set("resume", r); rescore(); keepFocus(renderSkills); render(); };
+  const redraw = () => { r.at = Date.now(); store.set("resume", r); rescore(); keepFocus(renderSkills); render(); };
   redraw();
   undoable(text, label, () => { Object.assign(r, before); redraw(); });
 }
@@ -2506,7 +2581,7 @@ function syncScoring() {
   syncTimer = setTimeout(() => {
     const r = state.resume;
     api("/api/scoring", { name: r.name, text: r.text, skills: r.skills, off: r.off || [], added: r.added || [],
-      years: r.years != null ? r.years : null, profile: state.profile }).catch(() => {});
+      years: r.years != null ? r.years : null, profile: state.profile, at: r.at || 0 }).catch(() => {});
   }, 800);
 }
 
@@ -2541,9 +2616,10 @@ async function loadQueue() {
 }
 
 function showView(v) {
-  state.view = v === "help" ? "help" : (v === "queue" || v === "settings" || v === "setup") && HELPER ? v : "jobs";
+  state.view = v === "help" || v === "jobs" ? v : (v === "queue" || v === "settings" || v === "setup") && HELPER ? v
+    : HELPER ? "today" : "jobs";
   if (setupNeeded() && state.view !== "settings") state.view = "setup";
-  const hash = state.view === "jobs" ? "" : "#" + state.view;
+  const hash = state.view === "today" ? "" : "#" + state.view;
   if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname);
   // Saved settings rebuilt the job list on the helper: load the new one.
   if (state.view !== "settings" && cfg.rendered) { location.reload(); return; }
@@ -2551,9 +2627,10 @@ function showView(v) {
   $("settingsView").hidden = state.view !== "settings";
   $("helpView").hidden = state.view !== "help";
   $("jobsView").hidden = state.view !== "jobs";
+  $("todayView").hidden = state.view !== "today";
   $("setupView").hidden = state.view !== "setup";
   document.body.classList.toggle("in-setup", state.view === "setup");
-  for (const v of ["jobs", "queue", "settings", "help"]) document.body.classList.toggle("view-" + v, state.view === v);
+  for (const v of ["today", "jobs", "queue", "settings", "help"]) document.body.classList.toggle("view-" + v, state.view === v);
   if (state.view === "settings") openSettings();
   if (state.view === "setup") openSetup();
   for (const b of $("viewTabs").querySelectorAll("button")) {
@@ -2708,6 +2785,7 @@ function renderQueue() {
   $("qcount").hidden = !ready;
   $("qcount").textContent = String(ready);
   renderNextUp();
+  if (state.view === "today") renderPicks();     // their "Resume ready" badges
   if (state.view !== "queue") return;
   const head = $("qhead"), list = $("qlist");
   if (!d) {
@@ -2720,6 +2798,7 @@ function renderQueue() {
   const appliedToday = d.done.filter((i) => i.state === "applied" && new Date(i.applied * 1000).toDateString() === today).length;
   head.replaceChildren(...[
     el("span", {}, el("b", { text: `${ready} ready` }), ` · ${(c.queued || 0) + (c.working || 0)} preparing`),
+    c.parked ? el("span", { text: `${c.parked} more good match${c.parked === 1 ? "" : "es"} waiting for room (up to ${s.max_active} at a time)` }) : null,
     el("span", { text: `ChatGPT runs today ${d.runs_today}/${s.daily_cap}` }),
     appliedToday ? el("span", { text: `${appliedToday} applied today` }) : null,
     el("span", { text: `Prepares new jobs at ${s.threshold}%+ match` + (s.enabled ? "" : " (off)") }),
@@ -2775,6 +2854,7 @@ function openPrefs() {
     row("enabled", "Prepare jobs", chk("enabled")),
     row("threshold", "Minimum match", num("threshold", 0, 100), "New postings at or above this score are prepared."),
     row("max_age_days", "Posted within (days)", num("max_age_days", 1, 60), "Older postings aren't prepared, even when the radar has only just found them."),
+    row("max_active", "Jobs in the queue at most", num("max_active", 1, 500), "Your best matches. Others wait their turn and come in, already prepared, as you apply or dismiss."),
     row("backend", "Prepare with", select(["chatgpt", "claude-code", "openai-api", "claude-api"].map((b) => [b, LABELS.backends[b] || b]), s.backend),
       "API keys are billed per use and stop at their monthly budget."),
     row("daily_cap", "Model runs a day", num("daily_cap", 0, 200), "Tailoring and drafting each count one. Keeps the queue inside your plan's limits."),
@@ -2806,6 +2886,7 @@ function openPrefs() {
 
 $("closePrefs").addEventListener("click", () => $("prefsDlg").close());
 $("viewTabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) showView(b.dataset.view); });
+$("pickN").addEventListener("change", (e) => { state.pickN = +e.target.value; store.set("pickN", state.pickN); renderPicks(); });
 window.addEventListener("hashchange", () => showView(location.hash.slice(1)));
 
 // ---------------------------------------------------------------- settings page
@@ -4155,17 +4236,19 @@ if (state.advanced === null) state.advanced = !!(SETTINGS.ui && SETTINGS.ui.adva
 $("advMode").checked = state.advanced;
 render();
 refreshStatus();
-// A browser with no resume stored (another browser, cleared data): the one
-// last scored with, as the helper keeps it, so scores show without an upload.
-if (HELPER && !state.resume) {
+// The resume scores use, as the helper keeps it: taken when it's newer than
+// this browser's copy (another browser or the app's window changed it, or
+// this one has none), else this copy goes up. "at" is when it last changed.
+if (HELPER) {
   api("/api/scoring").then((r) => {
-    if (state.resume || !r || !r.text) return;
+    if (!r || !r.text) return;
+    if (state.resume && (state.resume.at || 0) >= (r.at || 0)) { syncScoring(); return; }
     state.resume = { name: r.name || "resume", text: r.text, skills: detectSkills(r.text), off: r.off || [], added: r.added || [],
-      years: r.years ?? null, at: Date.now() };
+      years: r.years ?? null, at: r.at };
     store.set("resume", state.resume);
     rescore();
     render();
-  }).catch(() => {});
+  }).catch(() => { if (state.resume) syncScoring(); });
 }
 // The Apply kit and marks: the helper's copy when it's newer, else this one goes up.
 if (HELPER) {

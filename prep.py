@@ -175,9 +175,12 @@ class Preparer:
         name = next((own[r] for r in roles if r in own and (self.resume_dir / own[r]).exists()), "")
         return self.resume_dir / name if name else self.master_path
 
-    def save_scoring(self, data: dict) -> None:
+    def save_scoring(self, data: dict) -> bool:
         """The dashboard's resume as it scores it (text, skills, the user's
-        corrections, years) and the Apply kit details used for drafts."""
+        corrections, years) and the Apply kit details used for drafts.
+        "at" is when the resume was last changed (ms); a copy older than the
+        saved one (a browser that hasn't seen the change) is refused: False."""
+        at = data.get("at") if isinstance(data.get("at"), (int, float)) and not isinstance(data.get("at"), bool) else None
         prof = data.get("profile") if isinstance(data.get("profile"), dict) else {}
         out = {
             "name": str(data.get("name", ""))[:200],
@@ -188,10 +191,31 @@ class Preparer:
             "years": data.get("years") if isinstance(data.get("years"), (int, float)) else None,
             "profile": {k: str(v)[:300] for k, v in prof.items() if k in tailor.PROFILE_FOR_ANSWERS},
             "updated": time.time(),
+            "at": at if at is not None else time.time() * 1000,
         }
         with self.lock:
+            saved = self.scoring()
+            if saved and at is not None and self.changed_at(saved) > at:
+                return False
             self._write(self.scoring_path, out)
         self.poke()
+        return True
+
+    def remove_scoring(self, at: float) -> bool:
+        """The user removed their resume (at, ms): forget the saved one unless
+        it changed later. False when it did."""
+        with self.lock:
+            saved = self.scoring()
+            if saved and self.changed_at(saved) > at:
+                return False
+            self.scoring_path.unlink(missing_ok=True)
+        self.poke()
+        return True
+
+    @staticmethod
+    def changed_at(scoring: dict) -> float:
+        """When a saved resume was last changed, in ms (older files: when saved)."""
+        return float(scoring.get("at") or scoring.get("updated", 0) * 1000)
 
     def _write(self, path: Path, data: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -300,23 +324,25 @@ class Preparer:
             _, skill_w, term_w = corpus
             with conn:
                 # Postings that closed, and queued ones the current settings no longer want.
-                conn.execute("UPDATE prep SET state = 'closed', updated = ? WHERE state IN ('queued', 'ready', 'error') "
+                conn.execute("UPDATE prep SET state = 'closed', updated = ? WHERE state IN ('queued', 'ready', 'error', 'parked') "
                              "AND job_key IN (SELECT key FROM jobs WHERE last_seen < ?)", (now, now - STALE_AFTER))
-                conn.execute("UPDATE prep SET state = 'closed', updated = ? WHERE state IN ('queued', 'ready', 'error') "
+                conn.execute("UPDATE prep SET state = 'closed', updated = ? WHERE state IN ('queued', 'ready', 'error', 'parked') "
                              "AND job_key NOT IN (SELECT key FROM jobs)", (now,))
                 # Postings now older than the queue takes: they leave it, prepared or not.
-                conn.execute("UPDATE prep SET state = 'expired', updated = ? WHERE state IN ('queued', 'ready', 'error') "
+                conn.execute("UPDATE prep SET state = 'expired', updated = ? WHERE state IN ('queued', 'ready', 'error', 'parked') "
                              "AND job_key IN (SELECT key FROM jobs WHERE COALESCE(posted_at, first_seen) < ?)",
                              (now, now - s["max_age_days"] * 86400))
                 # Rescore what's in the queue (the resume or keyword weights may have changed),
                 # so it always shows the dashboard's number.
                 for row in conn.execute(self._select(conn) + "WHERE key IN (SELECT job_key FROM prep "
-                                        "WHERE state IN ('queued', 'working', 'ready', 'error'))").fetchall():
+                                        "WHERE state IN ('queued', 'working', 'ready', 'error', 'parked'))").fetchall():
                     j = self._job(row)
                     sc = match.score_job(j, resume, skill_w, term_w, weights)
                     conn.execute("UPDATE prep SET score = ? WHERE job_key = ?", (sc["pct"], j["key"]))
                     if not self.wanted(sc, s) or self.eligible(j, s):
                         conn.execute("DELETE FROM prep WHERE job_key = ? AND state = 'queued'", (j["key"],))
+                        conn.execute("UPDATE prep SET state = 'expired', updated = ? WHERE job_key = ? AND state = 'parked'",
+                                     (now, j["key"]))
                 # Only jobs one of the user's roles wants.
                 rows = conn.execute(
                     # New to the radar and recently posted: a board read for the first
@@ -326,12 +352,14 @@ class Preparer:
                     + ("AND roles != '[]' " if self._tagged(conn) else "")
                     + "AND key NOT IN (SELECT job_key FROM prep)",
                     (now - s["lookback_hours"] * 3600, now - STALE_AFTER, now - s["max_age_days"] * 86400)).fetchall()
-                added = 0
+                new = []
                 for row in rows:
                     j = self._job(row)
                     sc = match.score_job(j, resume, skill_w, term_w, weights)
-                    if not self.wanted(sc, s) or self.eligible(j, s):
-                        continue
+                    if self.wanted(sc, s) and not self.eligible(j, s):
+                        new.append((j, sc))
+                added = 0
+                for j, sc in self._fill(conn, new, s["max_active"], now):
                     decision, reason = decide(sc, master_of(j), s)
                     conn.execute("INSERT INTO prep (job_key, state, score, created, updated, decision, reason) "
                                  "VALUES (?, 'queued', ?, ?, ?, ?, ?)", (j["key"], sc["pct"], now, now, decision, reason))
@@ -342,6 +370,33 @@ class Preparer:
             return added
         finally:
             conn.close()
+
+    # The queue holds the best `cap` jobs. Prepared ones past it are parked,
+    # not thrown away: when the user applies to or dismisses one, the next
+    # best comes back already prepared. One that isn't prepared yet gives its
+    # place to a better new one, and is considered again on later scans.
+    ACTIVE = ("working", "ready", "error", "queued")
+    RANK = {"working": 0, "ready": 1, "error": 2, "parked": 3, "queued": 4, "new": 5}
+
+    @classmethod
+    def _fill(cls, conn, new: list[tuple[dict, dict]], cap: int, now: float) -> list[tuple[dict, dict]]:
+        """Parks or brings back queue rows so the best `cap` are in the queue,
+        and returns the new jobs that make the cut, best first."""
+        held = conn.execute("SELECT job_key, state, score FROM prep WHERE state IN "
+                            "('working', 'ready', 'error', 'queued', 'parked')").fetchall()
+        pool = [(key, st, sc or 0) for key, st, sc in held] + [(j["key"], "new", sc["pct"] or 0) for j, sc in new]
+        # A job being prepared right now always stays; then best match first, and
+        # on equal scores what's already prepared ahead of what isn't.
+        pool.sort(key=lambda x: (x[1] != "working", -x[2], cls.RANK[x[1]]))
+        keep = {key for key, _, _ in pool[:cap]} | {key for key, st, _ in pool if st == "working"}
+        for key, st, _ in pool:
+            if key in keep and st == "parked":
+                conn.execute("UPDATE prep SET state = 'ready', updated = ? WHERE job_key = ?", (now, key))
+            elif key not in keep and st == "ready":
+                conn.execute("UPDATE prep SET state = 'parked', updated = ? WHERE job_key = ?", (now, key))
+            elif key not in keep and st in ("queued", "error"):
+                conn.execute("DELETE FROM prep WHERE job_key = ? AND state IN ('queued', 'error')", (key,))
+        return sorted(((j, sc) for j, sc in new if j["key"] in keep), key=lambda x: -(x[1]["pct"] or 0))
 
     # ------------------------------------------------------------ usage cap
 
@@ -570,6 +625,8 @@ class Preparer:
                                  (key, state, now, now, now if state == "applied" else None))
                     if state == "applied" and self._record_application(conn, key, now) and recorded is not None:
                         recorded.append(key)
+            if n:
+                self.poke()
             return n
         finally:
             conn.close()

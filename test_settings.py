@@ -44,7 +44,7 @@ class DefaultsTests(Tmp):
                                       "dashboard": "dashboard.html", "logs_dir": ""})
         self.assertEqual(d["queue"], {
             "enabled": True, "threshold": 60, "daily_cap": 25, "backend": "chatgpt", "skip_coverage": 85,
-            "needs_sponsorship": True, "locations": [], "remote_ok": True, "lookback_hours": 48, "max_age_days": 7,
+            "needs_sponsorship": True, "locations": [], "remote_ok": True, "lookback_hours": 48, "max_age_days": 7, "max_active": 15,
             "draft_answers": True, "notify_desktop": True, "ntfy_server": "https://ntfy.sh", "ntfy_topic": "",
             "quiet_start": "22:00", "quiet_end": "08:00"})
         self.assertEqual(d["scoring"], {"experience_weight": 0.4, "prior_keywords": 3, "prior_credit": 0.5,

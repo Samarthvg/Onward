@@ -577,11 +577,73 @@ class QueueAgeTests(Base):
         self.assertLess(it["Thinco"]["score"], 95)
         self.assertNotIn("Coveredco", it, "a judged posting under the threshold stays out")
 
+    def states(self):
+        conn = sqlite3.connect(self.db_path)
+        try:
+            return dict(conn.execute("SELECT j.company, p.state FROM prep p JOIN jobs j ON j.key = p.job_key"))
+        finally:
+            conn.close()
+
+    def test_cap_keeps_the_best_matches(self):
+        self.prep.scan(self.now)
+        everyone = self.items()
+        best = max(everyone, key=lambda c: everyone[c]["score"])
+        conn = sqlite3.connect(self.db_path)
+        with conn:
+            conn.execute("DELETE FROM prep")
+        conn.close()
+        self.prep.save_settings({"max_active": 1})
+        self.prep.scan(self.now)
+        self.assertEqual(list(self.items()), [best])
+
+    def test_prepared_jobs_past_the_cap_wait_and_come_back(self):
+        self.prep.scan(self.now)
+        conn = sqlite3.connect(self.db_path)
+        with conn:
+            conn.execute("UPDATE prep SET state = 'ready'")      # as if all were prepared
+        conn.close()
+        ranked = sorted(self.items(), key=lambda c: -self.items()[c]["score"])
+        self.prep.save_settings({"max_active": 2})
+        self.prep.scan(self.now)
+        st = self.states()
+        self.assertEqual({c for c, s in st.items() if s == "ready"}, set(ranked[:2]))
+        self.assertEqual({c for c, s in st.items() if s == "parked"}, set(ranked[2:]))
+        # Applying to one makes room: the next best comes back, still prepared.
+        self.prep.mark(self.items()[ranked[0]]["key"], "applied")
+        self.prep.scan(self.now)
+        st = self.states()
+        self.assertEqual(st[ranked[0]], "applied")
+        self.assertEqual({c for c, s in st.items() if s == "ready"}, set(ranked[1:3]))
+
     def test_limit_is_a_setting(self):
         set_posted(self.db_path, "Coveredco", self.now - 10 * 86400)
         self.prep.save_settings({"max_age_days": 14})
         self.prep.scan(self.now)
         self.assertIn("Coveredco", self.items())
+
+
+class ScoringResumeTests(Base):
+    """The resume scores use, shared by every browser and the app's window:
+    the newest change wins, and removing it is a change too."""
+
+    def setUp(self):
+        super().setUp()
+        self.t = time.time() * 1000 + 10000     # after the resume Base saved
+
+    def test_an_older_copy_never_overwrites_a_newer_one(self):
+        jane = {"name": "jane.txt", "text": "Jane Doe " + RESUME_TEXT}
+        self.assertTrue(self.prep.save_scoring({**jane, "name": "mine.pdf", "at": self.t + 2000}))
+        self.assertFalse(self.prep.save_scoring({**jane, "at": self.t + 1000}), "a browser that hasn't seen the change")
+        self.assertEqual(self.prep.scoring()["name"], "mine.pdf")
+        self.assertTrue(self.prep.save_scoring({**jane, "at": self.t + 3000}))
+        self.assertEqual((self.prep.scoring()["name"], self.prep.changed_at(self.prep.scoring())), ("jane.txt", self.t + 3000))
+
+    def test_remove(self):
+        self.prep.save_scoring({"name": "mine.pdf", "text": RESUME_TEXT, "at": self.t + 5000})
+        self.assertFalse(self.prep.remove_scoring(self.t + 4000), "changed after that removal")
+        self.assertIsNotNone(self.prep.scoring())
+        self.assertTrue(self.prep.remove_scoring(self.t + 6000))
+        self.assertIsNone(self.prep.scoring())
 
 
 class DashboardAgeTests(unittest.TestCase):

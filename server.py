@@ -711,7 +711,8 @@ class Handler(BaseHTTPRequestHandler):
             s = PREP.scoring()
             if not s:
                 return self._err(HTTPStatus.NOT_FOUND, "No resume saved yet")
-            return self._json(200, {k: s.get(k) for k in ("name", "text", "skills", "off", "added", "years")})
+            return self._json(200, {**{k: s.get(k) for k in ("name", "text", "skills", "off", "added", "years")},
+                                    "at": PREP.changed_at(s)})
 
         if path == "/api/settings":
             return self._json(200, settings_payload())
@@ -850,9 +851,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(HTTPStatus.BAD_REQUEST, str(e))
 
         if path == "/api/scoring":
+            if data.get("remove") is True and isinstance(data.get("at"), (int, float)):
+                return self._json(200, {"ok": PREP.remove_scoring(float(data["at"]))})
             if len(str(data.get("text", ""))) < 200:
                 return self._err(HTTPStatus.BAD_REQUEST, "No resume text")
-            PREP.save_scoring(data)
+            if not PREP.save_scoring(data):
+                return self._json(HTTPStatus.CONFLICT, {"error": "A newer resume is saved", "stale": True})
             return self._json(200, {"ok": True})
         if path == "/api/prep/settings":
             before = STORE.section("queue")
