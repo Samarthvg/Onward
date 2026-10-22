@@ -35,6 +35,9 @@ hidden = {"win32": ["pystray._win32"], "darwin": ["pystray._darwin"],
           "linux": ["pystray._xorg", "pystray._appindicator", "pystray._gtk"]}.get(sys.platform, [])
 hidden += ["keyring.backends.Windows", "keyring.backends.macOS", "keyring.backends.SecretService",
            "keyring.backends.libsecret", "keyring.backends.kwallet"]
+# The dashboard window's backends: Edge WebView2 through pythonnet on Windows, WebKit on macOS.
+hidden += {"win32": ["webview.platforms.winforms", "webview.platforms.edgechromium", "clr"],
+           "darwin": ["webview.platforms.cocoa"]}.get(sys.platform, [])
 
 a = Analysis(
     [str(ROOT / "app.py")],

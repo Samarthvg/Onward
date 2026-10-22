@@ -50,3 +50,5 @@ Thumbs.db
 .DS_Store
 .taste-skill/
 .wrangler/
+window.show
+window/

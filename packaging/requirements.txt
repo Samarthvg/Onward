@@ -7,6 +7,9 @@ keyring==25.7.0
 openai==3.26.0
 anthropic==1.11.0
 python-xlib==0.33; sys_platform == "linux"
+# The dashboard in its own window (app.py --window); Linux opens the browser instead.
+pywebview==6.2.1; sys_platform != "linux"
+pythonnet==3.2.1; sys_platform == "win32"
 
 # Building the installers
 pyinstaller==6.22.3

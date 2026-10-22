@@ -45,8 +45,7 @@ import tailor
 import texengine
 import undo
 
-# JOBRADAR_PORT only for tests next to a running copy: the extension talks to 8765.
-HOST, PORT = "127.0.0.1", int(os.environ.get("JOBRADAR_PORT") or 8765)
+HOST, PORT = appinfo.HOST, appinfo.PORT
 ORIGINS = {f"http://{HOST}:{PORT}", f"http://localhost:{PORT}"}
 STORE = config.store()
 DASHBOARD = STORE.path_for("dashboard")
@@ -379,6 +378,61 @@ def save_settings(patch: dict, label: str) -> str | None:
     return remember("settings", label, {"before": changed}) if changed else None
 
 
+# --------------------------------------------------------------------------
+# What the dashboard keeps for the user (Apply kit details, Applied and
+# Dismiss marks), held here so the app's window, any browser and the
+# extension see the same. Each value carries when it was last changed; the
+# later one wins.
+
+DASH_STATE_LOCK = threading.Lock()
+
+
+def _clean_profile(v) -> dict | None:
+    if not isinstance(v, dict) or len(v) > 100:
+        return None
+    return {str(k)[:60]: str(x)[:2000] for k, x in v.items() if isinstance(x, (str, int, float)) and not isinstance(x, bool)}
+
+
+def _clean_marks(v) -> dict | None:
+    if not isinstance(v, dict) or len(v) > 50000:
+        return None
+    return {str(k)[:2000]: x for k, x in v.items() if x in ("applied", "dismissed")}
+
+
+DASH_KEYS = {"profile": _clean_profile, "marks": _clean_marks}
+
+
+def dash_state_path() -> Path:
+    return STORE.path_for("resume_dir") / "dashboard.json"
+
+
+def dash_state() -> dict:
+    """{key: {"value": ..., "at": ms}} for the keys that are saved."""
+    try:
+        data = json.loads(dash_state_path().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {k: v for k, v in data.items() if k in DASH_KEYS and isinstance(v, dict) and "value" in v} \
+        if isinstance(data, dict) else {}
+
+
+def save_dash_state(key: str, value, at: float) -> dict:
+    """Saves one value unless what's saved is newer. Returns what's saved now."""
+    clean = DASH_KEYS[key](value)
+    if clean is None:
+        raise ValueError(f"That isn't a valid {key} value")
+    with DASH_STATE_LOCK:
+        data = dash_state()
+        if key not in data or float(data[key].get("at") or 0) <= at:
+            data[key] = {"value": clean, "at": at}
+            path = dash_state_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(json.dumps(data), encoding="utf-8")
+            os.replace(tmp, path)
+        return data[key]
+
+
 def file_state(*paths: Path) -> dict[str, str | None]:
     """Files as they are now, for an undo: base64 contents, None if missing."""
     out = {}
@@ -618,6 +672,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"backends": tailor.backend_status(), "master": master_meta(role),
                                     "costs": typical_costs()})
 
+        if path == "/api/state":
+            # The dashboard's saved Apply kit and marks: for the dashboard (same origin,
+            # no Origin header) and the extension's import; never another site.
+            if self.headers.get("Origin") not in (None, *ORIGINS) and not self._origin_ok(allow_extension=True):
+                return self._err(HTTPStatus.FORBIDDEN, "Forbidden")
+            return self._json(200, dash_state())
+
         if path == "/api/scoring":
             # The resume this browser last scored with, for a browser that has none stored.
             # Same-origin GETs carry no Origin; any other origin is refused outright.
@@ -744,6 +805,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._answers(data)
         if path == "/api/applied":
             return self._applied(data)
+
+        if path == "/api/state":
+            key, at = data.get("key"), data.get("at")
+            if key not in DASH_KEYS or not isinstance(at, (int, float)) or isinstance(at, bool):
+                return self._err(HTTPStatus.BAD_REQUEST, "Expected a key and when it changed")
+            try:
+                return self._json(200, save_dash_state(key, data.get("value"), float(at)))
+            except ValueError as e:
+                return self._err(HTTPStatus.BAD_REQUEST, str(e))
 
         if path == "/api/scoring":
             if len(str(data.get("text", ""))) < 200:

@@ -260,6 +260,34 @@ class KeyEndpointTests(Base):
             self.assertEqual(status, 403)
             self.assertNotIn("Python", raw)
 
+    def test_dashboard_state_is_shared_and_the_newer_copy_wins(self):
+        kit = {"firstName": "Testy", "email": "testy@example.com"}
+        status, raw = self.request("POST", "/api/state", {"key": "profile", "value": kit, "at": 2000})
+        self.assertEqual((status, json.loads(raw)["value"]), (200, kit))
+        # An older copy (a window that hadn't seen the change) doesn't overwrite it.
+        status, raw = self.request("POST", "/api/state", {"key": "profile", "value": {"firstName": "Old"}, "at": 1000})
+        self.assertEqual(json.loads(raw), {"value": kit, "at": 2000})
+        self.request("POST", "/api/state", {"key": "marks", "value": {"https://x/1": "applied", "https://x/2": "bogus"},
+                                            "at": 5})
+        status, raw = self.request("GET", "/api/state", origin=None)
+        self.assertEqual(json.loads(raw), {"profile": {"value": kit, "at": 2000},
+                                           "marks": {"value": {"https://x/1": "applied"}, "at": 5}})
+        # The extension may read it; other sites may not, and only the dashboard writes.
+        ext = {"Origin": "moz-extension://1234-abcd", "X-JobRadar-Client": "autofill"}
+        conn = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=10)
+        conn.request("GET", "/api/state", headers={"Host": f"{server.HOST}:{server.PORT}", **ext})
+        r = conn.getresponse()
+        self.assertEqual((r.status, json.loads(r.read())["profile"]["value"]), (200, kit))
+        conn.close()
+        status, raw = self.request("GET", "/api/state", origin="https://evil.example")
+        self.assertEqual(status, 403)
+        self.assertNotIn("Testy", raw)
+        status, _ = self.request("POST", "/api/state", {"key": "profile", "value": {}, "at": 9999},
+                                 origin="moz-extension://1234-abcd")
+        self.assertEqual(status, 403)
+        status, _ = self.request("POST", "/api/state", {"key": "resume", "value": {}, "at": 1})
+        self.assertEqual(status, 400, "only the keys the dashboard shares")
+
     def test_only_the_dashboard_may_save_keys(self):
         status, _ = self.request("POST", "/api/keys", {"provider": "openai", "key": KEY}, origin="https://evil.example")
         self.assertEqual(status, 403)

@@ -3,6 +3,7 @@ tray icon, in one process that starts when the user logs in.
 
     python app.py              tray icon (the installed app runs this)
     python app.py --headless   no tray icon: helper and timed searches only
+    <app> --window             the dashboard in a window of its own (the tray opens it)
     <app> --radar [...]        one radar.py run (how the packaged app runs them)
 
 The tray shows the last and next search, errors, which AI login works, and
@@ -70,6 +71,81 @@ def open_folder(path: Path) -> None:
         os.startfile(path)      # noqa: S606 - the user's own data folder
     else:
         subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(path)])
+
+
+# --------------------------------------------------------------------------
+# The dashboard in a window of its own (pywebview, on the system's web view),
+# run as a separate process: its event loop and the tray's each want the main
+# thread, and a crash in one doesn't take the other down. Job links open in
+# the default browser, where the Autofill extension is.
+
+def window_command() -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--window"]
+    return [sys.executable, str(Path(__file__).resolve()), "--window"]
+
+
+def has_window_support() -> bool:
+    import importlib.util
+    return sys.platform != "linux" and importlib.util.find_spec("webview") is not None
+
+
+def show_dashboard(url: str, home: Path, spawn=subprocess.Popen) -> str:
+    """Brings up the dashboard: raises its window when one is open, opens
+    one when the system can show it, else opens the browser. Returns which."""
+    import oslock
+    if not has_window_support():
+        webbrowser.open(url)
+        return "browser"
+    lock = oslock.FileLock(home / "window.lock")
+    if not lock.acquire():
+        (home / "window.show").write_text("", encoding="utf-8")     # the open window watches for this
+        return "raised"
+    lock.release()
+    spawn(window_command(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return "window"
+
+
+def run_window(url: str, home: Path) -> int:
+    """The window process. Only one at a time: a second one raises the first."""
+    import oslock
+    lock = oslock.FileLock(home / "window.lock")
+    if not lock.acquire():
+        (home / "window.show").write_text("", encoding="utf-8")
+        return 0
+    try:
+        import webview
+    except ImportError:
+        lock.release()
+        webbrowser.open(url)
+        return 0
+    import appinfo
+    webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
+    win = webview.create_window(appinfo.NAME, url, width=1440, height=900, min_size=(420, 600))
+    signal = home / "window.show"
+
+    def watch() -> None:
+        while True:
+            if signal.exists():
+                try:
+                    signal.unlink()
+                    win.restore()
+                    win.show()
+                    win.on_top = True       # to the front, then back to normal stacking
+                    win.on_top = False
+                except Exception:
+                    pass
+            time.sleep(0.4)
+
+    try:
+        signal.unlink()
+    except FileNotFoundError:
+        pass
+    # Its own storage in the data folder, kept between runs (the dashboard's
+    # view settings; the Apply kit and marks also live in the helper).
+    webview.start(watch, private_mode=False, storage_path=str(home / "window"))
+    lock.release()
+    return 0
 
 
 def wait_for_port(host: str, port: int, seconds: float) -> None:
@@ -193,7 +269,7 @@ class App:
         return f"http://{HOST}:{PORT}/"
 
     def open_dashboard(self, *_) -> None:
-        webbrowser.open(self.url())
+        show_dashboard(self.url(), self.store.home)
 
     def search_now(self, *_) -> None:
         if not self.server.SCHEDULER.run_now("tray"):
@@ -364,6 +440,10 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["--radar"]:
         import radar
         return radar.run(argv[1:])
+    if argv[:1] == ["--window"]:
+        import appinfo
+        import config
+        return run_window(appinfo.DASHBOARD_URL, config.store().home)
     hide_child_consoles()
     fix_path()
     return App(headless="--headless" in argv).run()

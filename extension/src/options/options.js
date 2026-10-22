@@ -218,6 +218,12 @@ function importKit(kit) {
 }
 
 async function profileFromDashboard() {
+  // The helper keeps the dashboard's Apply kit; an older helper doesn't, so
+  // then it's read from an open dashboard tab.
+  try {
+    const r = await api.runtime.sendMessage({ type: "jr:dashboardProfile" });
+    if (r && r.profile && Object.keys(r.profile).length) return r.profile;
+  } catch (e) { /* fall back to the tab */ }
   let tabs = (await api.tabs.query({ url: DASHBOARD })).filter((t) => {
     try { return new URL(t.url).port === DASHBOARD_PORT; } catch (e) { return false; }
   });

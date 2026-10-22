@@ -91,6 +91,11 @@ if (api.commands && api.commands.onCommand) {
 }
 
 const HANDLERS = {
+  /* The Apply kit details the dashboard saved with the helper. */
+  async "jr:dashboardProfile"() {
+    const state = await helper("/api/state");
+    return { profile: state && state.profile ? state.profile.value : null };
+  },
   /* The resume and answers the helper prepared for this form's job. */
   async "jr:history"(msg) {
     // Jobs and schools from the master resume, for Work Experience and Education sections.

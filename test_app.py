@@ -40,7 +40,7 @@ ROOT = Path(__file__).resolve().parent
 
 class TmpHome(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="igez-app-")
+        self.tmp = tempfile.TemporaryDirectory(prefix="onward-app-")
         self.addCleanup(self.tmp.cleanup)
         self.home = Path(self.tmp.name)
         self.store = config.Store(self.home / "settings.json", self.home)
@@ -245,6 +245,39 @@ class RealRunTests(TmpHome):
 # --------------------------------------------------------------------------
 # Start at login, old scheduled tasks
 
+class WindowTests(TmpHome):
+    """The tray's Open dashboard: the app's own window when the system can
+    show one (one at a time), else the browser."""
+
+    def test_opens_one_window_then_raises_it(self):
+        spawned = []
+        with mock.patch.object(app, "has_window_support", lambda: True):
+            got = app.show_dashboard("http://127.0.0.1:8765/", self.home, spawn=lambda cmd, **kw: spawned.append(cmd))
+            self.assertEqual(got, "window")
+            self.assertEqual(spawned[0][-1], "--window")
+            # While the window holds its lock, another Open raises it instead of opening a second.
+            held = oslock.FileLock(self.home / "window.lock")
+            self.assertTrue(held.acquire())
+            try:
+                got = app.show_dashboard("http://127.0.0.1:8765/", self.home, spawn=lambda cmd, **kw: spawned.append(cmd))
+            finally:
+                held.release()
+        self.assertEqual((got, len(spawned)), ("raised", 1))
+        self.assertTrue((self.home / "window.show").exists(), "the open window watches for this")
+
+    def test_without_a_web_view_it_opens_the_browser(self):
+        opened = []
+        with mock.patch.object(app, "has_window_support", lambda: False), \
+                mock.patch.object(app.webbrowser, "open", opened.append):
+            self.assertEqual(app.show_dashboard("http://127.0.0.1:8765/", self.home), "browser")
+        self.assertEqual(opened, ["http://127.0.0.1:8765/"])
+
+    def test_window_command(self):
+        self.assertEqual(app.window_command()[-2:], [str(ROOT / "app.py"), "--window"])
+        with mock.patch.object(app.sys, "frozen", True, create=True):
+            self.assertEqual(app.window_command(), [sys.executable, "--window"])
+
+
 class AutostartTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -275,8 +308,8 @@ class AutostartTests(unittest.TestCase):
             self.assertFalse(a.enabled())
 
     def test_appimage_starts_the_appimage_not_its_mount(self):
-        with mock.patch.dict(os.environ, {"APPIMAGE": "/home/me/igez.AppImage"}):
-            self.assertEqual(autostart.launch_command(), ["/home/me/igez.AppImage"])
+        with mock.patch.dict(os.environ, {"APPIMAGE": "/home/me/onward.AppImage"}):
+            self.assertEqual(autostart.launch_command(), ["/home/me/onward.AppImage"])
 
     @unittest.skipUnless(sys.platform == "win32", "Windows registry")
     def test_windows_run_key(self):
@@ -630,7 +663,7 @@ def free_port() -> int:
 class HelperTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix="igez-helper-")
+        cls.tmp = tempfile.TemporaryDirectory(prefix="onward-helper-")
         cls.home = Path(cls.tmp.name)
         cls.port = free_port()
         env = {**os.environ, "ONWARD_HOME": str(cls.home), "JOBRADAR_PORT": str(cls.port), "CODE": str(ROOT)}

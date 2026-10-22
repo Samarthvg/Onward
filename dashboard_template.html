@@ -741,11 +741,29 @@ const roleVisa = (id) => (id === ALL_ROLES
 const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
+// The Apply kit and the marks are also kept by the helper (/api/state), so
+// the app's window, every browser and the extension see the same. Each
+// carries when it last changed ("<key>@", ms); the later copy wins.
+const SYNCED = ["profile", "marks"];
+const syncTimers = {};
 const store = {
   get(k, d) { try { const v = localStorage.getItem("jr:" + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem("jr:" + k, JSON.stringify(v)); } catch {} },
+  set(k, v) {
+    this.put(k, v);
+    if (SYNCED.includes(k)) { this.put(k + "@", Date.now()); pushState(k); }
+  },
+  put(k, v) { try { localStorage.setItem("jr:" + k, JSON.stringify(v)); } catch {} },
   del(k) { try { localStorage.removeItem("jr:" + k); } catch {} },
 };
+
+function pushState(k) {
+  if (!/^(127\.0\.0\.1|localhost)$/.test(location.hostname) || location.protocol !== "http:") return;
+  clearTimeout(syncTimers[k]);
+  syncTimers[k] = setTimeout(() => {
+    fetch("/api/state", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: k, value: store.get(k, {}), at: store.get(k + "@", 0) }) }).catch(() => {});
+  }, 500);
+}
 
 // Visa filters are kept per role: one search may need sponsorship, another not.
 const searchKey = (k, id) => (id === SETTINGS.roles[0].id ? k : `${k}:${id}`);
@@ -3921,6 +3939,26 @@ if (HELPER && !state.resume) {
     store.set("resume", state.resume);
     rescore();
     render();
+  }).catch(() => {});
+}
+// The Apply kit and marks: the helper's copy when it's newer, else this one goes up.
+if (HELPER) {
+  api("/api/state").then((remote) => {
+    let changed = false;
+    for (const k of SYNCED) {
+      const r = remote[k], at = store.get(k + "@", 0);
+      if (r && r.at > at) {
+        state[k] = r.value;
+        store.put(k, r.value);
+        store.put(k + "@", r.at);
+        changed = true;
+      } else if ((!r || at > r.at) && Object.keys(state[k] || {}).length) {
+        // Saved before the helper kept a copy: it counts as changed now.
+        if (!at) store.put(k + "@", Date.now());
+        pushState(k);
+      }
+    }
+    if (changed) { renderKit(); updateBookmarklet(); syncScoring(); render(); }
   }).catch(() => {});
 }
 if (HELPER && store.get("advanced", null) === null) {
