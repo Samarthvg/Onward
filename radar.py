@@ -916,14 +916,14 @@ def _ashby_posting(token: str, j: dict) -> dict:
         posted_exact=True,
         description=j.get("descriptionPlain") or strip_html(j.get("descriptionHtml")),
         apply_url=j.get("applyUrl"),
-        verify_url=f"https://api.ashbyhq.com/posting-api/job-board/{token}",
+        verify_url=f"https://api.ashbyhq.com/posting-api/job-board/{urllib.parse.quote(token)}",
         posted_field="publishedAt",
         posted_raw=j.get("publishedAt"),
     )
 
 
 def fetch_ashby(token: str) -> list[Job]:
-    data = get_json_once(f"https://api.ashbyhq.com/posting-api/job-board/{token}")
+    data = get_json_once(f"https://api.ashbyhq.com/posting-api/job-board/{urllib.parse.quote(token)}")
     out = []
     for j in data.get("jobs", []):
         if j.get("isListed") is False:
@@ -1518,7 +1518,7 @@ def _workday_path(path: str) -> str:
 
 
 def _ashby_by_id(token: str, pid: str) -> dict:
-    for j in get_json_once(f"https://api.ashbyhq.com/posting-api/job-board/{token}").get("jobs", []):
+    for j in get_json_once(f"https://api.ashbyhq.com/posting-api/job-board/{urllib.parse.quote(token)}").get("jobs", []):
         if j.get("id") == pid:
             return _ashby_posting(token, j)
     raise BoardMissing(f"ashby:{token}/{pid}")

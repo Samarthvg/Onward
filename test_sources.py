@@ -372,6 +372,13 @@ class GreenhouseTests(SourceTestCase):
         self.assertIn("• Go", jobs[0].description)
 
 
+class AshbyTests(SourceTestCase):
+    def test_token_with_spaces_is_quoted(self):
+        web = self.web({"posting-api": {"jobs": []}})
+        self.assertEqual(radar.fetch_ashby("the browser company"), [])
+        self.assertEqual(web.calls, ["https://api.ashbyhq.com/posting-api/job-board/the%20browser%20company"])
+
+
 class FunnelTests(SourceTestCase):
     def setUp(self) -> None:
         super().setUp()
