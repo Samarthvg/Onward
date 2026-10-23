@@ -200,5 +200,44 @@ class SkillsRowTests(unittest.TestCase):
         self.assertEqual(changes[0].status, "rejected")
 
 
+class HonestyTests(unittest.TestCase):
+    """What an entry's own lines back may be named in the job's words; what
+    another entry did may not."""
+    TEX = r"""\documentclass{article}
+\begin{document}
+\section*{Experience}
+\textbf{Cognitus} \hfill Jul 2025 - Jan 2026 \\
+Full Stack Developer Intern | \textit{Vue.js, Node.js, PouchDB, REST}
+\begin{itemize}
+\item Built and extended Node.js REST endpoints to support new estimation workflows.
+\end{itemize}
+\section*{Projects}
+\textbf{AI-thelete} | \textit{FastAPI, LangChain, Docker}
+\begin{itemize}
+\item Architected a Retrieval-Augmented Generation chatbot with FastAPI, LangChain, and the OpenAI API, persisting agent state via LangGraph checkpointing.
+\end{itemize}
+\end{document}
+"""
+    JD = "Build LLMs, AI agents and agentic workflows behind REST APIs, with Angular front ends."
+
+    def check(self, entry, new):
+        res = rt.parse(self.TEX)
+        e = res.entries[entry]
+        return rt.check_honesty(e.bullets[0].tex, new, e.allowed, res.vocabulary, self.JD)
+
+    def test_a_tool_at_the_end_of_the_tech_line_counts(self):
+        self.assertIsNone(self.check(0, "Built and extended Node.js REST APIs to support new estimation workflows."))
+
+    def test_a_skill_the_entry_implies_may_be_named(self):
+        self.assertIsNone(self.check(1, "Architected a Retrieval-Augmented Generation chatbot integrating LLMs with FastAPI "
+                                        "and LangChain, persisting agent state via LangGraph checkpointing."))
+        self.assertIsNone(self.check(1, "Architected an agentic Retrieval-Augmented Generation chatbot with FastAPI, LangChain, "
+                                        "and the OpenAI API, persisting agent state via LangGraph checkpointing."),
+                          "LangGraph is an agent framework")
+
+    def test_what_another_entry_did_still_needs_its_own_evidence(self):
+        self.assertIn("Angular", self.check(0, "Built and extended Node.js REST endpoints with Angular front ends."))
+
+
 if __name__ == "__main__":
     unittest.main()

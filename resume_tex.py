@@ -572,8 +572,14 @@ def check_honesty(old: str, new: str, allowed: set[str], vocabulary: set[str], j
     if new_nums:
         return f"introduces numbers not in your original ({', '.join(sorted(new_nums))})"
     jd_words = words(jd)
-    for tok in TECHY.findall(new_p):
-        t = tok.lower()
+    # A skill the entry is known to have ("LLMs" for a RAG chatbot on the
+    # OpenAI API, "REST APIs" for one that built REST endpoints) may be named
+    # in the job's words.
+    backed = [m.span() for name, rx in SKILLS if name in allowed for m in rx.finditer(new_p)]
+    for m in TECHY.finditer(new_p):
+        tok, t = m.group(0), m.group(0).lower()
+        if any(a <= m.start() and m.end() <= b for a, b in backed):
+            continue
         if t not in vocabulary and t in jd_words and t not in old_p.lower():
             return f"adds \"{tok}\" from the job description, which appears nowhere in your master resume"
     return None

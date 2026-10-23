@@ -39,7 +39,7 @@ H_SKIP_STRONG = re.compile(
 H_RESP = re.compile(
     r"responsibilit|what you(?:'ll| will)? (?:do|work on|own|build)|the role|your role|day[- ]to[- ]day|"
     r"you will|in this role|impact|the job|the work|what you'll be doing|key duties", re.I)
-BULLET = re.compile(r"^\s*(?:[-*•·▪◦‣]|\d{1,2}[.)])\s+")
+BULLET = re.compile(r"^\s*(?:[-*•·▪◦‣]\s*|[●○■►➢✓]\s*|\d{1,2}[.)]\s+)")
 # A requirements line that says it isn't one ("Experience with Braze a plus").
 LINE_PREF = re.compile(r"\ba plus\b|\bis a plus\b|\bpreferred\b|\bnice[- ]to[- ]have\b|\bbonus\b|\bhelpful\b|"
                        r"\bnot required\b|\bideally\b", re.I)

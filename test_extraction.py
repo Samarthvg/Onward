@@ -82,7 +82,8 @@ class TitleTests(unittest.TestCase):
             "Early Careers: Software Development Engineer", "Entry Level Software Engineer (Spring 2027)",
             "Backend Engineer, Secrets Management", "Software Engineer, Identity and Access Management"]
     DROP = ["Software Solution Engineer", "Solutions Engineer", "Sr Software Engineer",
-            "Software Engineer II", "Principal Data Engineering Architect", "Software Engineering Manager"]
+            "Software Engineer II", "Principal Data Engineering Architect", "Software Engineering Manager",
+            "FVP, Platform & Automation Engineering", "AVP, Software Engineering", "Vice-President, Software Development"]
 
     def test_titles(self):
         for title in self.KEEP:
@@ -198,6 +199,27 @@ class YearsTests(unittest.TestCase):
         form = "Minimum Years of Work Experience:\n• 1\nPreferred Years of Work Experience:\n• No additional years of experience"
         self.assertEqual(radar.min_years(form), 1)
         self.assertIsNone(radar.min_years("Minimum Years of Work Experience:\n• None"))
+
+    def test_a_requirement_that_starts_with_its_years(self):
+        """Without the word "experience": Axos's "●10+ years in software engineering"."""
+        self.assertEqual(radar.min_years("Requirements:\n●Bachelor's degree or higher in related field\n"
+                                         "●10+ years in software engineering with meaningful leadership"), 10)
+        self.assertEqual(radar.min_years("What you'll need\n• 3-5 years building production data systems"), 3)
+        self.assertEqual(radar.min_years("Qualifications\n- A minimum of 4 years of writing high performance C++"), 4)
+        # Not a requirement: a nice-to-have, or the company's own history.
+        self.assertIsNone(radar.min_years("Nice to have\n• 5+ years in fintech"))
+        self.assertIsNone(radar.min_years("Requirements\n• 2+ years in a startup is a plus"))
+        self.assertIsNone(radar.min_years("About us\nFor 30 years we have built software for banks."))
+
+    def test_the_largest_required_figure_counts(self):
+        two = ("Basic Qualifications\n- 3+ years of non-internship professional software development experience\n"
+               "- 2+ years of non-internship design or architecture of new and existing systems experience")
+        self.assertEqual(radar.min_years(two), 3)
+        # Years instead of a degree aren't asked of someone who has it.
+        alt = ("Requirements\n• 1+ years of experience with Python\n"
+               "• Bachelor's degree, or HS diploma or GED and 7+ years of experience supporting IT projects")
+        self.assertEqual(radar.min_years(alt), 1)
+        self.assertEqual(radar.min_years("Requirements\n• Bachelor's degree and 5+ years of experience in software"), 5)
 
 
 if __name__ == "__main__":

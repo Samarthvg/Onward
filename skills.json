@@ -986,7 +986,7 @@
  },
  {
   "n": "REST",
-  "re": "REST(?=\\s*(?:[,/)]|and |or |APIs?|services|endpoints?|$))",
+  "re": "REST(?=[ \\t]*(?:[,/)\\n]|and |or |APIs?|services|endpoints?|$))",
   "cs": true,
   "implies": [
    "REST APIs",
@@ -1058,14 +1058,16 @@
   "re": "langgraph",
   "implies": [
    "LangChain",
-   "LLMs"
+   "LLMs",
+   "LLM Agents"
   ]
  },
  {
   "n": "CrewAI",
   "re": "crewai",
   "implies": [
-   "LLMs"
+   "LLMs",
+   "LLM Agents"
   ]
  },
  {
@@ -1073,7 +1075,8 @@
   "re": "AutoGen",
   "cs": true,
   "implies": [
-   "LLMs"
+   "LLMs",
+   "LLM Agents"
   ]
  },
  {

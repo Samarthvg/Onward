@@ -230,19 +230,50 @@ YES_SPONSOR = re.compile(
     re.I,
 )
 
+YOE_LINE = re.compile(r"(?:a )?(?:minimum of |at least )?(\d{1,2})\s*(?:\+|(?:-|to|–)\s*\d{1,2})?\s*(?:or more\s+)?"
+                      r"years?\b(?! old)", re.I)
 # Form-style postings (Home Depot's): "Minimum Years of Work Experience:" with
 # the number on the next line, often as a bullet.
 YOE_FIELD = re.compile(r"\bminimum years of (?:work |relevant |professional )?experience\s*:?\s*(?:[-\u2022*\u00b7]\s*)?(\d{1,2})\b",
                        re.I)
 
 
-def min_years(text: str) -> int | None:
-    years = [int(m.group(1)) for m in YOE_FIELD.finditer(text) if int(m.group(1)) < 20]
+IN_LIEU = re.compile(r"\bin lieu\b|\binstead of\b|\bdiploma\b|\bged\b|\bor equivalent\b|\bequivalent (?:work |practical )?experience\b|"
+                     r"\bdegree (?:or|/)|\bor (?:an? )?(?:bachelor|master|degree)|\bwithout a degree\b", re.I)
+
+
+def _years_in(text: str) -> list[int]:
+    out = []
     for m in YOE.finditer(text):
         g = m.group(1).lower()
         n = NUMBER_WORDS.get(g) or (int(g) if g.isdigit() else None)
         if n is not None and n < 20:
-            years.append(n)
+            out.append(n)
+    return out
+
+
+def min_years(text: str) -> int | None:
+    """The years of experience a posting requires. Each requirement line
+    gives its smallest figure ("5 years with a BS, or 3 with an MS"), and the
+    posting the largest of those: "3+ years of development" and "2+ years of
+    design" ask for 3. Without labelled requirements, the smallest figure
+    anywhere, so a "5+ years preferred" doesn't count against an entry role."""
+    form = [int(m.group(1)) for m in YOE_FIELD.finditer(text) if int(m.group(1)) < 20]
+    required = []
+    for line, section in reqparse.units(text):
+        # Years instead of a degree ("HS diploma and 7+ years", "or 4 years of
+        # equivalent experience") aren't asked of someone with the degree.
+        if section != "req" or reqparse.LINE_PREF.search(line) or IN_LIEU.search(line):
+            continue
+        # Also a requirement that starts with its years and doesn't say
+        # "experience" ("10+ years in software engineering").
+        m = YOE_LINE.match(line)
+        found = _years_in(line) + ([int(m.group(1))] if m and int(m.group(1)) < 20 else [])
+        if found:
+            required.append(min(found))
+    if required:
+        return max(required + form)
+    years = form + _years_in(text)
     return min(years) if years else None
 
 
