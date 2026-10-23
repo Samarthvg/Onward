@@ -34,6 +34,8 @@ const GH_WANT = {
   "current-role--0": false,
   "4024620002": "Decline To Self Identify", "4024625002": ["Decline To Self Identify"], "4024623002": "I don't wish to answer",
   "4024624002": "I do not want to answer", "4024621002": null, consent: false,
+  // A plain "Projects" box gets the resume's projects written out, not an AI answer.
+  question_10: "Turbofan Life Estimation (Python, PyTorch), Feb 2025: Trained an LSTM on NASA C-MAPSS data to predict remaining useful life.",
 };
 
 await test("greenhouse: fills text, react-select, async select, combobox, resume and EEO", async (page) => {
@@ -249,6 +251,10 @@ await test("workday: empty sections get rows from the resume, plus skills and la
     // Websites from the profile (LinkedIn has its own field); no certifications in the resume, so no rows.
     __sites: 2, "webAddress-1--url": "https://testy.example.com", "webAddress-2--url": "https://github.com/testy-example",
     __certs: 0,
+    // Projects get rows too, from the resume's project entries.
+    __projects: 1, "project-1--projectName": "Turbofan Life Estimation",
+    "project-1--startDate-dateSectionMonth-input": "02", "project-1--startDate-dateSectionYear-input": "2025",
+    "project-1--description": "Trained an LSTM on NASA C-MAPSS data to predict remaining useful life.", "project-1--projectUrl": "",
   });
   expect("empty workday: missing skill reported", /Skills not in this site's list[\s\S]*Vue\.js/.test(text), text);
   expect("empty workday: only the user's own Next", (await page.evaluate(() => window.__navClicks)) === 1);

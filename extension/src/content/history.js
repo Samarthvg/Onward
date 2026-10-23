@@ -21,7 +21,7 @@
   const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const EDU_FIELDS = new Set(["school", "degree", "field", "gpa"]);
   const WORK_FIELDS = new Set(["title", "company", "description", "current"]);
-  const SECTION_NAME = { work: "Work Experience", edu: "Education", lang: "Languages", skills: "Skills", web: "Websites", cert: "Certifications" };
+  const SECTION_NAME = { work: "Work Experience", edu: "Education", lang: "Languages", skills: "Skills", web: "Websites", cert: "Certifications", proj: "Projects" };
 
   /** Which repeating row a control sits in: { type: "work"|"edu", n } or null. */
   function rowOf(q, field) {
@@ -68,6 +68,7 @@
   const REPEATERS = {
     web: { id: /\bwebAddress-(\d+)--/i, wrap: "[data-automation-id^='webAddress-']" },
     cert: { id: /\bcertifications?-(\d+)--/i, wrap: "[data-automation-id^='certification-'], [data-automation-id^='certifications-']" },
+    proj: { id: /\bprojects?-(\d+)--/i, wrap: "[data-automation-id^='project-'], [data-automation-id^='projects-']" },
   };
 
   function repeaterOf(q) {
@@ -85,6 +86,18 @@
   function repeaterField(type, q) {
     const t = normQ(q.label + " " + q.attrs.replace(/([a-z])([A-Z])/g, "$1 $2"));
     if (type === "web") return /url|website|web address|link/.test(t) ? "url" : null;
+    if (type === "proj") {
+      if (q.kind === "checkbox") return /current|ongoing|present|in progress/.test(t) ? "current" : null;
+      if (/description|summary|details|responsibilit/.test(t)) return "description";
+      if (/url|link|website|repo/.test(t)) return "url";
+      const part = /month/.test(t) ? "Month" : /year/.test(t) ? "Year" : "Date";
+      if (/\b(start|from|begin)/.test(t)) return "start" + part;
+      if (/\b(end|to|until|completed?)\b/.test(t)) return "end" + part;
+      if (/\brole\b|position/.test(t)) return "role";
+      if (/tools|technolog|skills used|\btech\b/.test(t)) return "tech";
+      if (/project|name|title/.test(t)) return "name";
+      return null;
+    }
     if (/number|\bid\b/.test(t)) return "number";
     if (/expir/.test(t)) return "expiry";
     if (/issue|obtained|earned|date/.test(t)) return /year/.test(t) ? "issuedYear" : /month/.test(t) ? "issuedMonth" : "issuedDate";
@@ -215,6 +228,7 @@
       lang: "[data-automation-id='languageSection'], [data-automation-id='languagesSection'], [aria-labelledby*='language' i], [role='group'][aria-label*='Language' i]",
       web: "[data-automation-id='websiteSection'], [data-automation-id='websitesSection'], [aria-labelledby*='website' i], [role='group'][aria-label*='Website' i]",
       cert: "[data-automation-id='certificationSection'], [data-automation-id='certificationsSection'], [aria-labelledby*='certification' i], [role='group'][aria-label*='Certification' i]",
+      proj: "[data-automation-id='projectSection'], [data-automation-id='projectsSection'], [aria-labelledby*='project' i], [role='group'][aria-label*='Project' i]",
     }[type];
     const name = SECTION_NAME[type].toLowerCase();
     const addIn = (s) => {
@@ -400,11 +414,38 @@
     return { added, missing };
   }
 
+  /** A box that just asks for your projects ("Projects", "Relevant projects"), not an essay about one. */
+  function projectsQuestion(qs) {
+    const LIST = /^(relevant |key |personal |academic |side |technical |notable )?projects?( you have worked on| you ve worked on)?$|^(list|share) (your|any) (relevant )?projects$/;
+    return qs.find((q) => (!q.history || q.history.type === "proj") && (q.kind === "textarea" || q.kind === "text")
+      && LIST.test(normQ(q.label))) || null;
+  }
+
+  /** Projects written out for one box: a heading line per project, its points, its link; whole projects only. */
+  function projectsText(projs, max, oneLine = false) {
+    const blocks = projs.map((p) => {
+      const when = [p.start && p.start.year ? (p.start.month ? MONTHS[p.start.month - 1].slice(0, 3) + " " : "") + p.start.year : "",
+        p.current ? "present" : p.end && p.end.year ? (p.end.month ? MONTHS[p.end.month - 1].slice(0, 3) + " " : "") + p.end.year : ""].filter(Boolean).join(" – ");
+      const head = [p.name + (p.tech ? ` (${p.tech})` : ""), p.role, when].filter(Boolean).join(", ");
+      const points = (p.description != null ? String(p.description).split("\n") : p.bullets || []).map((l) => l.trim()).filter(Boolean);
+      // A one-line box drops line breaks, so its points run on as sentences.
+      return oneLine ? [head + ":", ...points, p.link || ""].filter(Boolean).join(" ")
+        : [head, ...points, p.link || ""].filter(Boolean).join("\n");
+    });
+    const sep = oneLine ? "; " : "\n\n";
+    const kept = [];
+    for (const b of blocks) {
+      if (max && kept.concat(b).join(sep).length > max) break;
+      kept.push(b);
+    }
+    return kept.length ? kept.join(sep) : (max ? blocks[0].slice(0, max) : "");
+  }
+
   /**
    * Skills from the master resume and languages from the profile.
    * Languages rows are added with the section's Add button on Workday.
    */
-  async function fillExtras(qs, { skills, languages, websites, certifications, recollect, allowAdd, ours, progress }) {
+  async function fillExtras(qs, { skills, languages, websites, certifications, projects, recollect, allowAdd, ours, progress }) {
     const items = [];
     const sq = skillsQuestion(qs);
     if (sq && !(skills && skills.length) && !W.get(sq)) {
@@ -469,6 +510,44 @@
         }
       }
     }
+    // Projects: rows where the form has them (Add pressed for more), else one "Projects" box.
+    const projs = (projects || []).filter((p) => p && p.name);
+    if (projs.length) {
+      let pr = rows(qs).filter((r) => r.type === "proj");
+      if (allowAdd && pr.length < projs.length && (pr.length || addButton("proj", document))) {
+        await addRows("proj", projs.length, pr.length, recollect);
+        qs = recollect();
+        pr = rows(qs).filter((r) => r.type === "proj");
+      }
+      for (const [i, r] of pr.entries()) {
+        const p = projs[i];
+        if (!p) break;
+        for (const [field, q] of Object.entries(r.fields)) {
+          const base = { q, label: `Projects ${i + 1}: ${q.label || field}`, kind: q.kind, history: "proj" };
+          const values = field === "name" ? [p.name] : field === "role" ? [p.role].filter(Boolean) : field === "url" ? [p.link].filter(Boolean)
+            : field === "tech" ? [p.tech].filter(Boolean) : wanted(field, p, q);
+          if (!values.length) continue;
+          if (field.startsWith("end") && p.current) continue;
+          if (q.kind === "checkbox" && q.single && values[0] === "no") continue;
+          if (W.get(q) && !(q.kind === "checkbox" && q.single)) { items.push(Object.assign(base, { status: "had", value: W.get(q) })); continue; }
+          const res = await put(q, values);
+          if (res.ok) {
+            ours.set(q.el, { value: W.get(q) || res.chosen, source: "resume" });
+            items.push(Object.assign(base, { status: "filled", value: res.chosen, source: "resume" }));
+          } else items.push(Object.assign(base, { status: "needs", why: res.why || "couldn't fill this" }));
+        }
+      }
+      const box = !pr.length && projectsQuestion(qs);
+      if (box && !W.get(box)) {
+        box.history = { type: "proj", field: "list" };
+        const text = projectsText(projs, box.el.maxLength > 0 ? box.el.maxLength : 0, box.kind !== "textarea");
+        if (text && typeInto(box.el, text)) {
+          ours.set(box.el, { value: text, source: "resume" });
+          items.push({ q: box, label: box.label || "Projects", kind: box.kind, history: "proj", status: "filled", value: text, source: "resume" });
+        }
+      }
+    }
+
     // Websites from the profile, Certifications from the resume's own section.
     for (const [type, list] of [["web", websites || []], ["cert", certifications || []]]) {
       if (!list.length) continue;
@@ -536,5 +615,5 @@
     }
   }
 
-  JR.history = { rows, fill, fillExtras, skillsQuestion, addButton, replace, restore, fitLines, SECTION_NAME };
+  JR.history = { rows, fill, fillExtras, skillsQuestion, projectsQuestion, projectsText, addButton, replace, restore, fitLines, SECTION_NAME };
 })(globalThis);

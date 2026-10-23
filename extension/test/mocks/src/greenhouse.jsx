@@ -168,6 +168,7 @@ function App() {
       <GhSelect id="question_7" label="Are you currently subject to any agreement with a former employer (such as a non-compete agreement) that may limit your ability to perform the duties of the position?" options={NONCOMPETE} />
       <TextField id="question_8" label="When can you start?" />
       <Why />
+      <TextField id="question_10" label="Projects" />
       <div className="education--form">
         <h3>Education</h3>
         <GhSelect id="school--0" label="School" async />

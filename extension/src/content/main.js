@@ -148,21 +148,23 @@
       const wantsHistory = H.rows(qs).some((r) => r.type === "work" || r.type === "edu")
         || (workday && !!(H.addButton("work", document) || H.addButton("edu", document)));
       const skillsQ = H.skillsQuestion(qs);
-      if (wantsHistory || skillsQ) {
+      const projectsQ = H.projectsQuestion(qs) || H.rows(qs).some((r) => r.type === "proj") || (workday && !!H.addButton("proj", document));
+      if (wantsHistory || skillsQ || projectsQ) {
         JR.panel.update({ status: "Filling work history and education from your resume…" });
         // Entries edited in the extension's options win; the master resume fills the gaps.
         const mine = (await api.storage.local.get("history")).history || null;
         const has = (k) => !!(mine && Array.isArray(mine[k]) && mine[k].length);
         let fromResume = null;
-        if (store.settings.helper && !(has("work") && has("education") && has("skills"))) {
+        if (store.settings.helper && !(has("work") && has("education") && has("skills") && has("projects"))) {
           fromResume = await api.runtime.sendMessage({ type: "jr:history", url: location.href }).catch(() => null);
           if (!fromResume || fromResume.error) fromResume = null;
         }
         const pick = (k) => (has(k) ? mine[k] : fromResume && fromResume[k]) || [];
         hist = mine || fromResume
-          ? { work: pick("work"), education: pick("education"), skills: pick("skills"), certifications: pick("certifications") }
+          ? { work: pick("work"), education: pick("education"), skills: pick("skills"), certifications: pick("certifications"),
+            projects: pick("projects") }
           : null;
-        if (hist && !hist.work.length && !hist.education.length && !hist.skills.length) hist = null;
+        if (hist && !hist.work.length && !hist.education.length && !hist.skills.length && !hist.projects.length) hist = null;
       }
       if (hist && wantsHistory) {
         const r = await H.fill(qs, hist, { recollect, allowAdd: workday, ours: filledByUs });
@@ -175,15 +177,15 @@
             why: `your resume has ${n} more ${type === "work" ? "job" : "school"}${n === 1 ? "" : "s"} than this form shows; add ${n === 1 ? "a row" : "rows"} and press Fill again` });
         }
       }
-      const extraTypes = ["lang", "web", "cert"];
-      if (H.skillsQuestion(qs) || H.rows(qs).some((r) => extraTypes.includes(r.type))
+      const extraTypes = ["lang", "web", "cert", "proj"];
+      if (H.skillsQuestion(qs) || H.projectsQuestion(qs) || H.rows(qs).some((r) => extraTypes.includes(r.type))
           || (workday && extraTypes.some((t) => H.addButton(t, document)))) {
         // Links already asked for on their own (a LinkedIn field) aren't repeated as websites.
         const own = (re) => qs.some((q) => !q.history && re.test(q.label + " " + q.attrs));
         const p = store.profile;
         const websites = [p.portfolio, p.github, own(/linked ?in/i) ? "" : p.linkedin].filter(Boolean);
         const r = await H.fillExtras(qs, { skills: hist ? hist.skills || [] : [], languages: p.languages, websites,
-          certifications: hist ? hist.certifications || [] : [],
+          certifications: hist ? hist.certifications || [] : [], projects: hist ? hist.projects || [] : [],
           recollect, allowAdd: workday, ours: filledByUs, progress: (status) => JR.panel.update({ status }) });
         qs = r.qs;
         for (const it of r.items) { if (it.status === "filled") mark(it.q, "filled"); items.push(it); }
@@ -192,6 +194,8 @@
       H.rows(qs);
       const skillsNow = H.skillsQuestion(qs);
       if (skillsNow) skillsNow.history = { type: "skills", field: "skills" };
+      const projectsNow = hist && hist.projects.length ? H.projectsQuestion(qs) : null;
+      if (projectsNow) projectsNow.history = { type: "proj", field: "list" };
       const histTouched = !!hist || items.length > 0;
 
       const keys = qs.map((q) => memKey(q.label)).filter(Boolean);

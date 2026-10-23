@@ -231,6 +231,29 @@ function Websites() {
   );
 }
 
+function Projects() {
+  const [n, setN] = useState(S.__projects ?? 0);
+  S.__projects = n;
+  return (
+    <div>
+      <h3>Projects</h3>
+      {Array.from({ length: n }, (_, i) => i + 1).map((k) => {
+        const p = `project-${k}--`;
+        return (
+          <div key={k} data-automation-id={`project-${k}`}>
+            <Text id={p + "projectName"} aid="projectName" label="Project Name" required />
+            <DateParts id={p + "startDate"} aid="startDate" label="From" />
+            <DateParts id={p + "endDate"} aid="endDate" label="To" />
+            <Text id={p + "projectUrl"} aid="projectUrl" label="Project URL" />
+            <Area id={p + "description"} aid="description" label="Description" maxLength={2000} />
+          </div>
+        );
+      })}
+      <button type="button" data-automation-id="Add" onClick={() => setN(n + 1)}>Add</button>
+    </div>
+  );
+}
+
 function Certifications() {
   const [n, setN] = useState(S.__certs ?? 0);
   S.__certs = n;
@@ -321,7 +344,7 @@ function Step({ n }) {
       <Languages />
       <Resume />
       <Text id="socialNetworkAccounts--linkedInAccount" aid="linkedInAccount" inputAid="linkedinQuestion" label="LinkedIn" />
-      {EMPTY ? <><Websites /><Certifications /></> : <Text id="webAddress-1--url" aid="url" inputAid="website" label="URL" />}
+      {EMPTY ? <><Websites /><Projects /><Certifications /></> : <Text id="webAddress-1--url" aid="url" inputAid="website" label="URL" />}
     </>
   );
   if (n === 2) return (

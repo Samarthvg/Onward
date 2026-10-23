@@ -171,6 +171,21 @@ check("languages: levels", () => assert.deepEqual(R.languageList("English (Fluen
   { name: "English", level: "Fluent" }, { name: "Hindi", level: "" }, { name: "Gujarati", level: "Native" }, { name: "Serbo-Croatian", level: "" }]));
 check("languages: names for check-all-that-apply", () => assert.deepEqual(R.alternatives({ key: "languages" }, "English (Fluent), Hindi"), ["English", "Hindi"]));
 
+// Projects written into one box (history.js needs no DOM for this)
+globalThis.JR.dom = {};
+globalThis.JR.widgets = {};
+vm.runInThisContext(readFileSync(new URL("../src/content/history.js", import.meta.url), "utf8"));
+const PROJ = [
+  { name: "Turbofan Life Estimation", tech: "Python, PyTorch", start: { month: 2, year: 2025 }, end: { month: 4, year: 2025 },
+    description: "Trained an LSTM on NASA C-MAPSS.\nBeat prior RMSE.", link: "https://example.test/rul" },
+  { name: "Portfolio Manager", role: "Full Stack Developer", current: true, start: { month: 3, year: 2024 }, bullets: ["Java Swing app."] },
+];
+check("projects text: one block per project", () => assert.equal(JR.history.projectsText(PROJ, 0),
+  "Turbofan Life Estimation (Python, PyTorch), Feb 2025 – Apr 2025\nTrained an LSTM on NASA C-MAPSS.\nBeat prior RMSE.\nhttps://example.test/rul\n\n" +
+  "Portfolio Manager, Full Stack Developer, Mar 2024 – present\nJava Swing app."));
+check("projects text: whole projects within the limit", () => assert.ok(!JR.history.projectsText(PROJ, 130).includes("Portfolio")));
+check("projects text: one line", () => assert.ok(!JR.history.projectsText(PROJ, 0, true).includes("\n")));
+
 // Option matching
 const pick = (v, opts, want) => check(`pick ${v} from ${opts.join("|")}`, () => assert.equal(R.pickOption(v, opts), want));
 pick("yes", ["No", "Yes"], 1);
