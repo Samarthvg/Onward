@@ -21,7 +21,7 @@
   const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const EDU_FIELDS = new Set(["school", "degree", "field", "gpa"]);
   const WORK_FIELDS = new Set(["title", "company", "description", "current"]);
-  const SECTION_NAME = { work: "Work Experience", edu: "Education" };
+  const SECTION_NAME = { work: "Work Experience", edu: "Education", lang: "Languages", skills: "Skills", web: "Websites", cert: "Certifications" };
 
   /** Which repeating row a control sits in: { type: "work"|"edu", n } or null. */
   function rowOf(q, field) {
@@ -42,10 +42,80 @@
     return null;
   }
 
+  /** A Languages row: Workday's "language-2--language", or a wrapper "language-2". */
+  function langRowOf(q) {
+    const ids = [q.el.id, q.el.getAttribute("data-automation-id"), q.el.name].filter(Boolean).join(" ");
+    const m = ids.match(/\blanguages?-(\d+)--/i);
+    if (m) return +m[1];
+    const wrap = q.el.closest("[data-automation-id^='language-'], [data-automation-id^='languages-']");
+    const aid = wrap && wrap.getAttribute("data-automation-id");
+    return aid && /-\d+$/.test(aid) ? +aid.split("-").pop() : null;
+  }
+
+  /** What a control in a Languages row asks: the language, "I am fluent", or a proficiency. */
+  function langField(q) {
+    const t = normQ(q.label + " " + q.attrs.replace(/([a-z])([A-Z])/g, "$1 $2"));
+    if (q.kind === "checkbox" && /fluent|native/.test(t)) return "fluent";
+    const p = t.match(/\b(reading|speaking|writing|comprehension|overall|listening)\b/);
+    if (p) return "level:" + p[1];
+    if (/proficien|\blevel\b/.test(t)) return "level:overall";
+    if (/\blanguage\b/.test(t)) return "language";
+    return null;
+  }
+
+  // Websites and Certifications rows: Workday's "webAddress-2--url",
+  // "certification-1--issuedDate-dateSectionYear-input".
+  const REPEATERS = {
+    web: { id: /\bwebAddress-(\d+)--/i, wrap: "[data-automation-id^='webAddress-']" },
+    cert: { id: /\bcertifications?-(\d+)--/i, wrap: "[data-automation-id^='certification-'], [data-automation-id^='certifications-']" },
+  };
+
+  function repeaterOf(q) {
+    const ids = [q.el.id, q.el.getAttribute("data-automation-id"), q.el.name].filter(Boolean).join(" ");
+    for (const [type, r] of Object.entries(REPEATERS)) {
+      const m = ids.match(r.id);
+      if (m) return { type, n: +m[1] };
+      const wrap = q.el.closest(r.wrap);
+      const aid = wrap && wrap.getAttribute("data-automation-id");
+      if (aid && /-\d+$/.test(aid)) return { type, n: +aid.split("-").pop() };
+    }
+    return null;
+  }
+
+  function repeaterField(type, q) {
+    const t = normQ(q.label + " " + q.attrs.replace(/([a-z])([A-Z])/g, "$1 $2"));
+    if (type === "web") return /url|website|web address|link/.test(t) ? "url" : null;
+    if (/number|\bid\b/.test(t)) return "number";
+    if (/expir/.test(t)) return "expiry";
+    if (/issue|obtained|earned|date/.test(t)) return /year/.test(t) ? "issuedYear" : /month/.test(t) ? "issuedMonth" : "issuedDate";
+    if (/certif|license|name|title/.test(t)) return "name";
+    return null;
+  }
+
   /** The repeating rows on the page: [{ type, n, fields: { field: question } }]. */
   function rows(qs) {
     const byKey = new Map();
     for (const q of qs) {
+      const rep = repeaterOf(q);
+      if (rep) {
+        const field = repeaterField(rep.type, q);
+        if (!field) continue;
+        const key = rep.type + ":" + rep.n;
+        if (!byKey.has(key)) byKey.set(key, { type: rep.type, n: rep.n, fields: {} });
+        if (!byKey.get(key).fields[field]) byKey.get(key).fields[field] = q;
+        q.history = { type: rep.type, n: rep.n, field };
+        continue;
+      }
+      const ln = langRowOf(q);
+      if (ln != null) {
+        const field = langField(q);
+        if (!field) continue;
+        const key = "lang:" + ln;
+        if (!byKey.has(key)) byKey.set(key, { type: "lang", n: ln, fields: {} });
+        if (!byKey.get(key).fields[field]) byKey.get(key).fields[field] = q;
+        q.history = { type: "lang", n: ln, field };
+        continue;
+      }
       const field = historyField(q.label, q.attrs);
       if (!field) continue;
       const r = rowOf(q, field);
@@ -137,26 +207,57 @@
   /* ------------------------------------------------------------ add rows */
 
   function addButton(type, doc) {
-    const sel = type === "work"
-      ? "[data-automation-id='workExperienceSection'], [aria-labelledby*='workExperience' i], [role='group'][aria-label*='Work Experience' i]"
-      : "[data-automation-id='educationSection'], [aria-labelledby*='education' i], [role='group'][aria-label*='Education' i]";
+    const sel = {
+      work: "[data-automation-id='workExperienceSection'], [aria-labelledby*='workExperience' i], [role='group'][aria-label*='Work Experience' i]",
+      edu: "[data-automation-id='educationSection'], [aria-labelledby*='education' i], [role='group'][aria-label*='Education' i]",
+      lang: "[data-automation-id='languageSection'], [data-automation-id='languagesSection'], [aria-labelledby*='language' i], [role='group'][aria-label*='Language' i]",
+      web: "[data-automation-id='websiteSection'], [data-automation-id='websitesSection'], [aria-labelledby*='website' i], [role='group'][aria-label*='Website' i]",
+      cert: "[data-automation-id='certificationSection'], [data-automation-id='certificationsSection'], [aria-labelledby*='certification' i], [role='group'][aria-label*='Certification' i]",
+    }[type];
     const name = SECTION_NAME[type].toLowerCase();
-    const sections = [...doc.querySelectorAll(sel)];
-    if (!sections.length) {
-      // Fall back to the heading that names the section.
-      for (const h of doc.querySelectorAll("h2, h3, h4, [role='heading']")) {
-        if (textOf(h).toLowerCase().startsWith(name) && h.parentElement) sections.push(h.parentElement);
-      }
-    }
-    for (const s of sections) {
+    const addIn = (s) => {
       for (const b of s.querySelectorAll("button, [role='button']")) {
         const t = (textOf(b) + " " + (b.getAttribute("aria-label") || "") + " " + (b.getAttribute("data-automation-id") || "")).trim();
         if (!visible(b) || b.disabled || b.type === "submit") continue;
-        if (/next|submit|continue|save|delete|remove/i.test(t)) continue;
+        if (/next|submit|continue|save|delete|remove|upload|select files/i.test(t)) continue;
         if (/^add\b|\badd( another)?$|add-button|^\+/i.test(t)) return b;
+      }
+      return null;
+    };
+    for (const s of doc.querySelectorAll(sel)) { const b = addIn(s); if (b) return b; }
+    // Otherwise climb from the heading that names the section, stopping before a
+    // wrapper that also holds another section's heading.
+    const isHeading = (h, n) => textOf(h).toLowerCase().replace(/\s*\(.*$/, "").trim() === n;
+    const others = Object.values(SECTION_NAME).map((x) => x.toLowerCase()).filter((x) => x !== name)
+      .concat(["social network urls", "resume/cv", "resume", "my information"]);
+    for (const h of doc.querySelectorAll("h2, h3, h4, h5, [role='heading'], legend")) {
+      if (!isHeading(h, name)) continue;
+      for (let n = h.parentElement, i = 0; n && i < 6; n = n.parentElement, i++) {
+        const foreign = [...n.querySelectorAll("h2, h3, h4, h5, [role='heading'], legend")].some((x) => x !== h && others.some((o) => isHeading(x, o)));
+        if (foreign) break;
+        const b = addIn(n);
+        if (b) return b;
       }
     }
     return null;
+  }
+
+  /** Presses a section's Add button until it has `want` rows (or the button stops adding). Returns how many were added. */
+  async function addRows(type, want, have, recollect) {
+    let added = 0;
+    for (let guard = 0; have < want && guard < 20; guard++) {
+      const b = addButton(type, document);
+      if (!b) break;
+      b.scrollIntoView({ block: "center" });
+      clickSeq(b);
+      const before = have;
+      const grew = await waitFor(() => { const n = rows(recollect()).filter((r) => r.type === type).length; return n > before ? n : 0; }, 4000);
+      if (!grew) break;
+      have = grew;
+      added++;
+      await sleep(250);
+    }
+    return added;
   }
 
   /* ----------------------------------------------------------------- fill */
@@ -169,24 +270,18 @@
    */
   async function fill(qs, hist, { recollect, allowAdd, ours }) {
     let found = rows(qs);
-    if (!found.length) return { qs, items: [], diffs: {}, extra: {} };
     const extra = {};
     if (allowAdd) {
       for (const type of ["work", "edu"]) {
         const entries = (type === "work" ? hist.work : hist.education) || [];
-        let have = found.filter((r) => r.type === type).length;
-        if (!have) continue;   // no such section on this step
-        const btn = () => addButton(type, document);
-        while (have < entries.length && btn()) {
-          clickSeq(btn());
-          const grew = await waitFor(() => rows(recollect()).filter((r) => r.type === type).length > have, 3000);
-          if (!grew) break;
-          have++;
-        }
+        // Workday shows an empty section as just a heading and an Add button.
+        const added = await addRows(type, entries.length, found.filter((r) => r.type === type).length, recollect);
+        if (added) found = rows(recollect());
       }
       qs = recollect();
       found = rows(qs);
     }
+    if (!found.some((r) => r.type === "work" || r.type === "edu")) return { qs, items: [], diffs: {}, extra };
 
     const items = [];
     const diffs = { work: [], edu: [] };
@@ -248,6 +343,172 @@
     return { qs, items, diffs, extra };
   }
 
+  /* --------------------------------------------------- skills and languages */
+
+  const LEVEL_WORDS = {
+    native: ["Native", "Native or bilingual", "Native or Bilingual Proficiency", "Fluent", "Expert", "Advanced"],
+    fluent: ["Fluent", "Full professional proficiency", "Professional", "Advanced", "Expert"],
+    advanced: ["Advanced", "Professional", "Fluent"],
+    intermediate: ["Intermediate", "Limited working proficiency", "Conversational", "Moderate"],
+    beginner: ["Beginner", "Elementary", "Basic", "Elementary proficiency"],
+  };
+
+  /** The skills box: Workday's "Type to Add Skills" search, or a plain "Skills" text field. */
+  function skillsQuestion(qs) {
+    // A box that only takes a list of skills; "Describe your technical skills" is an essay.
+    const LIST = /^(type to add |add |enter |list )?(your )?(technical |key |relevant |top )?skills?( set)?( list)?$/;
+    return qs.find((q) => (!q.history || q.history.type === "skills") && ["prompt", "text", "textarea", "combo"].includes(q.kind)
+      && (LIST.test(normQ(q.label)) || (q.kind === "prompt" && /(^|[\s-])skills?([\s-]|$)/i.test(q.attrs)))) || null;
+  }
+
+  function promptOptions(doc) {
+    return [...doc.querySelectorAll("[data-automation-id='promptOption'], [data-automation-id='promptLeafNode'] [role='option']")]
+      .filter((o) => visible(o) && !/^no (items|results|matches)/i.test(textOf(o)));
+  }
+
+  function chips(q) {
+    const box = q.box || q.el.parentElement;
+    return [...box.querySelectorAll("[data-automation-id='selectedItem'], [data-automation-id='promptSelectionLabel']")].map((c) => normQ(textOf(c)));
+  }
+
+  /** Adds skills one at a time: search, pick the exact match, check the chip appeared. */
+  async function addSkills(q, skills, progress) {
+    const doc = q.el.ownerDocument;
+    const added = [], missing = [];
+    for (const [i, skill] of skills.entries()) {
+      if (chips(q).includes(normQ(skill))) { added.push(skill); continue; }
+      progress(`Adding skills ${i + 1}/${skills.length}…`);
+      typeInto(q.el, "", { blur: false });
+      typeInto(q.el, skill, { blur: false });
+      keyChar(q.el, skill.slice(-1));
+      JR.dom.key(q.el, "Enter");
+      const opts = await waitFor(() => { const o = promptOptions(doc); return o.length ? o : null; }, 3000);
+      const texts = (opts || []).map(textOf);
+      let k = texts.findIndex((t) => normQ(t) === normQ(skill));
+      if (k < 0) k = JR.rules.pickOption(skill, texts);
+      if (k < 0) { missing.push(skill); JR.dom.key(q.el, "Escape"); continue; }
+      const before = chips(q).length;
+      clickSeq(opts[k]);
+      const ok = await waitFor(() => chips(q).length > before, 2000);
+      (ok ? added : missing).push(skill);
+      await sleep(150);
+    }
+    typeInto(q.el, "", { blur: false });
+    JR.dom.key(q.el, "Escape");
+    return { added, missing };
+  }
+
+  /**
+   * Skills from the master resume and languages from the profile.
+   * Languages rows are added with the section's Add button on Workday.
+   */
+  async function fillExtras(qs, { skills, languages, websites, certifications, recollect, allowAdd, ours, progress }) {
+    const items = [];
+    const sq = skillsQuestion(qs);
+    if (sq && !(skills && skills.length) && !W.get(sq)) {
+      sq.history = { type: "skills", field: "skills" };
+      items.push({ q: sq, label: sq.label || "Skills", kind: sq.kind, history: "skills", status: "needs",
+        why: "start the Onward app so your resume's skills can be added here" });
+    }
+    if (sq && skills && skills.length) {
+      sq.history = { type: "skills", field: "skills" };
+      const base = { q: sq, label: sq.label || "Skills", kind: sq.kind, history: "skills" };
+      if (sq.kind === "prompt") {
+        const { added, missing } = await addSkills(sq, skills.slice(0, 50), progress);
+        if (added.length) ours.set(sq.el, { value: W.get(sq), source: "resume" });
+        items.push(Object.assign(base, added.length
+          ? { status: "filled", value: added.join(", "), source: "resume" }
+          : { status: "needs", why: "none of your resume's skills were in this site's list" }));
+        if (added.length && missing.length) {
+          items.push({ q: sq, label: "Skills not in this site's list", kind: sq.kind, history: "skills", status: "needs",
+            why: missing.join(", ") });
+        }
+      } else if (!W.get(sq)) {
+        const max = sq.el.maxLength > 0 ? sq.el.maxLength : 0;
+        let text = skills.join(", ");
+        if (max && text.length > max) text = text.slice(0, max).replace(/,[^,]*$/, "");
+        if (typeInto(sq.el, text)) {
+          ours.set(sq.el, { value: text, source: "resume" });
+          items.push(Object.assign(base, { status: "filled", value: text, source: "resume" }));
+        }
+      }
+    }
+
+    const langs = JR.rules.languageList(languages);
+    if (langs.length) {
+      let lr = rows(qs).filter((r) => r.type === "lang");
+      if (allowAdd && lr.length < langs.length) {
+        await addRows("lang", langs.length, lr.length, recollect);
+        qs = recollect();
+        lr = rows(qs).filter((r) => r.type === "lang");
+      }
+      for (const [i, r] of lr.entries()) {
+        const l = langs[i];
+        if (!l) break;
+        const levelKey = normQ(l.level).split(" ")[0];
+        const levels = l.level ? [l.level, ...(LEVEL_WORDS[levelKey] || [])] : [];
+        for (const [field, q] of Object.entries(r.fields)) {
+          const base = { q, label: `Language ${i + 1}: ${q.label || field}`, kind: q.kind, history: "lang" };
+          if (W.get(q) && !(q.kind === "checkbox" && q.single)) { items.push(Object.assign(base, { status: "had", value: W.get(q) })); continue; }
+          let values;
+          if (field === "language") values = [l.name];
+          else if (field === "fluent") values = [/native|fluent|bilingual|mother/i.test(l.level) ? "yes" : "no"];
+          else values = levels;
+          if (!values.length) {
+            items.push(Object.assign(base, { status: "needs", why: `add a level for ${l.name} in the extension options, e.g. "${l.name} (Fluent)"` }));
+            continue;
+          }
+          if (field === "fluent" && values[0] === "no") continue;
+          const res = await put(q, values);
+          if (res.ok) {
+            ours.set(q.el, { value: W.get(q) || res.chosen, source: "profile" });
+            items.push(Object.assign(base, { status: "filled", value: res.chosen, source: "profile" }));
+          } else items.push(Object.assign(base, { status: "needs", why: res.why || "couldn't pick this" }));
+        }
+      }
+    }
+    // Websites from the profile, Certifications from the resume's own section.
+    for (const [type, list] of [["web", websites || []], ["cert", certifications || []]]) {
+      if (!list.length) continue;
+      let rs = rows(qs).filter((r) => r.type === type);
+      // Links the page already holds aren't added twice.
+      const have = new Set(rs.map((r) => r.fields.url || r.fields.name).filter(Boolean).map((q) => normQ(W.get(q))).filter(Boolean));
+      const todo = list.filter((x) => !have.has(normQ(type === "web" ? x : x.name)));
+      const empty = rs.filter((r) => { const q = r.fields.url || r.fields.name; return q && !W.get(q); }).length;
+      if (allowAdd && todo.length > empty) {
+        await addRows(type, rs.length + todo.length - empty, rs.length, recollect);
+        qs = recollect();
+        rs = rows(qs).filter((r) => r.type === type);
+      }
+      const queue = todo.slice();
+      for (const r of rs) {
+        const main = r.fields.url || r.fields.name;
+        if (!main || W.get(main) || !queue.length) continue;
+        const x = queue.shift();
+        const values = type === "web" ? { url: [x] } : {
+          name: [x.name], issuedYear: x.issued ? [String(x.issued.year)] : [],
+          issuedMonth: x.issued ? monthValues(x.issued.month) : [],
+          issuedDate: x.issued ? [(x.issued.month ? String(x.issued.month).padStart(2, "0") + "/" : "") + x.issued.year] : [],
+        };
+        for (const [field, q] of Object.entries(r.fields)) {
+          const v = values[field];
+          if (!v || !v.length || W.get(q)) continue;
+          const base = { q, label: `${SECTION_NAME[type]} ${r.n}: ${q.label || field}`, kind: q.kind, history: type };
+          const res = await put(q, v);
+          if (res.ok) {
+            ours.set(q.el, { value: W.get(q) || res.chosen, source: type === "web" ? "profile" : "resume" });
+            items.push(Object.assign(base, { status: "filled", value: res.chosen, source: type === "web" ? "profile" : "resume" }));
+          } else items.push(Object.assign(base, { status: "needs", why: res.why || "couldn't fill this" }));
+        }
+      }
+      if (queue.length && (rs.length || addButton(type, document))) {
+        items.push({ q: qs[0], label: SECTION_NAME[type], kind: "text", history: type, status: "needs",
+          why: `couldn't add ${queue.length === 1 ? "a row" : "rows"} for ${queue.map((x) => (type === "web" ? x : x.name)).join(", ")}` });
+      }
+    }
+    return { qs, items };
+  }
+
   /** Overwrites a section's differing values with the resume's; returns what Undo needs. */
   async function replace(list, ours) {
     const undo = [];
@@ -273,5 +534,5 @@
     }
   }
 
-  JR.history = { rows, fill, replace, restore, fitLines, SECTION_NAME };
+  JR.history = { rows, fill, fillExtras, skillsQuestion, addButton, replace, restore, fitLines, SECTION_NAME };
 })(globalThis);

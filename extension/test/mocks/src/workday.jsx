@@ -54,7 +54,7 @@ function ListButton({ id, aid, buttonAid, label, options, required }) {
   );
 }
 
-function Prompt({ id, aid, label, options, required }) {
+function Prompt({ id, aid, label, options, required, multi }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState(S[id] || []);
@@ -71,7 +71,7 @@ function Prompt({ id, aid, label, options, required }) {
       {open ? createPortal(
         <div data-automation-id="activeListContainer" role="listbox">
           {hits.map((o) => (
-            <div key={o} role="option" data-automation-id="promptLeafNode" onClick={() => { setChosen([o]); setQ(""); setOpen(false); }}>
+            <div key={o} role="option" data-automation-id="promptLeafNode" onClick={() => { setChosen(multi ? (chosen.includes(o) ? chosen : [...chosen, o]) : [o]); setQ(""); setOpen(false); }}>
               <div data-automation-id="promptOption">{o}</div>
             </div>
           ))}
@@ -124,9 +124,13 @@ function Agreement() {
 
 const YN = ["Yes", "No"];
 
+// ?empty: the sections start with no rows, only a heading and an Add button
+// (Workday when you apply without its resume parser), and carry no section ids.
+const EMPTY = new URLSearchParams(location.search).has("empty");
+
 // What Workday's own "Autofill with Resume" parser leaves behind: the first
 // job and school mostly right, one description mangled to ".js", a wrong GPA.
-Object.assign(S, {
+if (!EMPTY) Object.assign(S, {
   "workExperience-1--jobTitle": "Full Stack Developer Intern", "workExperience-1--companyName": "Example Labs",
   "workExperience-1--location": "Dallas, TX", "workExperience-1--roleDescription": ".js",
   "workExperience-1--startDate-dateSectionMonth-input": "07", "workExperience-1--startDate-dateSectionYear-input": "2025",
@@ -175,15 +179,83 @@ function DateParts({ id, aid, label, month = true }) {
   );
 }
 
+const SKILL_LIST = ["Angular", "Express.js", "Java", "JavaScript", "Node.js", "Python", "React.js", "SQL", "TypeScript", "Kotlin", "Go"];
+
+function Skills() {
+  return (
+    <div>
+      <h3>Skills</h3>
+      <Prompt id="skills--skills" aid="skills" label="Type to Add Skills" options={SKILL_LIST} multi />
+    </div>
+  );
+}
+
+function Languages() {
+  const [n, setN] = useState(S.__langs ?? 0);
+  S.__langs = n;
+  const LEVELS = ["Beginner", "Intermediate", "Advanced", "Fluent"];
+  return (
+    <div {...(EMPTY ? {} : { "data-automation-id": "languageSection", role: "group", "aria-labelledby": "language-heading" })}>
+      <h3 id="language-heading">Languages</h3>
+      {Array.from({ length: n }, (_, i) => i + 1).map((k) => {
+        const p = `language-${k}--`;
+        return (
+          <div key={k} data-automation-id={`language-${k}`}>
+            <h4>Languages {k}</h4>
+            <ListButton id={p + "language"} aid="language" label="Language" options={["English", "Gujarati", "Hindi", "Spanish"]} required />
+            <Check id={p + "native"} aid="native" label="I am fluent in this language." />
+            <ListButton id={p + "reading"} aid="reading" label="Reading" options={LEVELS} />
+            <ListButton id={p + "speaking"} aid="speaking" label="Speaking" options={LEVELS} />
+            <ListButton id={p + "writing"} aid="writing" label="Writing" options={LEVELS} />
+          </div>
+        );
+      })}
+      <button type="button" data-automation-id="Add" onClick={() => setN(n + 1)}>Add</button>
+    </div>
+  );
+}
+
+function Websites() {
+  const [n, setN] = useState(S.__sites ?? 0);
+  S.__sites = n;
+  return (
+    <div>
+      <h3>Websites</h3>
+      {Array.from({ length: n }, (_, i) => i + 1).map((k) => (
+        <div key={k} data-automation-id={`webAddress-${k}`}>
+          <Text id={`webAddress-${k}--url`} aid="url" label="URL" required />
+        </div>
+      ))}
+      <button type="button" data-automation-id="Add" onClick={() => setN(n + 1)}>Add</button>
+    </div>
+  );
+}
+
+function Certifications() {
+  const [n, setN] = useState(S.__certs ?? 0);
+  S.__certs = n;
+  return (
+    <div>
+      <h3>Certifications</h3>
+      {Array.from({ length: n }, (_, i) => i + 1).map((k) => (
+        <div key={k} data-automation-id={`certification-${k}`}>
+          <Text id={`certification-${k}--certification`} aid="certification" label="Certification" />
+        </div>
+      ))}
+      <button type="button" data-automation-id="Add" onClick={() => setN(n + 1)}>Add</button>
+    </div>
+  );
+}
+
 function WorkHistory() {
-  const [jobs, setJobs] = useState(S.__jobs || 1);
-  const [schools, setSchools] = useState(S.__schools || 1);
+  const [jobs, setJobs] = useState(S.__jobs ?? (EMPTY ? 0 : 1));
+  const [schools, setSchools] = useState(S.__schools ?? (EMPTY ? 0 : 1));
   S.__jobs = jobs;
   S.__schools = schools;
   const nums = (k) => Array.from({ length: k }, (_, i) => i + 1);
   return (
     <>
-      <div data-automation-id="workExperienceSection" role="group" aria-labelledby="workExperience-heading">
+      <div {...(EMPTY ? {} : { "data-automation-id": "workExperienceSection", role: "group", "aria-labelledby": "workExperience-heading" })}>
         <h3 id="workExperience-heading">Work Experience</h3>
         {nums(jobs).map((n) => {
           const p = `workExperience-${n}--`;
@@ -200,9 +272,9 @@ function WorkHistory() {
             </div>
           );
         })}
-        <button type="button" data-automation-id="Add" aria-label="Add Work Experience" onClick={() => setJobs(jobs + 1)}>Add Another</button>
+        <button type="button" data-automation-id="Add" aria-label={EMPTY ? undefined : "Add Work Experience"} onClick={() => setJobs(jobs + 1)}>{EMPTY ? "Add" : "Add Another"}</button>
       </div>
-      <div data-automation-id="educationSection" role="group" aria-labelledby="education-heading">
+      <div {...(EMPTY ? {} : { "data-automation-id": "educationSection", role: "group", "aria-labelledby": "education-heading" })}>
         <h3 id="education-heading">Education</h3>
         {nums(schools).map((n) => {
           const p = `education-${n}--`;
@@ -218,7 +290,7 @@ function WorkHistory() {
             </div>
           );
         })}
-        <button type="button" data-automation-id="Add" aria-label="Add Education" onClick={() => setSchools(schools + 1)}>Add Another</button>
+        <button type="button" data-automation-id="Add" aria-label={EMPTY ? undefined : "Add Education"} onClick={() => setSchools(schools + 1)}>{EMPTY ? "Add" : "Add Another"}</button>
       </div>
     </>
   );
@@ -245,9 +317,11 @@ function Step({ n }) {
   if (n === 1) return (
     <>
       <WorkHistory />
+      <Skills />
+      <Languages />
       <Resume />
       <Text id="socialNetworkAccounts--linkedInAccount" aid="linkedInAccount" inputAid="linkedinQuestion" label="LinkedIn" />
-      <Text id="webAddress-1--url" aid="url" inputAid="website" label="URL" />
+      {EMPTY ? <><Websites /><Certifications /></> : <Text id="webAddress-1--url" aid="url" inputAid="website" label="URL" />}
     </>
   );
   if (n === 2) return (

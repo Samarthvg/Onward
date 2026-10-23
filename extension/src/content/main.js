@@ -137,25 +137,51 @@
       sections = [];
       let qs = JR.sites.collect(document, site);
 
-      // Work Experience and Education rows come straight from the master resume.
+      // Work Experience, Education, Skills and Languages come straight from the
+      // master resume and the profile, never from the AI.
       const items = [];
       let hist = null;
-      if (store.settings.helper && JR.history.rows(qs).length) {
+      const H = JR.history;
+      const recollect = () => JR.sites.collect(document, site);
+      const workday = !!site.workday;
+      // Workday shows an empty section as a heading and an Add button, with no fields yet.
+      const wantsHistory = H.rows(qs).some((r) => r.type === "work" || r.type === "edu")
+        || (workday && !!(H.addButton("work", document) || H.addButton("edu", document)));
+      const skillsQ = H.skillsQuestion(qs);
+      if (store.settings.helper && (wantsHistory || skillsQ)) {
         JR.panel.update({ status: "Filling work history and education from your resume…" });
         hist = await api.runtime.sendMessage({ type: "jr:history", url: location.href }).catch(() => null);
-        if (hist && !hist.error && (hist.work || hist.education)) {
-          const r = await JR.history.fill(qs, hist, {
-            recollect: () => JR.sites.collect(document, site), allowAdd: !!site.workday, ours: filledByUs });
-          qs = r.qs;
-          for (const it of r.items) { if (it.status === "filled") mark(it.q, "filled"); items.push(it); }
-          sections = Object.entries(r.diffs).filter(([, d]) => d.some((x) => x.canReplace))
-            .map(([type, d]) => ({ type, label: JR.history.SECTION_NAME[type], diffs: d, undo: null }));
-          for (const [type, n] of Object.entries(r.extra)) {
-            if (n > 0) items.push({ q: qs[0], label: JR.history.SECTION_NAME[type], status: "needs", history: type,
-              why: `your resume has ${n} more ${type === "work" ? "job" : "school"}${n === 1 ? "" : "s"} than this form shows; add ${n === 1 ? "a row" : "rows"} and press Fill again` });
-          }
-        } else hist = null;
+        if (!hist || hist.error || !(hist.work || hist.education)) hist = null;
       }
+      if (hist && wantsHistory) {
+        const r = await H.fill(qs, hist, { recollect, allowAdd: workday, ours: filledByUs });
+        qs = r.qs;
+        for (const it of r.items) { if (it.status === "filled") mark(it.q, "filled"); items.push(it); }
+        sections = Object.entries(r.diffs).filter(([, d]) => d.some((x) => x.canReplace))
+          .map(([type, d]) => ({ type, label: H.SECTION_NAME[type], diffs: d, undo: null }));
+        for (const [type, n] of Object.entries(r.extra)) {
+          if (n > 0) items.push({ q: qs[0], label: H.SECTION_NAME[type], status: "needs", history: type,
+            why: `your resume has ${n} more ${type === "work" ? "job" : "school"}${n === 1 ? "" : "s"} than this form shows; add ${n === 1 ? "a row" : "rows"} and press Fill again` });
+        }
+      }
+      const extraTypes = ["lang", "web", "cert"];
+      if (H.skillsQuestion(qs) || H.rows(qs).some((r) => extraTypes.includes(r.type))
+          || (workday && extraTypes.some((t) => H.addButton(t, document)))) {
+        // Links already asked for on their own (a LinkedIn field) aren't repeated as websites.
+        const own = (re) => qs.some((q) => !q.history && re.test(q.label + " " + q.attrs));
+        const p = store.profile;
+        const websites = [p.portfolio, p.github, own(/linked ?in/i) ? "" : p.linkedin].filter(Boolean);
+        const r = await H.fillExtras(qs, { skills: hist ? hist.skills || [] : [], languages: p.languages, websites,
+          certifications: hist ? hist.certifications || [] : [],
+          recollect, allowAdd: workday, ours: filledByUs, progress: (status) => JR.panel.update({ status }) });
+        qs = r.qs;
+        for (const it of r.items) { if (it.status === "filled") mark(it.q, "filled"); items.push(it); }
+      }
+      // Those rows are answered above; mark them so the loop below and the AI leave them alone.
+      H.rows(qs);
+      const skillsNow = H.skillsQuestion(qs);
+      if (skillsNow) skillsNow.history = { type: "skills", field: "skills" };
+      const histTouched = !!hist || items.length > 0;
 
       const keys = qs.map((q) => memKey(q.label)).filter(Boolean);
       const mem = keys.length ? await api.storage.local.get(keys) : {};
@@ -164,7 +190,7 @@
       if (qs.some((q) => q.kind === "file")) ctx.resume = resumeFor(prep, (await api.storage.local.get("resume")).resume || null);
 
       for (const q of qs) {
-        if (hist && q.history) continue;   // filled above
+        if (histTouched && q.history) continue;   // filled above
         const cls = classify(q.label, q.kind, q.attrs, q.section);
         q.cls = cls;
         const it = await answerOne(q, cls, mem, ctx);
@@ -239,13 +265,13 @@
       const a = find(it.label);
       if (!a || W.get(q)) continue;
       const picks = a.choices && a.choices.length ? a.choices : a.answer ? [a.answer] : [];
-      const typed = q.kind === "textarea" || (AI_TEXT.has(q.kind) && q.kind !== "rselect");
+      const typed = q.kind === "textarea" || (AI_TEXT.has(q.kind) && q.kind !== "rselect" && q.kind !== "prompt");
       const done = [];
       for (const p of q.kind === "checkbox" ? picks : picks.slice(0, 1)) {
         const r = typed ? (typeInto(q.el, p) ? { ok: true, chosen: p } : { ok: false }) : await W.set(q, [p], q.cls, {});
         if (r.ok) done.push(r.chosen);
       }
-      if (!done.length) continue;
+      if (!done.length || !W.get(q)) continue;
       const value = done.join(", ");
       filledByUs.set(q.el, { value: W.get(q) || value, source: "ai" });
       mark(q, "review");
@@ -354,12 +380,12 @@
       const picks = a.choices && a.choices.length ? a.choices : a.answer ? [a.answer] : [];
       const done = [];
       for (const p of c.kind === "multi" ? picks : picks.slice(0, 1)) {
-        const r = c.kind === "textarea" || (c.kind === "text" && q.kind !== "rselect")
+        const r = c.kind === "textarea" || (c.kind === "text" && q.kind !== "rselect" && q.kind !== "prompt")
           ? (typeInto(q.el, p) ? { ok: true, chosen: p } : { ok: false })
           : await W.set(q, [p], q.cls, {});
         if (r.ok) done.push(r.chosen);
       }
-      if (!done.length) { c.it.why = `${who}'s answer didn't fit; answer it here`; continue; }
+      if (!done.length || !W.get(q)) { c.it.why = `${who}'s answer didn't fit; answer it here`; continue; }
       const value = done.join(", ");
       filledByUs.set(q.el, { value: W.get(q) || value, source: "ai" });
       mark(q, "review");

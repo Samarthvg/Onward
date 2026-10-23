@@ -16,7 +16,7 @@
     ["company", "Current or most recent company"], ["currentTitle", "Current or most recent job title"],
     ["school", "School"], ["degree", "Degree (e.g. Bachelor of Science)"], ["major", "Major / field of study"],
     ["gradDate", "Graduation (e.g. May 2026)"],
-    ["languages", "Languages you speak (comma separated)"],
+    ["languages", "Languages you speak, with a level if you like (e.g. English (Fluent), Hindi (Native))"],
   ];
 
   const YES_NO = ["", "yes", "no"];
@@ -458,11 +458,20 @@
     "united states of america": ["United States", "USA"],
   };
 
+  /** "English (Fluent), Hindi" -> [{ name: "English", level: "Fluent" }, { name: "Hindi", level: "" }]. */
+  function languageList(value) {
+    return String(value || "").split(/[,;/]/).map((x) => x.trim()).filter(Boolean).map((x) => {
+      // "English (Fluent)", "English - Fluent", "English: Fluent"; "Serbo-Croatian" stays whole.
+      const m = x.match(/^(.*?)\s*\(\s*([^)]*?)\s*\)$/) || x.match(/^(.*?)\s+[-–]\s+(.+)$/) || x.match(/^(.*?)\s*:\s*(.+)$/);
+      return m && m[1] ? { name: m[1].trim(), level: m[2].trim() } : { name: x, level: "" };
+    });
+  }
+
   /** The saved value plus spellings forms commonly use for the same answer. */
   function alternatives(cls, value) {
     const out = [value];
     // "English, Spanish" is several answers to one check-all-that-apply question.
-    if (cls.key === "languages") return String(value).split(/[,;/]/).map((x) => x.trim()).filter(Boolean);
+    if (cls.key === "languages") return languageList(value).map((l) => l.name);
     const v = normQ(value);
     if (cls.key === "country") out.push(...(COUNTRY_ALIASES[v] || []));
     if (cls.key === "degree") {
@@ -487,6 +496,6 @@
   root.JR.rules = {
     PROFILE_FIELDS, STANDARD_ANSWERS, EEO_ANSWERS, DECLINE, DEFAULT_ANSWERS, DEFAULT_PROFILE, DEFAULT_SETTINGS, DRAFT_BACKENDS, withDefaults,
     US_STATES, CHOICE_KINDS, TEXT_KINDS, clean, normQ, classify, answerFor, pickOption, asText, alternatives, DECLINE_RE, historyField,
-    companyKey, sameCompany, companyNames, namesIn, mentions, savedAnswerUse,
+    companyKey, sameCompany, companyNames, namesIn, mentions, savedAnswerUse, languageList,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

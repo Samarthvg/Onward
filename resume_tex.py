@@ -448,7 +448,66 @@ def history(res: Resume) -> dict:
                               "field": field_.strip(), "gpa": gpa.group(1) if gpa else "",
                               "gpa_scale": (gpa.group(2) or "") if gpa else "",
                               **_dates(plain(tm.group(0)))})
-    return {"work": work, "education": education}
+    return {"work": work, "education": education, "skills": skill_list(res), "certifications": certifications(res)}
+
+
+CERT_SECTION = re.compile(r"certif|licen", re.I)
+ONE_DATE = re.compile(rf"(?:(?P<m>{_MON})\s+)?(?P<y>(?:19|20)\d\d)", re.I)
+
+
+def certifications(res: Resume) -> list[dict]:
+    """Entries of a Certifications (or Licenses) section, one per \\item or
+    line: "AWS Certified Developer - Amazon Web Services, Mar 2025"."""
+    tex = res.tex
+    sections = [(m.start(), m.end(), m.group(1)) for m in SECTION.finditer(tex)]
+    out = []
+    for i, (s, e, title) in enumerate(sections):
+        if not CERT_SECTION.search(title):
+            continue
+        end = sections[i + 1][0] if i + 1 < len(sections) else tex.find("\\end{document}", e)
+        body = tex[e:end if end > e else len(tex)]
+        body = re.sub(r"\\(begin|end)\{[^}]*\}(\[[^\]]*\])?", "\n", body)
+        lines = re.split(r"\\item\b|(?<!\\)\\\\|\n\s*\n", body)
+        for raw in lines:
+            text = plain(raw).strip(" -–•|")
+            if len(text) < 3:
+                continue
+            d = ONE_DATE.search(text)
+            issued = {"month": _month(d.group("m")), "year": int(d.group("y"))} if d else None
+            rest = (text[:d.start()] + text[d.end():] if d else text).strip(" ,|-–")
+            parts = re.split(r"\s+[-–|]\s+|,\s+(?=[A-Z])", rest, maxsplit=1)
+            name, issuer = (parts[0], parts[1]) if len(parts) > 1 else (rest, "")
+            out.append({"name": name.strip(), "issuer": issuer.strip(" ,"), "issued": issued})
+    return out
+
+
+def skill_list(res: Resume) -> list[str]:
+    """Every skill in the skills section, in order, for a form's skills box:
+    "CI/CD (GitHub Actions)" counts as both CI/CD and GitHub Actions."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for row in res.skill_rows:
+        text = plain(row.tex)
+        depth, cur, items = 0, "", []
+        for ch in text:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth = max(0, depth - 1)
+            if ch == "," and depth == 0:
+                items.append(cur)
+                cur = ""
+            else:
+                cur += ch
+        items.append(cur)
+        for item in items:
+            m = re.match(r"^\s*(.*?)\s*\((.*)\)\s*$", item)
+            for part in ([m.group(1)] + re.split(r"\s*,\s*", m.group(2))) if m else [item]:
+                s = part.strip().strip(".;")
+                if s and len(s) <= 60 and s.lower() not in seen:
+                    seen.add(s.lower())
+                    out.append(s)
+    return out
 
 
 # --------------------------------------------------------------------------

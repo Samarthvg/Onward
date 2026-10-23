@@ -225,6 +225,35 @@ await test("workday: fills each step only when asked, never presses Next", async
   expect("workday: nothing submitted", (await page.evaluate(() => window.__submitted)) === 0);
 });
 
+await test("workday: empty sections get rows from the resume, plus skills and languages", async (page) => {
+  await page.goto("https://mockco.wd5.myworkdayjobs.com/en-US/External/job/Boston-MA/Software-Engineer_JR1001/apply/applyManually?empty=1");
+  await page.locator("#jobradar-autofill").waitFor({ state: "attached" });
+  await page.click("[data-automation-id='bottom-navigation-next-button']");   // the user moves to My Experience
+  await sleep(900);
+  const text = await runFill(page, 120000);
+  const w = (n, f) => `workExperience-${n}--${f}`;
+  const st = await page.evaluate(() => window.__mockState());
+  expectState("empty workday", st, {
+    // Rows added with each section's Add button, found from its heading alone.
+    __jobs: 3, __schools: 2, __langs: 2,
+    [w(1, "companyName")]: "Example Labs", [w(1, "jobTitle")]: "Full Stack Developer Intern",
+    [w(1, "startDate-dateSectionMonth-input")]: "07", [w(1, "endDate-dateSectionYear-input")]: "2026",
+    [w(2, "companyName")]: "Example Solutions Pvt Ltd", [w(3, "currentlyWorkHere")]: true,
+    "education-1--schoolName": "Example State University", "education-1--degree": "Master's Degree",
+    "education-2--schoolName": "Example Institute of Technology",
+    // Every resume skill the site lists, one search at a time.
+    "skills--skills": ["Python", "Java", "TypeScript", "JavaScript", "SQL", "Node.js", "Express.js", "React.js", "Angular"],
+    "language-1--language": "English", "language-1--native": true, "language-1--reading": "Fluent", "language-1--writing": "Fluent",
+    "language-2--language": "Spanish", "language-2--native": false, "language-2--speaking": "Intermediate",
+    // Websites from the profile (LinkedIn has its own field); no certifications in the resume, so no rows.
+    __sites: 2, "webAddress-1--url": "https://testy.example.com", "webAddress-2--url": "https://github.com/testy-example",
+    __certs: 0,
+  });
+  expect("empty workday: missing skill reported", /Skills not in this site's list[\s\S]*Vue\.js/.test(text), text);
+  expect("empty workday: only the user's own Next", (await page.evaluate(() => window.__navClicks)) === 1);
+  expect("empty workday: nothing submitted", (await page.evaluate(() => window.__submitted)) === 0);
+});
+
 await test("toolbar button fills the active tab", async (page) => {
   await page.goto("https://jobs.lever.co/mockco/abc-123/apply");
   await page.locator("#jobradar-autofill").waitFor({ state: "attached" });

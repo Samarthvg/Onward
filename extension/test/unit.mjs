@@ -166,6 +166,11 @@ check("saved answer: old entries without names still caught", () =>
 check("saved answer: neutral one is offered everywhere", () =>
   assert.equal(R.savedAnswerUse({ a: "Two weeks after an offer", company: "ElevenLabs" }, "Mock Co").use, "use"));
 
+// Languages with levels
+check("languages: levels", () => assert.deepEqual(R.languageList("English (Fluent), Hindi, Gujarati - Native, Serbo-Croatian"), [
+  { name: "English", level: "Fluent" }, { name: "Hindi", level: "" }, { name: "Gujarati", level: "Native" }, { name: "Serbo-Croatian", level: "" }]));
+check("languages: names for check-all-that-apply", () => assert.deepEqual(R.alternatives({ key: "languages" }, "English (Fluent), Hindi"), ["English", "Hindi"]));
+
 // Option matching
 const pick = (v, opts, want) => check(`pick ${v} from ${opts.join("|")}`, () => assert.equal(R.pickOption(v, opts), want));
 pick("yes", ["No", "Yes"], 1);

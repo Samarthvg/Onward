@@ -71,6 +71,24 @@ class History(unittest.TestCase):
         self.assertEqual((e[1]["school"], e[1]["degree"], e[1]["field"]),
                          ("Example Institute of Technology", "Bachelor of Technology", "Computer Engineering"))
 
+    def test_skills_in_order_without_duplicates(self):
+        self.assertEqual(self.h["skills"], ["Python", "Java", "TypeScript", "JavaScript", "SQL",
+                                            "Node.js", "Express.js", "React.js", "Vue.js", "Angular"])
+
+    def test_skill_in_parentheses_counts_twice(self):
+        tex = FIXTURE.read_text(encoding="utf-8").replace(
+            r"\textbf{Web:} & Node.js,", r"\textbf{Web:} & CI/CD (GitHub Actions, Jenkins), Node.js,")
+        skills = rt.skill_list(rt.parse(tex))
+        self.assertEqual(skills[skills.index("CI/CD"):skills.index("CI/CD") + 3], ["CI/CD", "GitHub Actions", "Jenkins"])
+
+    def test_certifications_section(self):
+        tex = (FIXTURE.parent / "history_certs.tex").read_text(encoding="utf-8")
+        self.assertEqual(rt.certifications(rt.parse(tex)), [
+            {"name": "AWS Certified Developer", "issuer": "Amazon Web Services", "issued": {"month": 3, "year": 2025}},
+            {"name": "Example Cloud Practitioner", "issuer": "", "issued": {"month": None, "year": 2024}}])
+        # A certification mentioned in a job's bullet is not a Certifications entry.
+        self.assertEqual(self.h["certifications"], [])
+
     def test_dates_variants(self):
         self.assertEqual(rt._dates("Sept 2021 – Present"), {"start": {"month": 9, "year": 2021}, "end": None, "current": True})
         self.assertEqual(rt._dates("2019 - 2022")["end"], {"month": None, "year": 2022})
