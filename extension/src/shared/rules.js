@@ -359,6 +359,50 @@
     return names.length ? { use: "warn", names, company: saved.company || "another company" } : { use: "use", names: [] };
   }
 
+  /* --------------------------------------- entries relevant to one job */
+
+  const STOP = new Set(("the and for with you your our are was were will have has had this that from into over under about across "
+    + "their they them who what when where why how all any each more most other some such than then there these those very can "
+    + "able using use used work working worked team teams role job jobs company companies experience years year new build built "
+    + "building help helped make made also well strong including include within based across like plus per day days time looking "
+    + "join want need needs must should would could get got one two three part full every high low end best good great").split(" "));
+
+  function terms(text) {
+    const out = new Set();
+    for (const w of String(text || "").toLowerCase().match(/[a-z][a-z0-9+#.]*[a-z0-9+#]|[a-z]/g) || []) {
+      const t = w.replace(/\.+$/, "");
+      if (t.length >= 3 && !STOP.has(t)) out.add(t);
+    }
+    return out;
+  }
+
+  /**
+   * The applicant's saved jobs and projects that relate to this job, as text
+   * for the AI: only entries sharing at least `min` distinct terms with the
+   * posting and title, at most `max` of each kind, best match first.
+   * Everything else stays on this machine.
+   */
+  function relevantEntries(history, posting, title, { min = 3, max = 3 } = {}) {
+    if (!history) return "";
+    const want = terms(String(posting || "") + " " + String(title || ""));
+    if (!want.size) return "";
+    const lines = (e) => (e.description != null ? String(e.description).split("\n") : e.bullets || []).map((l) => l.trim()).filter(Boolean);
+    const score = (e, head) => { let n = 0; for (const t of terms(head + " " + (e.tech || "") + " " + lines(e).join(" "))) if (want.has(t)) n++; return n; };
+    const date = (d) => (d && d.year ? (d.month ? String(d.month).padStart(2, "0") + "/" : "") + d.year : "");
+    const span = (e) => [date(e.start), e.current ? "present" : date(e.end)].filter(Boolean).join(" to ");
+    const pick = (list, head) => (Array.isArray(list) ? list : [])
+      .map((e) => ({ e, s: score(e, head(e)) })).filter((x) => x.s >= min)
+      .sort((a, b) => b.s - a.s).slice(0, max).map((x) => x.e);
+    const out = [];
+    for (const e of pick(history.work, (e) => [e.title, e.company].join(" "))) {
+      out.push(`JOB: ${[e.title, e.company, e.location, span(e)].filter(Boolean).join(", ")}` + lines(e).map((l) => "\n- " + l).join(""));
+    }
+    for (const e of pick(history.projects, (e) => [e.name, e.role].join(" "))) {
+      out.push(`PROJECT: ${[e.name, e.role, e.tech, span(e), e.link].filter(Boolean).join(", ")}` + lines(e).map((l) => "\n- " + l).join(""));
+    }
+    return out.join("\n\n").slice(0, 6000);
+  }
+
   /* ----------------------------------------------- work history fields */
 
   // Field names inside repeating Work Experience / Education rows, read from
@@ -496,6 +540,6 @@
   root.JR.rules = {
     PROFILE_FIELDS, STANDARD_ANSWERS, EEO_ANSWERS, DECLINE, DEFAULT_ANSWERS, DEFAULT_PROFILE, DEFAULT_SETTINGS, DRAFT_BACKENDS, withDefaults,
     US_STATES, CHOICE_KINDS, TEXT_KINDS, clean, normQ, classify, answerFor, pickOption, asText, alternatives, DECLINE_RE, historyField,
-    companyKey, sameCompany, companyNames, namesIn, mentions, savedAnswerUse, languageList,
+    companyKey, sameCompany, companyNames, namesIn, mentions, savedAnswerUse, languageList, relevantEntries,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

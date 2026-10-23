@@ -435,10 +435,30 @@ function named(m) {
   return u.use === "warn" ? el("div", { class: "flag" }, `Names ${u.names.join(", ")}. Only offered on other companies' forms behind a warning.`) : null;
 }
 
+/** Saved before answers tied to one company stopped being kept: they name it or its products, or their question does. */
+const tiedToCompany = (m) => R.savedAnswerUse(m, "").use === "warn" || (!!m.company && R.mentions(m.q, R.companyNames(m.company)).length > 0);
+
+function drawTied() {
+  const n = memCache.filter(tiedToCompany).length;
+  const b = $("memTied");
+  b.hidden = !n;
+  b.textContent = `Remove ${n} answer${n === 1 ? "" : "s"} tied to one company`;
+}
+
+$("memTied").addEventListener("click", async () => {
+  const tied = memCache.filter(tiedToCompany);
+  if (!tied.length || !confirm(`Remove ${tied.length} saved answer${tied.length === 1 ? "" : "s"} that name a company or its products? Where they were used is removed too.`)) return;
+  await api.storage.local.remove(tied.flatMap((m) => [m.key, "use:" + m.key.slice(4)]));
+  memCache = memCache.filter((m) => !tied.includes(m));
+  drawMemory();
+  saved(`Removed ${tied.length}`);
+});
+
 function drawMemory() {
   const q = R.normQ($("memSearch").value);
   const hits = q ? memCache.filter((m) => R.normQ(m.q + " " + m.a + " " + (m.company || "")).includes(q)) : memCache;
   $("memCount").textContent = memCache.length ? `(${memCache.length})` : "";
+  drawTied();
   const list = $("memList");
   list.replaceChildren();
   for (const m of hits.slice(0, SHOW)) {

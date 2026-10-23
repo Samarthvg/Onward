@@ -90,3 +90,5 @@ section h3 { font-size: 14px; margin: 16px 0 6px; }
   .entry .grid .date input:not([type=checkbox]) { width: 6em; }
   .entry .grid .date select { width: auto; }
 }
+/* The hidden attribute wins over display rules like button's inline-flex. */
+[hidden] { display: none !important; }

@@ -135,7 +135,7 @@ const HANDLERS = {
       question: clip(p.question, 2000), context: clip(p.context, 2000), company: clip(p.company, 200),
       title: clip(p.title, 300), url: clip(p.url, 2000), jd: clip(p.jd, 30000),
       max_chars: Math.max(0, Math.min(Number(p.max_chars) || 0, 20000)),
-      backend: clip(p.backend, 40), note: clip(p.note, 500), previous: clip(p.previous, 20000),
+      backend: clip(p.backend, 40), note: clip(p.note, 500), previous: clip(p.previous, 20000), entries: clip(p.entries, 6000),
     });
   },
   async "jr:answersStart"(msg) {
@@ -148,7 +148,7 @@ const HANDLERS = {
     return helper("/api/answers", {
       questions, profile: p.profile && typeof p.profile === "object" ? p.profile : {},
       company: clip(p.company, 200), title: clip(p.title, 300), url: clip(p.url, 2000), jd: clip(p.jd, 30000),
-      backend: clip(p.backend, 40),
+      backend: clip(p.backend, 40), entries: clip(p.entries, 6000),
     });
   },
   async "jr:draftStatus"(msg) {

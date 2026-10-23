@@ -171,6 +171,23 @@ check("languages: levels", () => assert.deepEqual(R.languageList("English (Fluen
   { name: "English", level: "Fluent" }, { name: "Hindi", level: "" }, { name: "Gujarati", level: "Native" }, { name: "Serbo-Croatian", level: "" }]));
 check("languages: names for check-all-that-apply", () => assert.deepEqual(R.alternatives({ key: "languages" }, "English (Fluent), Hindi"), ["English", "Hindi"]));
 
+// Only entries related to the job go to the AI
+const HIST = {
+  work: [{ title: "Full Stack Developer Intern", company: "Example Labs", description: "Built Vue.js screens with PouchDB.\nExtended Node.js REST endpoints." },
+    { title: "Barista", company: "Cafe", description: "Made coffee." }],
+  projects: [{ name: "Turbofan RUL", tech: "Python, PyTorch", description: "Trained an LSTM on NASA sensor data." },
+    { name: "Portfolio Manager", tech: "Java Swing", description: "Desktop app for stock portfolios." }],
+};
+check("entries: a web job gets the web work, not the ML project", () => {
+  const t = R.relevantEntries(HIST, "We use Vue.js, Node.js and REST APIs.", "Frontend Engineer");
+  assert.ok(t.includes("Example Labs") && !t.includes("Turbofan") && !t.includes("Barista") && !t.includes("Portfolio"), t);
+});
+check("entries: an ML job gets the ML project only", () => {
+  const t = R.relevantEntries(HIST, "Train PyTorch LSTM models on sensor data in Python.", "ML Engineer");
+  assert.ok(t.includes("Turbofan") && !t.includes("Example Labs") && !t.includes("Portfolio"), t);
+});
+check("entries: nothing related, nothing sent", () => assert.equal(R.relevantEntries(HIST, "Sell insurance door to door.", "Sales Associate"), ""));
+
 // Projects written into one box (history.js needs no DOM for this)
 globalThis.JR.dom = {};
 globalThis.JR.widgets = {};

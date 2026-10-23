@@ -109,10 +109,11 @@
 
   <section>
     <h2>Saved answers <span class="count" id="memCount"></span></h2>
-    <p class="hint">Answers you typed into custom questions, keyed by the question's wording. An answer that names the company it was written for, or that company's products, is only offered on other companies' forms behind a warning, and never filled in on its own.</p>
+    <p class="hint">Answers you typed into custom questions, keyed by the question's wording. Answers that name the company they were written for, or its products (or whose question does), are not kept: they only fit that one company. Older ones are offered elsewhere only behind a warning.</p>
     <p class="hint" id="useSince"></p>
     <div class="row">
       <input type="search" id="memSearch" placeholder="Search questions and answers" aria-label="Search saved answers">
+      <button type="button" class="ghost" id="memTied" hidden></button>
     </div>
     <ul class="mem" id="memList"></ul>
     <p class="muted" id="memMore"></p>

@@ -631,11 +631,12 @@ def run_draft(jid: str, params: dict) -> None:
         job = {"company": params["company"], "title": params["title"]}
         if "questions" in params:
             call = lambda: tailor.answer_questions(master, job, params["profile"], params["questions"],
-                                                   params["jd"], params["backend"])
+                                                   params["jd"], params["backend"], entries=params.get("entries", ""))
         else:
             call = lambda: tailor.draft_answer(master, job, params["question"], params["context"], params["jd"],
                                                params["backend"], params["max_chars"],
-                                               params.get("note", ""), params.get("previous", ""))
+                                               params.get("note", ""), params.get("previous", ""),
+                                               entries=params.get("entries", ""))
         result = call()
         update(state="done", result=result)
     except (tailor.BackendError, ValueError) as e:
@@ -1286,18 +1287,20 @@ class Handler(BaseHTTPRequestHandler):
                   "title": row.get("title") or str(data.get("title", ""))[:300],
                   "jd": row.get("description") or str(data.get("jd", ""))[:30000],
                   # A redraft: what to change, and the answer it changes.
-                  "note": tailor.clean_instruction(data.get("note")), "previous": str(data.get("previous") or "")[:20000]}
+                  "note": tailor.clean_instruction(data.get("note")), "previous": str(data.get("previous") or "")[:20000],
+                  # The applicant's own entries relevant to this job, picked by the extension.
+                  "entries": str(data.get("entries") or "")[:6000]}
         if backend == "manual":
             prompt = tailor.build_draft_prompt(MASTER.read_text(encoding="utf-8"),
                                                {"company": params["company"], "title": params["title"]},
                                                question, params["context"], params["jd"], max_chars,
-                                               params["note"], params["previous"])
+                                               params["note"], params["previous"], params["entries"])
             return self._json(200, {"prompt": prompt})
         est = None
         if backend in pricing.API_BACKENDS:
             est = tailor.estimate_draft(MASTER.read_text(encoding="utf-8"), {"company": params["company"], "title": params["title"]},
                                         question, params["context"], params["jd"], backend, max_chars, exact=False,
-                                        note=params["note"], previous=params["previous"])
+                                        note=params["note"], previous=params["previous"], entries=params["entries"])
         return self._json(202, {"id": submit_draft(params), "estimate": est and est["cost"]})
 
     def _answers(self, data: dict):
@@ -1327,7 +1330,8 @@ class Handler(BaseHTTPRequestHandler):
                   "profile": {k: str(v)[:300] for k, v in profile.items() if k in tailor.PROFILE_FOR_ANSWERS},
                   "company": row.get("company") or str(data.get("company", ""))[:200],
                   "title": row.get("title") or str(data.get("title", ""))[:300],
-                  "jd": row.get("description") or str(data.get("jd", ""))[:30000]}
+                  "jd": row.get("description") or str(data.get("jd", ""))[:30000],
+                  "entries": str(data.get("entries") or "")[:6000]}
         return self._json(202, {"id": submit_draft(params)})
 
 

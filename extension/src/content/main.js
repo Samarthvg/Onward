@@ -378,7 +378,7 @@
         max_chars: c.it.q.el.maxLength > 0 ? c.it.q.el.maxLength : 0,
         context: c.it.q.container ? textOf(c.it.q.container).slice(0, 800) : "" })),
       profile: store.profile, company: info.company, title: info.title, url: location.href,
-      jd: JR.sites.jobDescription(document), backend: store.settings.draftBackend,
+      jd: JR.sites.jobDescription(document), backend: store.settings.draftBackend, entries: await jobEntries(),
     };
     let result;
     try {
@@ -435,13 +435,25 @@
       if (lastSaved.get(k) === v) continue;
       lastSaved.set(k, v);
       if (posting === null) posting = JR.sites.jobDescription(document);
-      // The company and product names the answer mentions, so it's never
-      // offered to another company as if it were neutral.
+      // An answer tied to this company (it, or its question, names the company
+      // or its products) is only good here, so it isn't kept.
       const names = R.namesIn(v, info.company, info.title, posting);
+      if (names.length || R.mentions(q.label, R.companyNames(info.company)).length) continue;
       writes[k] = { q: q.label, a: v, kind: q.kind, writing: !!cls.writing, company: info.company || "", title: info.title || "",
         names, host: location.hostname, updated: Date.now() };
     }
     if (Object.keys(writes).length) await api.storage.local.set(writes);
+  }
+
+  /** The saved jobs and projects that relate to this posting, for the AI; the rest aren't sent. */
+  async function jobEntries() {
+    try {
+      const { history } = await api.storage.local.get("history");
+      const info = JR.sites.jobInfo(document);
+      return R.relevantEntries(history, JR.sites.jobDescription(document), info.title);
+    } catch (e) {
+      return "";
+    }
   }
 
   /** Where saved answers went: kept under use:<key>, so editing the answer keeps its history. */
@@ -493,7 +505,7 @@
       question: it.label, context: it.q.container ? textOf(it.q.container).slice(0, 1500) : "",
       company: info.company, title: info.title, url: location.href,
       jd: JR.sites.jobDescription(document), max_chars: it.q.el.maxLength > 0 ? it.q.el.maxLength : 0,
-      backend: store.settings.draftBackend, note, previous: before,
+      backend: store.settings.draftBackend, note, previous: before, entries: await jobEntries(),
     };
     try {
       const start = await api.runtime.sendMessage({ type: "jr:draftStart", payload });

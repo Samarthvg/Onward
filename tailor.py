@@ -512,6 +512,15 @@ DRAFT_SCHEMA = {
 DRAFT_BACKENDS = config.DRAFT_BACKENDS
 
 
+def _entries_block(parts: list[str], entries: str) -> None:
+    """The applicant's own entries (jobs, projects) for this job, as edited in
+    the extension: only the ones that share terms with the posting are sent."""
+    entries = (entries or "").strip()[:6000]
+    if entries:
+        parts.append("THE APPLICANT'S OWN ENTRIES FOR THIS JOB (their wording; where these differ from the resume, "
+                     "use these)\n" + entries)
+
+
 def _about_and_samples(parts: list[str], v: dict) -> None:
     about = about_me()
     if about:
@@ -522,7 +531,7 @@ def _about_and_samples(parts: list[str], v: dict) -> None:
 
 
 def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0,
-                 note: str = "", previous: str = "") -> tuple[str, str]:
+                 note: str = "", previous: str = "", entries: str = "") -> tuple[str, str]:
     """(instructions, material) for drafting one answer. With `note`, the
     applicant's request for a new version of `previous` ("use my Y project,
     not X")."""
@@ -537,6 +546,7 @@ def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: st
     if jd.strip():
         parts.append(f"JOB POSTING\n{jd.strip()[:20000]}")
     parts.append(f"RESUME\n{rt.plain(master_tex)}")
+    _entries_block(parts, entries)
     _about_and_samples(parts, v)
     note = clean_instruction(note)
     if note:
@@ -551,15 +561,16 @@ def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: st
 
 
 def build_draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0,
-                       note: str = "", previous: str = "") -> str:
+                       note: str = "", previous: str = "", entries: str = "") -> str:
     """The whole drafting prompt, for pasting into a chat by hand."""
-    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars, note, previous)
+    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars, note, previous, entries)
     return instructions.replace('Put only the answer text in the "answer" field.', "Reply with only the answer text.") + "\n\n" + material
 
 
 def estimate_draft(master_tex: str, job: dict, question: str, context: str, jd: str, backend: str,
-                   max_chars: int = 0, exact: bool = True, note: str = "", previous: str = "") -> dict | None:
-    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars, note, previous)
+                   max_chars: int = 0, exact: bool = True, note: str = "", previous: str = "",
+                   entries: str = "") -> dict | None:
+    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars, note, previous, entries)
     return estimate(backend, instructions, material, "draft", exact=exact)
 
 
@@ -598,7 +609,8 @@ PROFILE_FOR_ANSWERS = ("firstName", "lastName", "preferredName", "location", "co
                        "school", "degree", "major", "gradDate", "languages", "linkedin", "github", "portfolio")
 
 
-def answers_prompt(master_tex: str, job: dict, profile: dict, questions: list[dict], jd: str) -> tuple[str, str]:
+def answers_prompt(master_tex: str, job: dict, profile: dict, questions: list[dict], jd: str,
+                   entries: str = "") -> tuple[str, str]:
     """(instructions, material) for answering several questions at once."""
     v = voice_settings()
     prof = "\n".join(f"{k}: {str(profile.get(k, '')).strip()}" for k in PROFILE_FOR_ANSWERS if str(profile.get(k, "")).strip())
@@ -617,6 +629,7 @@ def answers_prompt(master_tex: str, job: dict, profile: dict, questions: list[di
     if jd.strip():
         parts.append(f"JOB POSTING\n{jd.strip()[:15000]}")
     parts += [f"PROFILE\n{prof}", f"RESUME\n{rt.plain(master_tex)}"]
+    _entries_block(parts, entries)
     _about_and_samples(parts, v)
     parts.append("QUESTIONS\n" + "\n".join(qs))
     return ANSWERS_RULES + voice_rules(v), "\n\n".join(parts)
@@ -626,14 +639,15 @@ def _total(costs: list[float]) -> float | None:
     return round(sum(costs), 4) if costs else None
 
 
-def answer_questions(master_tex: str, job: dict, profile: dict, questions: list[dict], jd: str, backend: str) -> dict:
+def answer_questions(master_tex: str, job: dict, profile: dict, questions: list[dict], jd: str, backend: str,
+                     entries: str = "") -> dict:
     """Answers for several application questions in one model call."""
     if backend not in DRAFT_BACKENDS:
         raise BackendError(f"Answering questions can't use {backend}.")
     if not questions:
         return {"answers": [], "backend": backend, "model": "", "seconds": 0, "cost": None}
     started = time.time()
-    instructions, material = answers_prompt(master_tex, job, profile, questions, jd)
+    instructions, material = answers_prompt(master_tex, job, profile, questions, jd, entries)
     raw, model, cost = ask(backend, instructions, material, ANSWERS_SCHEMA, "answers", questions=len(questions))
     costs = [cost] if cost is not None else []
     byid = {str(q["id"]): q for q in questions}
@@ -667,13 +681,13 @@ def answer_questions(master_tex: str, job: dict, profile: dict, questions: list[
 
 
 def draft_answer(master_tex: str, job: dict, question: str, context: str, jd: str,
-                 backend: str, max_chars: int = 0, note: str = "", previous: str = "") -> dict:
+                 backend: str, max_chars: int = 0, note: str = "", previous: str = "", entries: str = "") -> dict:
     if backend not in DRAFT_BACKENDS:
         raise BackendError(f"Drafting can't use {backend}.")
     if not question.strip():
         raise BackendError("No question to answer.")
     started = time.time()
-    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars, note, previous)
+    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars, note, previous, entries)
     raw, model, cost = ask(backend, instructions, material, DRAFT_SCHEMA, "draft")
     costs = [cost] if cost is not None else []
     answer = _fit(str((raw or {}).get("answer", "")), max_chars)

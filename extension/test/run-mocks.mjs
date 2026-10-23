@@ -60,10 +60,10 @@ await test("greenhouse: remembers custom answers and offers written ones", async
   const text = await runFill(page);
   const st = await page.evaluate(() => window.__mockState());
   expectState("memory", st, { question_7: "No", question_8: "Two weeks after an offer", why: "", first_name: "Testy" });
-  expect("memory: written answer offered, not filled", /Use saved answer/.test(text), text);
-  await page.locator("#jobradar-autofill button", { hasText: "Use saved answer" }).click();
-  await sleep(300);
-  expectState("memory: use saved", await page.evaluate(() => window.__mockState()), { why: "I like building developer tools. (TEST ANSWER)" });
+  // "Why do you want to work at Mock Co?" names the company, so its answer only fits here and isn't kept.
+  expect("memory: company question not kept", !/Use saved answer/.test(text), text);
+  const kept = await env.sw.evaluate(() => chrome.storage.local.get(null));
+  expect("memory: company question not in storage", !kept["mem:why do you want to work at mock co"], Object.keys(kept).join(","));
   // Saved answers show in the options page.
   const opt = await env.ctx.newPage();
   await opt.goto(`chrome-extension://${env.id}/src/options/options.html`);
@@ -337,6 +337,27 @@ await test("options: entries imported from the resume, edited, then used on Work
     "workExperience-1--roleDescription": "Led the estimate tool rewrite in Vue.js.\nCut load time by half.",
     "workExperience-2--companyName": "Example Solutions Pvt Ltd",
   });
+});
+
+await test("options: removes saved answers tied to one company", async (page) => {
+  const now = Date.now();
+  await seed(env, {
+    "mem:why do you want to work here": { q: "Why do you want to work here?", a: "I want to build ElevenMusic at ElevenLabs. (TEST ANSWER)", company: "ElevenLabs", names: ["ElevenLabs", "ElevenMusic"], updated: now },
+    "use:why do you want to work here": [{ company: "Mock Co", date: now }],
+    "mem:why elevenlabs": { q: "Why ElevenLabs?", a: "Voice is the future. (TEST ANSWER)", company: "ElevenLabs", updated: now },
+    "mem:when can you start": { q: "When can you start?", a: "Two weeks after an offer", company: "ElevenLabs", updated: now },
+  });
+  await page.goto(`chrome-extension://${env.id}/src/options/options.html`);
+  const btn = page.locator("#memTied");
+  await btn.waitFor({ state: "visible" });
+  expect("tied: count shown", /Remove 2 answers tied to one company/.test(await btn.innerText()), await btn.innerText());
+  page.once("dialog", (d) => d.accept());
+  await btn.click();
+  await sleep(400);
+  const left = await page.evaluate(() => chrome.storage.local.get(null));
+  expect("tied: removed with their use log", !left["mem:why do you want to work here"] && !left["mem:why elevenlabs"] && !left["use:why do you want to work here"]);
+  expect("tied: neutral answer kept", !!left["mem:when can you start"]);
+  expect("tied: button hidden after", await btn.isHidden());
 });
 
 await test("toolbar button fills the active tab", async (page) => {
