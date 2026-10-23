@@ -161,7 +161,7 @@ await test("ashby: fills inputs, yes/no buttons, location combobox, resume and E
   expect("ashby: office question left for the user", /SF office/.test(text));
 });
 
-await test("workday: fills each step only when asked, never presses Next", async (page) => {
+await test("workday: fills each step as the user moves on, never presses Next", async (page) => {
   await page.goto("https://mockco.wd5.myworkdayjobs.com/en-US/External/job/Boston-MA/Software-Engineer_JR1001/apply/applyManually");
   await runFill(page);
   expectState("workday step 1", await page.evaluate(() => window.__mockState()), {
@@ -174,10 +174,14 @@ await test("workday: fills each step only when asked, never presses Next", async
   expect("workday: no navigation by the extension", (await page.evaluate(() => window.__navClicks)) === 0);
 
   const next = async () => { await page.click("[data-automation-id='bottom-navigation-next-button']"); await sleep(900); };
-  await next();   // the user moves on
+  // After the first fill, each next step fills itself: nothing to press in the panel.
+  const filledBy = (key, value) => page.waitForFunction(([k, v]) => JSON.stringify(window.__mockState()[k]) === JSON.stringify(v),
+    [key, value], { timeout: 60000 }).then(() => true, () => false);
   const panel = page.locator("#onward-autofill .panel");
-  await panel.locator("button", { hasText: "Fill this step" }).waitFor({ timeout: 5000 });
-  await runFill(page);
+  const settled = () => panel.locator(".status").filter({ hasText: /^Filled \d+/ }).waitFor({ timeout: 60000 });
+  await next();   // the user moves on
+  expect("workday: step 2 filled on its own", await filledBy("webAddress-1--url", "https://testy.example.com"));
+  await settled();
   const DESC2 = "Shipped React.js and Angular dashboards for 3 client products, cutting page load time by 30%.\n" +
     "Wrote Node.js microservices over MongoDB with 85% test coverage.";
   const DESC1 = "Built offline-first estimate screens in Vue.js backed by PouchDB sync, used by 40 field staff.\n" +
@@ -217,14 +221,28 @@ await test("workday: fills each step only when asked, never presses Next", async
   expectState("workday undo", await page.evaluate(() => window.__mockState()), { [w(1, "roleDescription")]: ".js" });
   expect("workday: AI never asked about history fields", !/Role Description[\s\S]*AI answer/.test(await panel.innerText()));
   await next();
-  await runFill(page);
+  expect("workday: step 3 filled on its own", await filledBy("q3", "Yes"));
+  await settled();
   expectState("workday step 3", await page.evaluate(() => window.__mockState()), { q1: "Yes", q2: "Yes", q3: "Yes", q4: "" });
   await next();
-  await runFill(page);
+  expect("workday: step 4 filled on its own", await filledBy("veteran", "I do not wish to self-identify"));
+  await settled();
   expectState("workday step 4", await page.evaluate(() => window.__mockState()), {
-    gender: "I do not wish to answer", ethnicity: "I do not wish to answer.", veteran: "I do not wish to self-identify", agreement: false,
+    gender: "Not Declared", ethnicity: "I do not wish to answer.", veteran: "I do not wish to self-identify", agreement: false,
   });
-  expect("workday: only the test's own 3 Next clicks", (await page.evaluate(() => window.__navClicks)) === 3);
+  await next();
+  // The disability form: its generic question is named by its options; Name and today's date are filled.
+  expect("workday: self-identify filled on its own", await filledBy("disability-2", true));
+  await settled();
+  const now = new Date();
+  expectState("workday self-identify", await page.evaluate(() => window.__mockState()), {
+    "disability-0": false, "disability-1": false, "disability-2": true,
+    "selfIdentifiedDisabilityData--name": "Testy McTestface", selfIdLanguage: "English",
+    "selfIdentifiedDisabilityData--dateSignedOn-dateSectionMonth-input": String(now.getMonth() + 1).padStart(2, "0"),
+    "selfIdentifiedDisabilityData--dateSignedOn-dateSectionDay-input": String(now.getDate()).padStart(2, "0"),
+    "selfIdentifiedDisabilityData--dateSignedOn-dateSectionYear-input": String(now.getFullYear()),
+  });
+  expect("workday: only the test's own 4 Next clicks", (await page.evaluate(() => window.__navClicks)) === 4);
   expect("workday: nothing submitted", (await page.evaluate(() => window.__submitted)) === 0);
 });
 

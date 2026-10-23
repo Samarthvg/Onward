@@ -127,8 +127,18 @@
         continue;
       }
       if (kind === "checkbox") {
-        const box = el.closest("fieldset, [role='group'], ul, [data-automation-id^='formField-'], .checkbox-group");
-        const peers = box ? [...box.querySelectorAll("input[type='checkbox']")].filter(usable) : [el];
+        // The nearest wrapper holding several checkboxes: Workday wraps each
+        // option of "Please check one of the boxes below" in its own field.
+        const GROUP = "fieldset, [role='group'], ul, [data-automation-id^='formField-'], .checkbox-group";
+        let box = el.closest(GROUP);
+        let peers = box ? [...box.querySelectorAll("input[type='checkbox']")].filter(usable) : [el];
+        for (let up = box && box.parentElement && box.parentElement.closest(GROUP); peers.length < 2 && up && form.contains(up);
+          up = up.parentElement && up.parentElement.closest(GROUP)) {
+          // Only a wrapper of checkboxes alone: one holding other fields is a whole section.
+          if (up.querySelector("input:not([type='checkbox']):not([type='hidden']), select, textarea, button[aria-haspopup='listbox']")) break;
+          const more = [...up.querySelectorAll("input[type='checkbox']")].filter(usable);
+          if (more.length > 1) { box = up; peers = more; }
+        }
         if (peers.length > 1) { add({ kind: "checkbox", el, box, controls: peers, multi: true }); continue; }
         add({ kind: "checkbox", el, controls: [el], single: true });
         continue;

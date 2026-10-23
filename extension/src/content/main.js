@@ -27,6 +27,10 @@
   /** Work-history and education fields are the resume's to answer, never the AI's. */
   const notForAI = (q) => !!(q.history || R.historyField(q.label, q.attrs));
 
+  /** A question's answer options, where reading them needs no clicking. */
+  const optionTexts = (q) => (q.kind === "radio" || q.kind === "checkbox") ? q.options
+    : q.kind === "select" ? [...q.el.options].map((o) => o.text.trim()).filter(Boolean) : null;
+
   /* ------------------------------------------------------------- storage */
 
   async function load() {
@@ -130,6 +134,7 @@
     if (!site) site = JR.sites.detect(document);
     if (!site || !JR.sites.formRoot(document, site)) return null;
     running = true;
+    markEngaged();
     JR.panel.update({ open: true, busy: true, status: "Filling…" });
     try {
       await load();
@@ -206,7 +211,7 @@
 
       for (const q of qs) {
         if (histTouched && q.history) continue;   // filled above
-        const cls = classify(q.label, q.kind, q.attrs, q.section);
+        const cls = classify(q.label, q.kind, q.attrs, q.section, optionTexts(q));
         q.cls = cls;
         const it = await answerOne(q, cls, mem, ctx);
         if (it.status === "filled" && !filledByUs.has(q.el)) {
@@ -425,7 +430,7 @@
     const writes = {};
     for (const q of qs) {
       if (q.kind === "file") continue;
-      const cls = classify(q.label, q.kind, q.attrs, q.section);
+      const cls = classify(q.label, q.kind, q.attrs, q.section, optionTexts(q));
       if (cls.cat !== "custom") continue;   // profile, sponsorship and EEO answers live in the options page
       const k = memKey(q.label);
       const v = W.get(q);
@@ -649,11 +654,30 @@
     if (sig !== stepSig) {
       const first = !stepSig;
       stepSig = sig;
-      if (!first && JR.panel.view.open) JR.panel.update({ step: "new", items: [], status: "New step. Press Fill this step when you're ready." });
-      load().then(() => {
-        if (store.settings.autoRun && !stepsFilled.has(sig)) fill();
+      load().then(async () => {
+        // After the user has filled this form once, every next step fills itself.
+        const keepGoing = store.settings.fillSteps && engaged();
+        if ((store.settings.autoRun || keepGoing) && !stepsFilled.has(sig)) {
+          if (!first) JR.panel.update({ open: true, step: "", items: [], status: "New step. Filling…" });
+          await sleep(500);   // the step's fields can still be arriving
+          if (stepSignature() === sig) fill();
+        } else if (!first && JR.panel.view.open) {
+          JR.panel.update({ step: "new", items: [], status: "New step. Press Fill this step when you're ready." });
+        }
       });
     }
+  }
+
+  // Whether the user has pressed Autofill on this form, kept for the tab's
+  // session so a step that reloads the page (some Workday sites) keeps going.
+  const ENGAGED = "onward-autofill:filled:" + location.host;
+  function engaged() {
+    try { return sessionStorage.getItem(ENGAGED) === "1"; } catch (e) { return !!engagedHere; }
+  }
+  let engagedHere = false;
+  function markEngaged() {
+    engagedHere = true;
+    try { sessionStorage.setItem(ENGAGED, "1"); } catch (e) {}
   }
 
   /* Greenhouse (Remix) and other server-rendered React apps hydrate the

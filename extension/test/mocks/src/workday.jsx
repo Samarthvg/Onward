@@ -9,7 +9,7 @@ import { createPortal } from "react-dom";
 import { exposeState } from "./common.js";
 
 const S = {};
-const STEPS = ["My Information", "My Experience", "Application Questions", "Voluntary Disclosures", "Review"];
+const STEPS = ["My Information", "My Experience", "Application Questions", "Voluntary Disclosures", "Self Identify", "Review"];
 
 function Field({ id, aid, label, required, children }) {
   return (
@@ -162,7 +162,7 @@ function Check({ id, aid, label }) {
 }
 
 /** Workday's date widget: separate month and year spinbuttons under one label. */
-function DateParts({ id, aid, label, month = true }) {
+function DateParts({ id, aid, label, month = true, day = false }) {
   const part = (p, name, size) => {
     const pid = `${id}-dateSection${p}-input`;
     const [v, setV] = useState(S[pid] || "");
@@ -174,7 +174,7 @@ function DateParts({ id, aid, label, month = true }) {
   return (
     <div data-automation-id={"formField-" + aid}>
       <label>{label}</label>
-      <div data-automation-id="dateInputWrapper">{month ? part("Month", "Month", 2) : null}{part("Year", "Year", 4)}</div>
+      <div data-automation-id="dateInputWrapper">{month ? part("Month", "Month", 2) : null}{day ? part("Day", "Day", 2) : null}{part("Year", "Year", 4)}</div>
     </div>
   );
 }
@@ -357,10 +357,26 @@ function Step({ n }) {
   );
   if (n === 3) return (
     <>
-      <ListButton id="gender" aid="gender" label="Gender" options={["Male", "Female", "I do not wish to answer"]} required />
-      <ListButton id="ethnicity" aid="ethnicity" buttonAid="ethnicityDropdown" label="Ethnicity" options={["Asian (United States of America)", "White (United States of America)", "I do not wish to answer."]} required />
-      <ListButton id="veteran" aid="veteranStatus" label="Veteran Status" options={["I am not a protected veteran", "I identify as one or more of the classifications of protected veteran", "I do not wish to self-identify"]} required />
+      <ListButton id="gender" aid="gender" label="Please select your gender." options={["Male", "Female", "Not Declared"]} required />
+      <ListButton id="ethnicity" aid="ethnicity" buttonAid="ethnicityDropdown" label="Please select the ethnicity which most accurately describes how you identify yourself." options={["Asian (United States of America)", "White (United States of America)", "I do not wish to answer."]} required />
+      <ListButton id="veteran" aid="veteranStatus" label="Please select the veteran status which most accurately describes your relationship with the military" options={["I am not a protected veteran", "I identify as one or more of the classifications of protected veteran", "I do not wish to self-identify"]} required />
       <Agreement />
+    </>
+  );
+  if (n === 4) return (
+    <>
+      <h3>Voluntary Self-Identification of Disability</h3>
+      <ListButton id="selfIdLanguage" aid="language" label="Language" options={["English", "Spanish"]} required />
+      <Text id="selfIdentifiedDisabilityData--name" aid="name" label="Name" required />
+      <DateParts id="selfIdentifiedDisabilityData--dateSignedOn" aid="dateSignedOn" label="Date" day />
+      <div data-automation-id="formField-disabilityStatus">
+        <fieldset>
+          <legend><label>Please check one of the boxes below:</label></legend>
+          {["Yes, I have a disability (or previously had a disability)", "No, I do not have a disability and have not had one in the past", "I do not want to answer"].map((o, i) => (
+            <Check key={o} id={"disability-" + i} aid={"disability-" + i} label={o} />
+          ))}
+        </fieldset>
+      </div>
     </>
   );
   return <p>Review your application.</p>;

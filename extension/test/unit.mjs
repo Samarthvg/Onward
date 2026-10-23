@@ -12,7 +12,7 @@ function check(name, fn) {
   try { fn(); passed++; } catch (e) { failed++; console.log("FAIL", name, "\n  ", e.message.split("\n").join("\n   ")); }
 }
 
-const C = (label, kind = "text", attrs = "", section = "") => R.classify(label, kind, attrs, section);
+const C = (label, kind = "text", attrs = "", section = "", options = null) => R.classify(label, kind, attrs, section, options);
 const is = (label, kind, want, attrs, section) => check(`${kind} "${label}"`, () => {
   const got = C(label, kind, attrs, section);
   for (const [k, v] of Object.entries(want)) assert.equal(got[k], v, `${label}: ${k} = ${got[k]}, want ${v} (${JSON.stringify(got)})`);
@@ -203,9 +203,26 @@ check("projects text: one block per project", () => assert.equal(JR.history.proj
 check("projects text: whole projects within the limit", () => assert.ok(!JR.history.projectsText(PROJ, 130).includes("Portfolio")));
 check("projects text: one line", () => assert.ok(!JR.history.projectsText(PROJ, 0, true).includes("\n")));
 
+// Workday's self-identify page and other generic demographic labels
+const DIS = ["Yes, I have a disability (or previously had a disability)", "No, I do not have a disability and have not had one in the past", "I do not want to answer"];
+check("eeo by options: generic label", () => assert.equal(C("Please check one of the boxes below:", "checkbox", "", "Self Identify", DIS).key, "eeoDisability"));
+is("Voluntary Self-Identification of Disability", "checkbox", { cat: "eeo", key: "eeoDisability" });
+is("Please select the veteran status which most accurately describes your relationship with the military", "listbutton", { cat: "eeo", key: "eeoVeteran" });
+check("eeo by options: gender", () => assert.equal(C("Please select one", "radio", "", "", ["Male", "Female", "Not Declared"]).key, "eeoGender"));
+is("By checking this box I consent to the processing of my disability information", "checkbox", { cat: "never" });
+is("Name", "text", { cat: "profile", key: "fullName" }, "", "Self Identify");
+check("self-identify date parts are today", () => {
+  const c = C("Month", "text", "selfIdentifiedDisabilityData--dateSignedOn-dateSectionMonth-input dateSectionMonth-input dateSignedOn", "Self Identify");
+  assert.equal(c.key, "today"); assert.equal(c.transform, "month");
+  assert.equal(R.answerFor(c, {}, {}), String(new Date().getMonth() + 1).padStart(2, "0"));
+});
+is("Date", "text", { cat: "custom" }, "", "Additional Information");
+
 // Option matching
 const pick = (v, opts, want) => check(`pick ${v} from ${opts.join("|")}`, () => assert.equal(R.pickOption(v, opts), want));
 pick("yes", ["No", "Yes"], 1);
+pick("decline", ["Male", "Female", "Not Declared"], 2);
+pick("decline", DIS, 2);
 pick("no", ["Yes, I will require sponsorship", "No, I will not require sponsorship"], 1);
 pick("yes", ["Yes - now", "Yes - in the future", "No"], -1);
 pick("yes", ["I am authorized to work for any employer", "I will need sponsorship"], -1);

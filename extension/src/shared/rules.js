@@ -54,6 +54,7 @@
   const DEFAULT_PROFILE = Object.fromEntries(PROFILE_FIELDS.map(([k]) => [k, PROFILE_DEFAULTS[k] || ""]));
   const DEFAULT_SETTINGS = {
     autoRun: false,            // fill as soon as an application form appears
+    fillSteps: true,           // once filled, fill each next step of the form (Workday) as it appears
     remember: true,            // save answers typed into custom questions
     fillRemembered: true,      // reuse saved short answers automatically
     draftBackend: "chatgpt",   // one of DRAFT_BACKENDS
@@ -122,6 +123,25 @@
   const NOT_ME = /emergency|reference|\breferr|recruiter|hiring manager|supervisor|spouse|parent|guardian|relative/;
   const WRITING = /\bwhy\b|tell us|describe|explain|share (a|an|any|with|more|something)|what (excites|interests|motivates|draws|attracts)|cover letter|additional information|anything else|\bessay\b/;
 
+  const CONSENT = /consent|\bagree|acknowledg|certif|attest|signature|authori[sz]e (onward|you|the company|us)/;
+
+  /** The demographic question text names, or null. With fromOptions, read from the answer options instead. */
+  function eeoKey(t, fromOptions) {
+    if (/transgender|cisgender/.test(t)) return "eeoTransgender";
+    if (/sexual orientation|lgbt|queer|heterosexual|bisexual/.test(t)) return "eeoOrientation";
+    if (/disabilit/.test(t)) return "eeoDisability";
+    if (/veteran|military|armed forces/.test(t)) return "eeoVeteran";
+    if (fromOptions) {
+      if (/\b(asian|white|black or african|two or more races|native hawaiian|american indian)\b/.test(t)) return "eeoRace";
+      if (/\b(male|female|non binary|man|woman)\b/.test(t)) return "eeoGender";
+      return null;
+    }
+    if (/\brace\b|ethnic/.test(t)) return "eeoRace";
+    if (/hispanic|latin[oax]/.test(t)) return "eeoHispanic";
+    if (/\bgender\b|\bsex\b/.test(t)) return "eeoGender";
+    return null;
+  }
+
   function yesNoStyle(t) {
     return /^(do|does|will|would|are|is|have|has|can|could|did|were|was|may)\b/.test(t);
   }
@@ -137,12 +157,13 @@
    * label is the question text, attrs extra hints (id, name, automation id),
    * section the heading of the form section the question sits in.
    */
-  function classify(label, kind, attrs, section) {
+  function classify(label, kind, attrs, section, options) {
     const t = normQ(label);
     const a = normQ(attrs || "");
     const both = (t + " " + a).trim();
     const short = t.length <= 60;
     const textual = TEXT_KINDS.has(kind) || kind === "textarea";
+    const eeoSection = EEO_SECTION.test(normQ(section));
 
     if (kind === "file") {
       // A generic "Upload a file" label takes its meaning from the section it is in.
@@ -150,18 +171,24 @@
       if (/resume|\bcv\b|curriculum/.test(both + (generic ? " " + normQ(section) : "")) && !/cover/.test(t)) return { cat: "file", key: "resume" };
       return { cat: "never", why: "attach this yourself" };
     }
-    if (NEVER.test(t) || (!t && NEVER.test(a))) return { cat: "never", why: "answer this yourself" };
+    // The date on a self-identification form ("Date", Workday's dateSignedOn): today.
+    if (/date ?signed|signed ?on|todays? ?date/.test(a) || (/^(todays? )?date( signed)?$/.test(t) && eeoSection)) {
+      const part = /month/.test(t + " " + a) ? "month" : /\bday\b/.test(t + " " + a) ? "day" : /year/.test(t + " " + a) ? "year" : "date";
+      return { cat: "profile", key: "today", transform: part };
+    }
 
-    // Demographic (EEO) questions: only ever filled with the saved choice.
-    if (/transgender/.test(t)) return { cat: "eeo", key: "eeoTransgender" };
-    if (/sexual orientation|lgbt|queer/.test(t)) return { cat: "eeo", key: "eeoOrientation" };
-    if (/\brace\b|ethnic/.test(t)) return { cat: "eeo", key: "eeoRace" };
-    if (/hispanic|latin[oax]/.test(t)) return { cat: "eeo", key: "eeoHispanic" };
-    if (/\bgender\b|\bsex\b/.test(t)) return { cat: "eeo", key: "eeoGender" };
-    if (/veteran|military|armed forces/.test(t)) return { cat: "eeo", key: "eeoVeteran" };
-    if (/disabilit/.test(t)) return { cat: "eeo", key: "eeoDisability" };
-    // Unrecognized questions in a demographic section are demographic too.
-    if (EEO_SECTION.test(normQ(section))) return { cat: "never", why: "answer this yourself" };
+    // Demographic (EEO) questions: only ever filled with the saved choice. A
+    // consent or attestation that mentions them stays the user's to answer.
+    const eeo = !CONSENT.test(t) && eeoKey(t);
+    if (eeo) return { cat: "eeo", key: eeo };
+    if (NEVER.test(t) || (!t && NEVER.test(a))) return { cat: "never", why: "answer this yourself" };
+    // A generic label ("Please check one of the boxes below") is named by its options.
+    const byOptions = options && options.length && !CONSENT.test(t) ? eeoKey(normQ(options.join(" ")), true) : null;
+    if (byOptions) return { cat: "eeo", key: byOptions };
+    // Other choices in a demographic section are demographic too; its Name
+    // and Date fields are ordinary details.
+    // (The disability form's Language picks the form's language, not a demographic.)
+    if (eeoSection && !textual && !/^(form )?languages?$/.test(t)) return { cat: "never", why: "answer this yourself" };
 
     // Work authorization and sponsorship.
     const asWords = textual && !yesNoStyle(t);
@@ -265,6 +292,11 @@
     answers = answers || {};
     if (cls.cat === "profile") {
       if (cls.key === "fullName") return [profile.firstName, profile.lastName].filter(Boolean).join(" ");
+      if (cls.key === "today") {
+        const d = new Date();
+        const mm = String(d.getMonth() + 1).padStart(2, "0"), dd = String(d.getDate()).padStart(2, "0");
+        return { month: mm, day: dd, year: String(d.getFullYear()) }[cls.transform] || `${mm}/${dd}/${d.getFullYear()}`;
+      }
       let v = String(profile[cls.key] || "").trim();
       if (cls.key === "preferredName" && !v) v = String(profile.firstName || "").trim();
       if (cls.transform === "city") v = v.split(",")[0].trim();
@@ -450,7 +482,8 @@
 
   /* --------------------------------------------------------- option choice */
 
-  const DECLINE_RE = /decline|prefer not|not (wish|want) to|don ?t (wish|want) to|do not (wish|want) to|choose not to|rather not|not to (say|answer|disclose|identify|self identify)|wish not to|no answer|not specified|undisclosed/;
+  // Workday also says "Not Declared", "Undeclared" and "I don't wish to self-identify".
+  const DECLINE_RE = /decline|prefer not|not (wish|want) to|don ?t (wish|want) to|do not (wish|want) to|choose not to|rather not|not to (say|answer|disclose|identify|self identify)|wish not to|no answer|not specified|undisclosed|not declared|undeclared|not disclosed/;
 
   /**
    * Which of the options matches the saved value: returns its index or -1.

@@ -19,7 +19,7 @@ const helper = { prepared: null, applied: [], lookups: [] };
 await env.ctx.route(/^http:\/\/127\.0\.0\.1:8765\/api\/(prepared|applied)/, async (route) => {
   const req = route.request();
   const url = new URL(req.url());
-  const ok = req.headers()["x-jobradar-client"] === "autofill";
+  const ok = req.headers()["x-onward-client"] === "autofill";
   if (!ok) return route.fulfill({ status: 403, contentType: "application/json", body: '{"error":"forbidden"}' });
   if (url.pathname === "/api/prepared") {
     helper.lookups.push(url.searchParams.get("url"));

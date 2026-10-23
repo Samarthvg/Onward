@@ -129,7 +129,7 @@ function renderEeo() {
 /* ------------------------------------------------------------- settings */
 
 function renderSettings() {
-  for (const k of ["autoRun", "remember", "fillRemembered", "helper", "aiFill"]) {
+  for (const k of ["autoRun", "fillSteps", "remember", "fillRemembered", "helper", "aiFill"]) {
     const box = $("set-" + k);
     box.checked = !!state.settings[k];
     box.onchange = () => { state.settings[k] = box.checked; save("settings"); };
