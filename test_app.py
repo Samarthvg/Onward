@@ -8,7 +8,9 @@ Run:  python -m unittest test_app
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
 import os
 import socket
@@ -647,6 +649,37 @@ class ExtensionPackagingTests(unittest.TestCase):
         self.assertEqual(gecko["update_url"],
                          f"https://github.com/{appinfo.GITHUB_REPO}/releases/latest/download/updates.json")
         self.assertEqual(gecko["id"], "onward-autofill@samarthvg.github.io", "changing the id would orphan installed copies")
+
+    def test_a_version_uploaded_but_not_downloaded_is_fetched_from_amo(self):
+        # web-ext lost its connection while waiting, so Mozilla has the version but this run doesn't.
+        listing = json.dumps({"results": [{"version": "9.9.9", "file": {"status": "public", "url": "https://amo.test/f.xpi"}}]}).encode()
+        got = []
+
+        def amo_get(url, key, secret):
+            got.append(url)
+            return listing if "/versions/" in url else b"signed file"
+
+        with mock.patch.dict(os.environ, {"REUSE_XPI": "", "AMO_JWT_ISSUER": "k", "AMO_JWT_SECRET": "s"}), \
+                mock.patch.object(self.ext, "web_ext", side_effect=subprocess.CalledProcessError(1, "web-ext")), \
+                mock.patch.object(self.ext, "amo_get", side_effect=amo_get):
+            out = self.ext.sign("9.9.9")
+        self.assertEqual(out.read_bytes(), b"signed file")
+        self.assertIn("onward-autofill%40samarthvg.github.io/versions/?filter=all_with_unlisted", got[0])
+
+    def test_a_failed_signing_of_a_new_version_still_fails(self):
+        with mock.patch.dict(os.environ, {"REUSE_XPI": "", "AMO_JWT_ISSUER": "k", "AMO_JWT_SECRET": "s"}), \
+                mock.patch.object(self.ext, "web_ext", side_effect=subprocess.CalledProcessError(1, "web-ext")), \
+                mock.patch.object(self.ext, "amo_get", return_value=json.dumps({"results": []}).encode()), \
+                self.assertRaises(subprocess.CalledProcessError):
+            self.ext.sign("9.9.9")
+
+    def test_amo_token_is_a_signed_jwt(self):
+        head, body, sig = self.ext.amo_token("issuer", "secret").split(".")
+        pad = lambda s: s + "=" * (-len(s) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(pad(body)))
+        self.assertEqual((claims["iss"], claims["exp"] - claims["iat"]), ("issuer", 60))
+        expected = base64.urlsafe_b64encode(hmac.new(b"secret", f"{head}.{body}".encode(), hashlib.sha256).digest()).rstrip(b"=").decode()
+        self.assertEqual(sig, expected)
 
     def test_an_already_signed_version_is_reused_not_sent_again(self):
         old = self.dist / "old.xpi"

@@ -20,13 +20,20 @@ no .xpi are made, and the setup steps fall back to Load Temporary Add-on.
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -80,12 +87,67 @@ def sign(version: str) -> Path | None:
     with tempfile.TemporaryDirectory() as tmp:
         # The keys go through the environment, so they never show in a command line.
         os.environ.update(WEB_EXT_API_KEY=key, WEB_EXT_API_SECRET=secret)
-        web_ext("sign", "--channel", "unlisted", "--artifacts-dir", tmp, "--approval-timeout", "900000")
+        try:
+            web_ext("sign", "--channel", "unlisted", "--artifacts-dir", tmp, "--approval-timeout", "900000")
+        except subprocess.CalledProcessError:
+            # A run that lost its connection while waiting for approval leaves the
+            # version uploaded but not downloaded, and Mozilla refuses the same
+            # version twice; fetch what it signed instead.
+            ext_id = manifest()["browser_specific_settings"]["gecko"]["id"]
+            print(f"web-ext sign failed; asking addons.mozilla.org for {version}", flush=True)
+            if not fetch_signed(ext_id, version, key, secret, out):
+                raise
+            return out
         signed = sorted(Path(tmp).glob("*.xpi"))
         if not signed:
             raise SystemExit("web-ext sign returned no .xpi")
         shutil.move(str(signed[-1]), out)
     return out
+
+
+AMO = "https://addons.mozilla.org/api/v5"
+
+
+def amo_token(key: str, secret: str) -> str:
+    """The short-lived JWT addons.mozilla.org's API takes (HS256 over the issuer and secret)."""
+    def b64(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+    now = int(time.time())
+    head = b64(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    body = b64(json.dumps({"iss": key, "jti": uuid.uuid4().hex, "iat": now, "exp": now + 60}).encode())
+    sig = b64(hmac.new(secret.encode(), f"{head}.{body}".encode(), hashlib.sha256).digest())
+    return f"{head}.{body}.{sig}"
+
+
+def amo_get(url: str, key: str, secret: str) -> bytes:
+    req = urllib.request.Request(url, headers={"Authorization": "JWT " + amo_token(key, secret), "User-Agent": "onward-release"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return r.read()
+
+
+def fetch_signed(ext_id: str, version: str, key: str, secret: str, out: Path,
+                 wait: float = 900, every: float = 15) -> bool:
+    """Downloads the signed file of a version already on addons.mozilla.org,
+    waiting for its signing to finish. False when there's no such version."""
+    listing = f"{AMO}/addons/addon/{urllib.parse.quote(ext_id, safe='')}/versions/?filter=all_with_unlisted&page_size=50"
+    end = time.time() + wait
+    while True:
+        try:
+            found = next((v for v in json.loads(amo_get(listing, key, secret)).get("results", [])
+                          if v.get("version") == version), None)
+        except (urllib.error.URLError, json.JSONDecodeError) as e:
+            print(f"addons.mozilla.org didn't answer ({e}); trying again", flush=True)
+            found = {}
+        if found is None:
+            return False
+        f = (found or {}).get("file") or {}
+        if f.get("status") == "public" and f.get("url"):
+            out.write_bytes(amo_get(f["url"], key, secret))
+            print(f"downloaded the signed {version} from addons.mozilla.org", flush=True)
+            return True
+        if time.time() > end:
+            raise SystemExit(f"addons.mozilla.org hasn't finished signing {version} (status {f.get('status')!r}); run the release again later")
+        time.sleep(every)
 
 
 def updates_json(version: str, xpi: Path, ext_id: str, repo: str) -> Path:
