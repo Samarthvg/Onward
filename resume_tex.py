@@ -449,7 +449,25 @@ def history(res: Resume) -> dict:
                               "field": field_.strip(), "gpa": gpa.group(1) if gpa else "",
                               "gpa_scale": (gpa.group(2) or "") if gpa else "",
                               **_dates(plain(tm.group(0)))})
-    return {"work": work, "education": education, "skills": skill_list(res), "certifications": certifications(res)}
+    projects = []
+    for e in res.entries:
+        if e.kind != "project":
+            continue
+        header = _entry_header(res, e)
+        name, _ = _name_and_place(header.split("|")[0])
+        tech = re.search(r"\\textit\{", header)
+        link = re.search(r"\\href\{([^}]*)\}", header)
+        span = _dates(plain(header))
+        if not span["start"]:
+            d = ONE_DATE.search(plain(header).split("|")[-1])
+            if d:
+                span = {"start": {"month": _month(d.group("m")), "year": int(d.group("y"))}, "end": None, "current": False}
+        projects.append({"name": name or plain(header.split("|")[0]).strip(),
+                         "tech": plain(header[tech.end():_brace_end(header, tech.end() - 1) - 1]) if tech else "",
+                         "link": link.group(1) if link else "", **span,
+                         "bullets": [plain(b.tex) for b in e.bullets]})
+    return {"work": work, "education": education, "projects": projects,
+            "skills": skill_list(res), "certifications": certifications(res)}
 
 
 CERT_SECTION = re.compile(r"certif|licen", re.I)

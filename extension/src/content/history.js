@@ -162,7 +162,9 @@
       case "location": return [entry.location].filter(Boolean);
       case "current": return entry.current == null ? [] : [entry.current ? "yes" : "no"];
       case "description": {
-        const lines = (entry.bullets || []).filter(Boolean);
+        // The description edited in the options, else the resume's bullets; one point per line.
+        const lines = (entry.description != null ? String(entry.description).split("\n") : entry.bullets || [])
+          .map((l) => l.trim()).filter(Boolean);
         return lines.length ? [fitLines(lines, q.el.maxLength > 0 ? q.el.maxLength : 0)] : [];
       }
       case "startMonth": return monthValues(s && s.month);

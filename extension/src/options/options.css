@@ -69,3 +69,24 @@ button.danger { color: var(--warn); }
 }
 .grid .cell { width: 100%; min-width: 0; }
 .mem .flag { font-size: 12px; color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 4px 8px; }
+section h3 { font-size: 14px; margin: 16px 0 6px; }
+.entries { display: grid; gap: 8px; }
+.entry { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--surface-2); }
+.entry > summary { cursor: pointer; padding: 2px 0; }
+.entry[open] > summary { margin-bottom: 8px; }
+.entry textarea { margin-top: 4px; }
+.entry .row { margin: 8px 0 0; }
+.entry .lbl { font-size: 13px; color: var(--muted); }
+.date { display: inline-flex; gap: 6px; }
+.date select { width: auto; }
+.date input { width: 6em; }
+.dates { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.check.inline { margin: 0; display: inline-flex; font-size: 13px; }
+@media (max-width: 640px) {
+  .entry .grid { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .entry .grid > span:empty { display: none; }
+  .entry .grid > .lbl { margin-top: 6px; }
+  .entry .grid input:not([type=checkbox]), .entry .grid select { width: 100%; }
+  .entry .grid .date input:not([type=checkbox]) { width: 6em; }
+  .entry .grid .date select { width: auto; }
+}

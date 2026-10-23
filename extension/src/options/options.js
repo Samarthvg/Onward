@@ -44,7 +44,7 @@ function save(area) {
 }
 
 async function load() {
-  const s = await api.storage.local.get(["profile", "answers", "settings", "resume"]);
+  const s = await api.storage.local.get(["profile", "answers", "settings", "resume", "history"]);
   state.profile = Object.assign({}, R.DEFAULT_PROFILE, s.profile);
   state.answers = Object.assign({}, R.DEFAULT_ANSWERS, s.answers);
   const loaded = R.withDefaults(s.settings);
@@ -55,6 +55,8 @@ async function load() {
   renderEeo();
   renderSettings();
   renderResume(s.resume);
+  state.history = normalizeHistory(s.history);
+  renderHistory();
   renderMemory();
 }
 
@@ -190,6 +192,144 @@ $("resumeRemove").addEventListener("click", async () => {
   await api.storage.local.remove("resume");
   renderResume(null);
   saved("Resume removed");
+});
+
+/* --------------------------------------- experience, education, projects */
+
+// Saved under "history" in the same shape the helper's /api/resume/entries
+// returns, plus an employment type and an editable description per entry.
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const JOB_TYPES = ["", "Full-time", "Part-time", "Internship", "Contract", "Co-op", "Freelance"];
+const KINDS = {
+  work: { box: "histWork", label: "Work experience", current: "I currently work here",
+    fields: [["title", "Job title"], ["company", "Company"], ["location", "Location"], ["type", "Type", JOB_TYPES]] },
+  education: { box: "histEdu", label: "Education", current: "I currently study here",
+    fields: [["school", "School"], ["degree", "Degree"], ["field", "Field of study"], ["gpa", "GPA"], ["location", "Location"]] },
+  projects: { box: "histProj", label: "Project", current: "Ongoing",
+    fields: [["name", "Project name"], ["role", "Your role"], ["tech", "Tools used"], ["link", "Link"], ["location", "Location"]] },
+};
+
+const lines = (e) => (e.description != null ? e.description : (e.bullets || []).join("\n"));
+
+function normalizeHistory(h) {
+  h = h && typeof h === "object" ? h : {};
+  const list = (x) => (Array.isArray(x) ? x.filter((e) => e && typeof e === "object") : []);
+  return { work: list(h.work), education: list(h.education), projects: list(h.projects),
+    skills: Array.isArray(h.skills) ? h.skills : [], certifications: list(h.certifications), imported: h.imported || 0 };
+}
+
+function saveHistory() {
+  state.history.updated = Date.now();
+  save("history");
+}
+
+function fmtDate(d) {
+  return d && d.year ? (d.month ? MONTHS[d.month - 1] + " " : "") + d.year : "";
+}
+
+function dateInputs(entry, key, label) {
+  const d = entry[key] || {};
+  const month = el("select", { "aria-label": label + " month" },
+    el("option", { value: "", text: "Month" }), MONTHS.map((m, i) => el("option", { value: String(i + 1), text: m })));
+  month.value = d.month ? String(d.month) : "";
+  const year = el("input", { type: "text", inputmode: "numeric", maxlength: "4", placeholder: "Year", "aria-label": label + " year",
+    value: d.year ? String(d.year) : "" });
+  const put = () => {
+    const y = parseInt(year.value, 10);
+    entry[key] = y >= 1950 && y <= 2100 ? { month: month.value ? +month.value : null, year: y } : null;
+    saveHistory();
+  };
+  month.addEventListener("change", put);
+  year.addEventListener("input", put);
+  return el("span", { class: "date" }, month, year);
+}
+
+function entryCard(kind, entry, i) {
+  const K = KINDS[kind];
+  const grid = el("div", { class: "grid" });
+  for (const [key, label, choices] of K.fields) {
+    const id = `h-${kind}-${i}-${key}`;
+    let input;
+    if (choices) {
+      input = el("select", { id }, choices.map((c) => el("option", { value: c, text: c || "Not set" })));
+      input.value = entry[key] || "";
+      input.addEventListener("change", () => { entry[key] = input.value; saveHistory(); });
+    } else {
+      input = el("input", { id, type: "text", value: entry[key] || "", autocomplete: "off" });
+      input.addEventListener("input", () => { entry[key] = input.value.trim(); saveHistory(); });
+    }
+    grid.append(el("label", { for: id, text: label }), input, el("span"));
+  }
+  const endWrap = el("span", null, dateInputs(entry, "end", "End"));
+  const cur = el("input", { type: "checkbox" });
+  cur.checked = !!entry.current;
+  endWrap.hidden = cur.checked;
+  cur.addEventListener("change", () => {
+    entry.current = cur.checked;
+    if (cur.checked) entry.end = null;
+    endWrap.hidden = cur.checked;
+    saveHistory();
+  });
+  grid.append(el("span", { class: "lbl" }, "Start"), dateInputs(entry, "start", "Start"), el("span"),
+    el("span", { class: "lbl" }, "End"), el("span", { class: "dates" }, endWrap, el("label", { class: "check inline" }, cur, " " + K.current)), el("span"));
+  const descId = `h-${kind}-${i}-desc`;
+  const desc = el("textarea", { id: descId, rows: Math.min(10, Math.max(3, lines(entry).split("\n").length + 1)) }, lines(entry));
+  desc.addEventListener("input", () => { entry.description = desc.value; saveHistory(); });
+  const title = (kind === "work" ? [entry.title, entry.company] : kind === "education" ? [entry.degree, entry.school] : [entry.name])
+    .filter(Boolean).join(" · ");
+  const when = [fmtDate(entry.start), entry.current ? "now" : fmtDate(entry.end)].filter(Boolean).join(" – ");
+  return el("details", { class: "entry", open: !title },
+    el("summary", null, el("b", null, title || "New " + K.label.toLowerCase()), when ? el("span", { class: "muted" }, "  " + when) : null),
+    grid,
+    el("label", { for: descId, class: "muted" }, kind === "education" ? "Notes (courses, honors)" : "Description, one point per line"),
+    desc,
+    el("div", { class: "row" }, el("button", { type: "button", class: "ghost danger", onclick: () => {
+      state.history[kind].splice(i, 1);
+      saveHistory();
+      renderHistory();
+      saved("Removed");
+    } }, "Remove")));
+}
+
+function renderHistory() {
+  for (const kind of Object.keys(KINDS)) {
+    const box = $(KINDS[kind].box);
+    box.replaceChildren(...state.history[kind].map((e, i) => entryCard(kind, e, i)));
+    if (!state.history[kind].length) box.append(el("p", { class: "muted" }, "None yet."));
+  }
+  $("histSkills").value = state.history.skills.join(", ");
+  $("histMsg").textContent = state.history.imported ? "Imported from your resume " + new Date(state.history.imported).toLocaleDateString() + "." : "";
+}
+
+for (const [kind, btn] of [["work", "addWork"], ["education", "addEdu"], ["projects", "addProj"]]) {
+  $(btn).addEventListener("click", () => {
+    state.history[kind].push({ start: null, end: null, current: false, description: "" });
+    saveHistory();
+    renderHistory();
+  });
+}
+
+$("histSkills").addEventListener("input", () => {
+  state.history.skills = $("histSkills").value.split(",").map((x) => x.trim()).filter(Boolean);
+  saveHistory();
+});
+
+$("histImport").addEventListener("click", async () => {
+  const h = state.history;
+  if ((h.work.length || h.education.length || h.projects.length) &&
+      !confirm("Replace these entries with what your master resume says? Edits made here will be lost.")) return;
+  $("histMsg").textContent = "Reading your resume…";
+  const r = await api.runtime.sendMessage({ type: "jr:history", url: "" }).catch((e) => ({ error: e.message }));
+  if (!r || r.error) {
+    $("histMsg").textContent = (r && r.error) || "The Onward helper didn't answer. Is the Onward app running?";
+    return;
+  }
+  const withText = (list) => (list || []).map((e) => Object.assign({}, e, { description: (e.bullets || []).join("\n") }));
+  state.history = normalizeHistory({ work: withText(r.work), education: r.education, projects: withText(r.projects),
+    skills: r.skills, certifications: r.certifications, imported: Date.now() });
+  saveHistory();
+  renderHistory();
+  saved("Imported");
 });
 
 /* --------------------------------------------------------------- import */
@@ -357,7 +497,7 @@ $("importAll").addEventListener("change", async (e) => {
     if (!doc || doc.jobradar !== "autofill-backup" || typeof doc.data !== "object") throw new Error();
     const data = {};
     for (const [k, v] of Object.entries(doc.data)) {
-      if (["profile", "answers", "settings", "useLogSince"].includes(k) || k.startsWith("mem:") || k.startsWith("use:")) data[k] = v;
+      if (["profile", "answers", "settings", "useLogSince", "history"].includes(k) || k.startsWith("mem:") || k.startsWith("use:")) data[k] = v;
     }
     await api.storage.local.set(data);
     await load();

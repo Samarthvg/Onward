@@ -45,6 +45,27 @@
     <div class="grid" id="profileFields"></div>
   </section>
 
+  <section id="historySection">
+    <h2>Experience, education and projects</h2>
+    <p class="hint">What Work Experience, Education and Skills sections on forms are filled with (Workday's My Experience step, Greenhouse's Education and Employment rows). Import them from your master resume, then edit anything a form should say differently. Without entries here, forms are filled straight from your resume.</p>
+    <div class="row">
+      <button type="button" id="histImport">Import from my resume</button>
+      <span class="muted" id="histMsg"></span>
+    </div>
+    <h3>Work experience</h3>
+    <div class="entries" id="histWork"></div>
+    <div class="row"><button type="button" class="ghost" id="addWork">Add work experience</button></div>
+    <h3>Education</h3>
+    <div class="entries" id="histEdu"></div>
+    <div class="row"><button type="button" class="ghost" id="addEdu">Add education</button></div>
+    <h3>Projects</h3>
+    <div class="entries" id="histProj"></div>
+    <div class="row"><button type="button" class="ghost" id="addProj">Add project</button></div>
+    <h3><label for="histSkills">Skills</label></h3>
+    <p class="hint">Comma separated, in the order you want them added to a form's skills box.</p>
+    <textarea id="histSkills" rows="3"></textarea>
+  </section>
+
   <section>
     <h2>Work authorization and standard answers</h2>
     <p class="hint">Sponsorship and work authorization questions are only answered when you set an answer here. Leave one on "Ask me each time" and the form will leave it for you.</p>

@@ -89,6 +89,13 @@ class History(unittest.TestCase):
         # A certification mentioned in a job's bullet is not a Certifications entry.
         self.assertEqual(self.h["certifications"], [])
 
+    def test_projects(self):
+        p = self.h["projects"]
+        self.assertEqual(len(p), 1)
+        self.assertEqual((p[0]["name"], p[0]["tech"]), ("Turbofan Life Estimation", "Python, PyTorch"))
+        self.assertEqual(p[0]["start"], {"month": 2, "year": 2025})
+        self.assertEqual(p[0]["bullets"], ["Trained an LSTM on NASA C-MAPSS data to predict remaining useful life."])
+
     def test_dates_variants(self):
         self.assertEqual(rt._dates("Sept 2021 – Present"), {"start": {"month": 9, "year": 2021}, "end": None, "current": True})
         self.assertEqual(rt._dates("2019 - 2022")["end"], {"month": None, "year": 2022})

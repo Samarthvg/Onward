@@ -303,6 +303,36 @@ await test("dashboard: Apply remembers the list from that job down", async (page
   expect("dashboard: no page errors", !errors.length, errors.join("; "));
 });
 
+await test("options: entries imported from the resume, edited, then used on Workday", async (page) => {
+  const opt = await env.ctx.newPage();
+  await opt.goto(`chrome-extension://${env.id}/src/options/options.html`);
+  await opt.click("#histImport");
+  await opt.locator("#histWork details.entry").nth(2).waitFor({ timeout: 10000 });
+  expect("options: three jobs, two schools, one project", (await opt.locator("#histWork details.entry").count()) === 3
+    && (await opt.locator("#histEdu details.entry").count()) === 2 && (await opt.locator("#histProj details.entry").count()) === 1);
+  const first = opt.locator("#histWork details.entry").first();
+  await first.locator("summary").click();
+  await first.locator("textarea").fill("Led the estimate tool rewrite in Vue.js.\nCut load time by half.");
+  await first.locator("select").first().selectOption("Internship");
+  await sleep(800);
+  const saved = await opt.evaluate(() => chrome.storage.local.get("history"));
+  expect("options: edit saved", saved.history.work[0].description.startsWith("Led the estimate") && saved.history.work[0].type === "Internship",
+    JSON.stringify(saved.history.work[0]).slice(0, 300));
+  expect("options: skills imported", (await opt.inputValue("#histSkills")).startsWith("Python, Java"));
+  await opt.close();
+
+  await page.goto("https://mockco.wd5.myworkdayjobs.com/en-US/External/job/Boston-MA/Software-Engineer_JR1001/apply/applyManually?empty=1");
+  await page.locator("#jobradar-autofill").waitFor({ state: "attached" });
+  await page.click("[data-automation-id='bottom-navigation-next-button']");
+  await sleep(900);
+  await runFill(page, 120000);
+  const st = await page.evaluate(() => window.__mockState());
+  expectState("edited entries used", st, {
+    "workExperience-1--roleDescription": "Led the estimate tool rewrite in Vue.js.\nCut load time by half.",
+    "workExperience-2--companyName": "Example Solutions Pvt Ltd",
+  });
+});
+
 await test("toolbar button fills the active tab", async (page) => {
   await page.goto("https://jobs.lever.co/mockco/abc-123/apply");
   await page.locator("#jobradar-autofill").waitFor({ state: "attached" });

@@ -148,10 +148,21 @@
       const wantsHistory = H.rows(qs).some((r) => r.type === "work" || r.type === "edu")
         || (workday && !!(H.addButton("work", document) || H.addButton("edu", document)));
       const skillsQ = H.skillsQuestion(qs);
-      if (store.settings.helper && (wantsHistory || skillsQ)) {
+      if (wantsHistory || skillsQ) {
         JR.panel.update({ status: "Filling work history and education from your resume…" });
-        hist = await api.runtime.sendMessage({ type: "jr:history", url: location.href }).catch(() => null);
-        if (!hist || hist.error || !(hist.work || hist.education)) hist = null;
+        // Entries edited in the extension's options win; the master resume fills the gaps.
+        const mine = (await api.storage.local.get("history")).history || null;
+        const has = (k) => !!(mine && Array.isArray(mine[k]) && mine[k].length);
+        let fromResume = null;
+        if (store.settings.helper && !(has("work") && has("education") && has("skills"))) {
+          fromResume = await api.runtime.sendMessage({ type: "jr:history", url: location.href }).catch(() => null);
+          if (!fromResume || fromResume.error) fromResume = null;
+        }
+        const pick = (k) => (has(k) ? mine[k] : fromResume && fromResume[k]) || [];
+        hist = mine || fromResume
+          ? { work: pick("work"), education: pick("education"), skills: pick("skills"), certifications: pick("certifications") }
+          : null;
+        if (hist && !hist.work.length && !hist.education.length && !hist.skills.length) hist = null;
       }
       if (hist && wantsHistory) {
         const r = await H.fill(qs, hist, { recollect, allowAdd: workday, ours: filledByUs });
