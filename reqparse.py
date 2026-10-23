@@ -19,14 +19,16 @@ H_SKIP = re.compile(
     r"accommodat|privacy|total rewards|the fine print|additional information", re.I)
 H_PREF = re.compile(
     r"preferred|nice[- ]to[- ]have|bonus|\bplus\b|desired|extra credit|stand out|ideally|"
-    r"what we value|we value|good to have|great to have|helpful|not required", re.I)
+    r"what we value|we value|good to have|great to have|helpful|not required|nice if|would be (?:a )?plus", re.I)
 # Checked before the skip list: "What You'll Bring to The Team" is a
 # requirements heading even though it mentions the team.
 H_REQ_STRONG = re.compile(
     r"requirement|qualification|what you(?:'ll| will)? (?:need|bring)|you (?:have|bring|might be)|"
+    r"you(?:'ll| will) bring|"
     r"about you|who you are|what we(?:'re| are) looking for|must[- ]haves?|minimum|basic|"
     r"skills (?:and|&) experience|ideal candidate|you should have|your background|you'll thrive|"
-    r"what we require|we require|what we need|you'll need|you will need|must have|what we look for", re.I)
+    r"what we require|we require|what we need|you'll need|you will need|must have|what we look for|"
+    r"clearance|citizenship", re.I)
 H_REQ = re.compile(r"skills|experience|you are|the tech|tech stack|technologies", re.I)
 # Benefits and company headings that would otherwise read as "what you'll do"
 # ("Why you will love working here") or stay unlabelled ("About Nextdoor").
@@ -38,6 +40,46 @@ H_RESP = re.compile(
     r"responsibilit|what you(?:'ll| will)? (?:do|work on|own|build)|the role|your role|day[- ]to[- ]day|"
     r"you will|in this role|impact|the job|the work|what you'll be doing|key duties", re.I)
 BULLET = re.compile(r"^\s*(?:[-*•·▪◦‣]|\d{1,2}[.)])\s+")
+# A requirements line that says it isn't one ("Experience with Braze a plus").
+LINE_PREF = re.compile(r"\ba plus\b|\bis a plus\b|\bpreferred\b|\bnice[- ]to[- ]have\b|\bbonus\b|\bhelpful\b|"
+                       r"\bnot required\b|\bideally\b", re.I)
+# Products a posting names in a list of examples ("software such as Braze,
+# Qualtrics, or Rudderstack"): concrete tools even when too rare to be learned
+# from other postings. Only after a word for tools, so "a field such as
+# Computer Science" isn't one.
+TOOL_LIST = re.compile(
+    r"\b(?:software|tools?|platforms?|technolog(?:y|ies)|frameworks?|languages?|librar(?:y|ies)|databases?|"
+    r"services|applications|products|stacks?|providers?|solutions|suites?)\b[^.;:]{0,15}?"
+    r"\b(?:such as|like|including|e\.g\.|for example)[:,]?\s+([^.;:()]+)", re.I)
+# A name, with the numbers that belong to it ("Office 365", "SOC 2").
+TOOL_NAME = re.compile(r"[A-Z][A-Za-z0-9.+#-]*[A-Za-z0-9+#](?:/[A-Z][A-Za-z0-9.+#-]*)?"
+                       r"(?:\s(?:[A-Z][A-Za-z0-9.+#-]*[A-Za-z0-9+#]|\d[\d.-]*)){0,2}")
+TOOL_SECTIONS = ("req", "pref")
+
+
+def _short_of(name: str, skills: set[str]) -> bool:
+    """"Node", "Next", "Go" and "Spring" short for a skill the line names
+    (Node.js, Next.js, Go, Spring Boot)."""
+    n = name.lower()
+    return any(s.lower() == n or s.lower().startswith(n + ".") or s.lower().startswith(n + " ") for s in skills)
+
+
+def named_tools(text: str, find_skills, stop=frozenset()) -> set[str]:
+    """Capitalized names in a posting's list of example tools that aren't
+    known skills already (those are found by find_skills)."""
+    out = set()
+    known = set(find_skills(text))
+    for m in TOOL_LIST.finditer(text):
+        for item in re.split(r",\s*|\s+(?:and/or|or|and)\s+", m.group(1)):
+            hit = TOOL_NAME.match(re.sub(r"^(?:or|and)\s+", "", item.strip()))
+            if not hit:
+                continue
+            name = hit.group(0).rstrip(".")
+            if (name in stop or name.split()[0] in stop or re.search(r"-[a-z]", name) or len(name) < 2
+                    or find_skills(name) or _short_of(name, known)):
+                continue
+            out.add(name)
+    return out
 # Text outside any recognized section only counts when it reads like a requirement.
 CUE = re.compile(
     r"\b(experience|experienced|proficien|familiar|knowledge|understanding|ability to|able to|skilled|"
@@ -91,6 +133,30 @@ def _classify(heading: str) -> str | None:
     return None
 
 
+def sections(description: str) -> list[tuple[int, str]]:
+    """(offset, section) where each section starts, for every heading: what
+    a sentence at some offset of the description is under."""
+    out, pos = [(0, "unknown")], 0
+    text = _norm(description or "")         # same length: one character for one
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if line and _is_heading(line):
+            cls = _classify(line)
+            if cls:
+                out.append((pos, cls))
+        pos += len(raw) + 1
+    return out
+
+
+def section_at(starts: list[tuple[int, str]], offset: int) -> str:
+    sec = "unknown"
+    for at, cls in starts:
+        if at > offset:
+            break
+        sec = cls
+    return sec
+
+
 def units(description: str, find_skills=None) -> list[tuple[str, str]]:
     """(line, section) for every line that could state a requirement.
 
@@ -119,15 +185,18 @@ def units(description: str, find_skills=None) -> list[tuple[str, str]]:
                 if find_skills is not None and len(find_skills(part)) >= 2:
                     out.append((part, "stack"))
                 continue
-            out.append((part, section))
+            out.append((part, "pref" if section in ("req", "unknown") and LINE_PREF.search(part) else section))
     return out
 
 
-def keywords(description: str, title: str, find_skills, term_rx: dict[str, re.Pattern]) -> list[list]:
+def keywords(description: str, title: str, find_skills, term_rx: dict[str, re.Pattern],
+             stop=frozenset()) -> list[list]:
     """[[keyword, weight, kind], ...] where kind is "title", "req" or "pref".
 
     find_skills maps text to taxonomy skill names; term_rx holds learned tech
-    terms. A keyword named in several places keeps its strongest weight."""
+    terms; tools the posting lists as examples count too (named_tools, with
+    `stop` the words that are never one). A keyword named in several places
+    keeps its strongest weight."""
     best: dict[str, tuple[float, str]] = {}
 
     def add(name: str, w: float, kind: str) -> None:
@@ -136,9 +205,14 @@ def keywords(description: str, title: str, find_skills, term_rx: dict[str, re.Pa
 
     for name in find_skills(title):
         add(name, 1.5, "title")
+    lower = {w.rstrip(".-") for w in re.findall(r"(?<![A-Za-z])[a-z][a-z0-9.+#-]*", _norm(description or ""))}
     for text, section in units(description, find_skills):
         found = set(find_skills(text))
         found |= {t for t, rx in term_rx.items() if rx.search(text)}
+        if section in TOOL_SECTIONS:
+            # A word the posting also writes in lowercase ("Dashboards" /
+            # "dashboards") is an ordinary word, not a product.
+            found |= {n for n in named_tools(text, find_skills, stop) if " " in n or n.lower() not in lower}
         for name in found:
             add(name, WEIGHT[section], KIND[section])
     return [[n, w, k] for n, (w, k) in sorted(best.items(), key=lambda kv: (-kv[1][0], kv[0]))]

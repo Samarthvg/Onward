@@ -191,6 +191,15 @@ NO_SPONSOR = re.compile(
     r"|u\.?s\.? citizenship (?:is )?required"
     r"|requires? (?:an? )?(?:active )?(?:secret|top secret|ts/sci|security) clearance"
     r"|(?:active|current) (?:secret|top secret|ts/sci) clearance"
+    # "Top Secret clearance is required", "must hold a Secret clearance", "ability
+    # to obtain a security clearance" (which needs U.S. citizenship too).
+    r"|(?:secret|top secret|ts/sci|security|dod) clearance (?:is |will be )?(?:required|needed|mandatory)"
+    r"|(?:must|required to|need to|will need to)\s+(?:have|hold|possess|obtain|maintain)\s+(?:and maintain\s+)?"
+    r"(?:an?\s+)?(?:active\s+|current\s+)?(?:secret|top secret|ts/sci|security|dod) clearance"
+    r"|(?:ability|eligib\w*) to (?:obtain|get)(?: and maintain)? (?:an? )?(?:(?!public\b)[\w./-]+ ){0,5}?"
+    r"(?:secret|top secret|ts/sci|security|dod|q|l)[- ](?:level )?(?:security )?clearance"
+    r"|requires? (?:active )?u\.?s\.? citizenship|u\.?s\.? citizenship (?:is )?(?:needed|mandatory)"
+    r"|\b(?:doe )?q[- ](?:level )?(?:security )?clearance"
     r"|\bitar\b|export control\w* (?:laws|regulations).{0,80}u\.?s\.? person"
     # "does not sponsor/support H-1B petitions", "will not provide support for visas"
     r"|(?:not|unable to|cannot|won'?t|doesn'?t|don'?t)\s+(?:\w+\s+){0,3}?"
@@ -201,6 +210,11 @@ NO_SPONSOR = re.compile(
     r"|sponsorship (?:will|is|cannot|can ?not) (?:not )?be (?:provided|offered|available|considered)",
     re.I,
 )
+# "...clearance desired." in the same sentence; a heading after it ("clearance
+# PREFERRED QUALIFICATIONS", "clearance Preferred • ...") is the next section.
+QUALIFIED = re.compile(r"\s*(?:is |would be )?(?:desired|preferred|a plus|optional|helpful)(?=\s*(?:[.,;)]|$))", re.I | re.M)
+REQUIRED_AFTER = re.compile(r"[^.\n•;]{0,30}?\b(?:is |are )?(?:required|mandatory)\b", re.I)
+CLEARANCE_LINE = re.compile(r"(?:an?\s+)?(?:active\s+|current\s+)?(?:secret|top secret|ts/sci|ts|dod)\b[^.\n]{0,40}\bclearance\b", re.I)
 # STEM OPT needs an employer to sign Form I-983; some postings refuse it
 # separately from H-1B, which matters to anyone working on OPT.
 NO_OPT = re.compile(
@@ -233,9 +247,20 @@ def min_years(text: str) -> int | None:
 
 
 def sponsorship(text: str) -> tuple[str, str]:
-    m = NO_SPONSOR.search(text)
-    if m:
+    starts = reqparse.sections(text)
+    for m in NO_SPONSOR.finditer(text):
+        # A clearance listed as a nice-to-have doesn't close the role ("Preferred:
+        # an active Secret clearance", "ability to obtain a clearance desired").
+        # A sponsorship or citizenship statement does, wherever it stands.
+        if "clearance" in m.group(0).lower() and not REQUIRED_AFTER.match(text, m.end()) and (
+                QUALIFIED.match(text, m.end()) or reqparse.section_at(starts, m.start()) == "pref"):
+            continue
         return "no", _context(text, m)
+    # A clearance listed as a requirement on its own ("• Top Secret clearance"),
+    # not under the nice-to-haves.
+    for line, section in reqparse.units(text):
+        if section in ("req", "unknown") and CLEARANCE_LINE.match(line) and not reqparse.LINE_PREF.search(line):
+            return "no", line
     m = YES_SPONSOR.search(text)
     if m:
         return "yes", _context(text, m)
@@ -1923,7 +1948,7 @@ DASHBOARD_COLS = [
 # never written in lowercase (so ordinary English words drop out).
 
 GENERIC_SKILLS = {"Backend", "Frontend", "Full Stack", "OOP", "Git", "Data Structures & Algorithms",
-                  "System Design", "Agile", "Testing", "CI/CD", "REST APIs", "Linux", "SQL"}
+                  "System Design", "Agile", "Testing", "CI/CD", "REST APIs", "Linux", "SQL", "JSON"}
 TERM = re.compile(r"(?<=[a-z,;(/] )([A-Z][A-Za-z0-9.+#-]*[A-Za-z0-9+#])")
 TERM_STOP = {
     "AI", "ML", "API", "APIs", "UI", "UX", "US", "USA", "SF", "NYC", "LA", "EEO", "PTO", "HR", "IT",
@@ -1938,7 +1963,7 @@ TERM_STOP = {
     "November", "December", "Monday", "Friday", "English", "Spanish", "French", "German", "Mandarin",
     "Bachelor", "Master", "Masters", "Bachelors", "Computer", "Science", "Degree", "Applicants",
     "Nice", "Buffers", "Compose", "Bricks", "Genie", "Euclidean", "Cross-context", "First-hand",
-    "Gaia", "DB", "Microsoft", "Google", "Amazon", "Meta", "Apple",
+    "Gaia", "DB", "Microsoft", "Google", "Amazon", "Meta", "Apple", "Sr", "Jr", "Etc",
 }
 
 
@@ -2043,7 +2068,7 @@ def load_for_dashboard(conn: sqlite3.Connection, now: float, prev_run: float | N
         d["h1b"] = h1b.lookup(d["company"])
         # The checklist the dashboard scores against: concrete keywords from
         # the posting's requirement lines, plus the degree it asks for.
-        d["kw"] = reqparse.keywords(desc, d["title"], find_skills, term_rx) if d["has_jd"] else []
+        d["kw"] = reqparse.keywords(desc, d["title"], find_skills, term_rx, TERM_STOP) if d["has_jd"] else []
         d["degree"] = reqparse.degree(desc) if d["has_jd"] else None
         # Tagged again with the current roles, so a changed role shows on the
         # next render without refetching. Jobs no role wants stay stored (a

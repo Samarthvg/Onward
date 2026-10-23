@@ -65,6 +65,11 @@
   "re": "sql|t-sql|pl/sql"
  },
  {
+  "n": "JSON",
+  "re": "JSON",
+  "cs": true
+ },
+ {
   "n": "Bash",
   "re": "bash|shell scripting|unix shell"
  },
