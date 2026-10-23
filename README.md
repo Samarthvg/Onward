@@ -17,7 +17,8 @@ stay there.
 - **Today's picks and the Apply queue.** The Apply queue opens on the few best new fits of the day. Behind
   them, it prepares your best matches from the last 7 days (15 at a time to start): a tailored resume where
   that helps, and drafted answers for the form's own questions.
-- **Honest tailoring.** Only skills your resume backs are added, no numbers are invented, and it stays one page.
+- **Honest tailoring.** Only skills your resume backs are added (a skill you confirm under Review skills may
+  also go in the skills section), no numbers are invented, and it stays one page.
   Tailored resumes are named `Firstname_Lastname_Company_Resume.pdf`.
 - **Autofill.** The Onward Autofill extension for Firefox fills Greenhouse, Lever, Ashby and Workday forms,
   attaches the prepared resume, and marks the job applied when the confirmation page appears. Its own README is

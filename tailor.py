@@ -257,14 +257,14 @@ def tailor_prompt(res: rt.Resume, job: dict, jd: str, level: str = "strict") -> 
 
 
 def estimate_tailor(master_tex: str, job: dict, jd: str, backend: str, level: str | None = None,
-                    exact: bool = True) -> dict | None:
-    system, user = tailor_prompt(rt.parse(master_tex), job, jd, level or strictness())
+                    exact: bool = True, confirmed=()) -> dict | None:
+    system, user = tailor_prompt(rt.confirm(rt.parse(master_tex), confirmed), job, jd, level or strictness())
     return estimate(backend, system, user, "tailor", exact=exact)
 
 
-def build_manual_prompt(master_tex: str, job: dict, jd: str, level: str | None = None) -> str:
+def build_manual_prompt(master_tex: str, job: dict, jd: str, level: str | None = None, confirmed=()) -> str:
     """Everything a chat model needs, for pasting into ChatGPT or Claude by hand."""
-    res = rt.parse(master_tex)
+    res = rt.confirm(rt.parse(master_tex), confirmed)
     return "\n\n".join([
         instructions(level or strictness()),
         "Reply with a single JSON object and nothing else, matching this JSON Schema:\n"
@@ -747,15 +747,18 @@ def _slug(s: str) -> str:
 
 
 def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
-           rewrite_bullets: bool = True, manual_answer: str | None = None, level: str | None = None) -> dict:
-    """`level` is the strictness (config.STRICTNESS), the user's setting by default."""
+           rewrite_bullets: bool = True, manual_answer: str | None = None, level: str | None = None,
+           confirmed=()) -> dict:
+    """`level` is the strictness (config.STRICTNESS), the user's setting by default.
+    `confirmed`: skills the person confirmed under Review skills, which the
+    skills section may list though the master resume doesn't."""
     if backend != "manual" and backend not in BACKENDS:
         raise BackendError(f"Unknown backend {backend}")
     if len(jd.strip()) < 200:
         raise BackendError("The job description is too short to tailor against. Paste the full posting.")
     level = level or strictness()
     started = time.time()
-    res = rt.parse(master_tex)
+    res = rt.confirm(rt.parse(master_tex), confirmed)
     cost = None
     if backend == "manual":
         raw, model = parse_manual_answer(manual_answer or ""), "pasted answer"

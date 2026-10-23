@@ -2530,7 +2530,11 @@ function renderResult(r, out, onAdjust) {
     r.summary ? el("p", { text: r.summary }) : null,
     (r.keywords || []).length ? el("div", { style: "display:grid;gap:6px" },
       el("p", { class: "section-h", text: "Job keywords, checked against the final PDF" }), kw,
-      el("p", { class: "note", text: "+ added for this job · plain: already in your resume · − not in your resume (not added, since there's no evidence for it)" })) : null,
+      el("p", { class: "note", text: "+ added for this job · plain: already in your resume · − not in your resume (not added, since there's no evidence for it)" }),
+      r.keywords.some((k) => k.status === "missing") && state.resume ? el("p", { class: "note" },
+        "Have one of the − skills? Add it under ",
+        el("button", { type: "button", class: "linkish", text: "Review skills", onclick: openSkills }),
+        " and tailor again: it can then go in your skills section. Bullets still only claim what they describe.") : null) : null,
     el("p", { class: "section-h", text: `Changes (${applied.length})` }),
     applied.length ? el("p", { class: "note", text: "Reworded to use the job's own words for things your resume already says. Added words are underlined, removed ones struck through." }) : null,
     applied.length ? el("div", { class: "changes" }, ...applied.map(card))

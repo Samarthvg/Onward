@@ -449,6 +449,12 @@ class EndpointTests(Base):
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}/files/{pdf}", headers={"Host": f"127.0.0.1:{self.port}"})
         with urllib.request.urlopen(req, timeout=10) as r:
             self.assertEqual(r.headers["Content-Disposition"], 'inline; filename="Testy_Tailorco_Resume.pdf"')
+        # Under Windows app isolation a file can resolve() to a redirected copy
+        # while its folder doesn't; the file is still served.
+        real = Path.resolve
+        moved = lambda self, strict=False: Path(r"Z:\redirected") / self.name if self.suffix == ".pdf" else real(self, strict)
+        with mock.patch.object(Path, "resolve", moved), urllib.request.urlopen(req, timeout=10) as r:
+            self.assertTrue(r.read().startswith(b"%PDF"))
 
     def test_name_from_the_apply_kit_or_the_resume(self):
         server.save_dash_state("profile", {"firstName": "Ada", "lastName": "Lovelace"}, 1)

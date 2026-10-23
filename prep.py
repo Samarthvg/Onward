@@ -230,6 +230,10 @@ class Preparer:
         except (OSError, json.JSONDecodeError):
             return None
 
+    def confirmed_skills(self) -> list[str]:
+        """Skills the person added under Review skills: tailoring may list them."""
+        return list((self.scoring() or {}).get("added") or [])
+
     def resume(self) -> match.Resume | None:
         """The resume the dashboard scores against; the master .tex when the
         dashboard hasn't sent one yet."""
@@ -464,7 +468,7 @@ class Preparer:
                     self._update(conn, key, when="working", state="queued",
                                  error=f"Waiting: today's {s['daily_cap']} model runs are used up. Continues tomorrow.")
                     return "requeued"
-                result = tailor.tailor(master, meta, jd, s["backend"], self.out_dir)
+                result = tailor.tailor(master, meta, jd, s["backend"], self.out_dir, confirmed=self.confirmed_skills())
                 tailored_id = uuid.uuid4().hex[:12]
                 with conn:
                     conn.execute("INSERT INTO tailored (id, job_key, created, backend, model, pdf, tex, result) "

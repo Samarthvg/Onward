@@ -491,10 +491,11 @@ def _undo_settings(payload: dict, uid: str) -> dict:
 
 
 def _undo_files(payload: dict, uid: str) -> dict:
-    allowed = {RESUME_DIR.resolve(), OUT_DIR.resolve()}
+    # abspath, not resolve(): see the /files handler.
+    allowed = {os.path.normcase(os.path.abspath(d)) for d in (RESUME_DIR, OUT_DIR)}
     for name, data in payload["files"].items():
         p = Path(name)
-        if p.resolve().parent not in allowed:
+        if os.path.normcase(os.path.dirname(os.path.abspath(p))) not in allowed:
             raise UndoFailed(f"{p.name} isn't in the resume folder any more, so it wasn't restored.")
     for name, data in payload["files"].items():
         p = Path(name)
@@ -558,7 +559,7 @@ def run_job(jid: str, params: dict) -> None:
                 "instruction": params.get("instruction", "")}
         result = tailor.tailor(master, meta, params["jd"], backend, OUT_DIR,
                                rewrite_bullets=params.get("rewrite", True),
-                               manual_answer=params.get("answer"))
+                               manual_answer=params.get("answer"), confirmed=PREP.confirmed_skills())
         conn = db()
         try:
             with conn:
@@ -783,8 +784,11 @@ class Handler(BaseHTTPRequestHandler):
             name = path[len("/files/"):]
             if not FILE_NAME.match(name):
                 return self._err(HTTPStatus.BAD_REQUEST, "Bad file name")
-            f = (OUT_DIR / name).resolve()
-            if f.parent != OUT_DIR.resolve() or not f.exists():
+            # FILE_NAME allows no separators, so the file is in OUT_DIR. Not
+            # resolve(): under Windows app isolation it can name the redirected
+            # copy for the file but not for the folder.
+            f = OUT_DIR / name
+            if not f.is_file():
                 return self._err(HTTPStatus.NOT_FOUND, "Not found")
             if name.endswith(".pdf"):
                 # A tailored resume downloads under the name it's attached with.
@@ -974,7 +978,8 @@ class Handler(BaseHTTPRequestHandler):
                       "role": role}
             if path == "/api/prompt":
                 try:
-                    prompt = tailor.build_manual_prompt(master_path(role).read_text(encoding="utf-8"), params, jd)
+                    prompt = tailor.build_manual_prompt(master_path(role).read_text(encoding="utf-8"), params, jd,
+                                                        confirmed=PREP.confirmed_skills())
                 except ValueError as e:
                     return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
                 return self._json(200, {"prompt": prompt})
@@ -1096,7 +1101,8 @@ class Handler(BaseHTTPRequestHandler):
         job = {"company": row.get("company", data.get("company", "")), "title": row.get("title", data.get("title", "")),
                "instruction": tailor.clean_instruction(data.get("instruction"))}
         try:
-            est = tailor.estimate_tailor(master_path(role).read_text(encoding="utf-8"), job, jd, backend)
+            est = tailor.estimate_tailor(master_path(role).read_text(encoding="utf-8"), job, jd, backend,
+                                         confirmed=PREP.confirmed_skills())
         except ValueError as e:
             return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
         budget = ai.settings(provider)["monthly_budget"]

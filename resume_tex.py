@@ -297,6 +297,17 @@ def parse(tex: str) -> Resume:
     return res
 
 
+def confirm(res: Resume, skills) -> Resume:
+    """Add skills the person confirmed they have (the dashboard's Review
+    skills) to what the skills section may list. Bullets and tech lines
+    still need their own entry's evidence."""
+    text = ", ".join(str(x).strip() for x in skills or () if str(x).strip())
+    if text:
+        res.inventory = with_implied(res.inventory | tag_skills("% inventory: " + text, "inventory"))
+        res.vocabulary |= words(text)
+    return res
+
+
 def describe(res: Resume) -> str:
     """The annotated view the model sees: every editable piece with its ID."""
     out = []
@@ -494,11 +505,11 @@ UMBRELLA = {"frontend", "backend", "full stack", "machine learning", "deep learn
             "security", "oop", "data structures & algorithms", "testing", "agile", "llms", "nlp"}
 
 
-def _items(text: str) -> list[str]:
-    """Top-level comma-separated items of a tool list (commas inside
-    parentheses, e.g. "CI/CD (GitHub Actions, Jenkins)", don't split)."""
+def _split_top(text: str) -> list[str]:
+    """Top-level comma-separated parts (commas inside parentheses, e.g.
+    "CI/CD (GitHub Actions, Jenkins)", don't split)."""
     out, depth, cur = [], 0, ""
-    for ch in plain(text):
+    for ch in text:
         if ch == "(":
             depth += 1
         elif ch == ")":
@@ -512,22 +523,41 @@ def _items(text: str) -> list[str]:
     return [i.strip() for i in out if i.strip()]
 
 
+def _items(text: str) -> list[str]:
+    """The items of a tool list, as plain text."""
+    return _split_top(plain(text))
+
+
 def _norm_item(s: str) -> str:
     s = re.sub(r"\.?js\b", "", s.lower())          # React.js == React
     return re.sub(r"[^a-z0-9+#&/]", "", s)
 
 
+def drop_umbrella(old: str, new: str) -> tuple[str, list[str]]:
+    """A tool list edit without the category names it adds ("Testing" beside
+    "Unit testing, JUnit"): those are left out and the real tools kept."""
+    before = {_norm_item(i) for i in _items(old)}
+    keep, dropped = [], []
+    for part in _split_top(new):
+        name = plain(part).strip()
+        if _norm_item(name) not in before and name.lower() in UMBRELLA:
+            dropped.append(name)
+        else:
+            keep.append(part)
+    return (", ".join(keep), dropped) if dropped else (new, [])
+
+
+def _left_out(generic: list[str]) -> str:
+    return f"left out {', '.join(generic)}: a category name, not a tool" if generic else ""
+
+
 def check_list_edit(old: str, new: str) -> str | None:
-    """Tool lists may be reordered and extended, never shortened or genericized."""
+    """Tool lists may be reordered and extended, never shortened."""
     old_items, new_items = _items(old), _items(new)
     have = {_norm_item(i) for i in new_items}
     lost = [i for i in old_items if _norm_item(i) not in have]
     if lost:
         return f"drops {', '.join(lost)} from the list"
-    before = {_norm_item(i) for i in old_items}
-    generic = [i for i in new_items if _norm_item(i) not in before and i.lower() in UMBRELLA]
-    if generic:
-        return f"adds a category name ({', '.join(generic)}) instead of a tool"
     if len(plain(new)) > len(plain(old)) * 1.35 + 25:
         return "makes the list much longer"
     return None
@@ -581,7 +611,7 @@ def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict") -> t
         e = by_id.get(item.get("id", ""))
         if not e or e.tech is None:
             continue
-        new = sanitize(item.get("text", ""))
+        new, generic = drop_umbrella(e.tech_tex, sanitize(item.get("text", "")))
         if not new or plain(new) == plain(e.tech_tex):
             continue
         reason = (check_latex(new) or check_list_edit(e.tech_tex, new)
@@ -590,7 +620,7 @@ def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict") -> t
             changes.append(Change("tech", e.id, e.title, plain(e.tech_tex), plain(new), "rejected", reason))
         else:
             tech_new[e.id] = new
-            changes.append(Change("tech", e.id, e.title, plain(e.tech_tex), plain(new)))
+            changes.append(Change("tech", e.id, e.title, plain(e.tech_tex), plain(new), reason=_left_out(generic)))
 
     rows_new: dict[str, str] = {}
     rows = {r.id: r for r in res.skill_rows}
@@ -598,7 +628,7 @@ def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict") -> t
         r = rows.get(item.get("id", ""))
         if not r:
             continue
-        new = sanitize(item.get("text", ""))
+        new, generic = drop_umbrella(r.tex, sanitize(item.get("text", "")))
         if not new or plain(new) == plain(r.tex):
             continue
         reason = (check_latex(new) or check_list_edit(r.tex, new)
@@ -607,7 +637,7 @@ def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict") -> t
             changes.append(Change("skills", r.id, r.label, plain(r.tex), plain(new), "rejected", reason))
         else:
             rows_new[r.id] = new
-            changes.append(Change("skills", r.id, r.label, plain(r.tex), plain(new)))
+            changes.append(Change("skills", r.id, r.label, plain(r.tex), plain(new), reason=_left_out(generic)))
 
     # Nothing is removed up front. The model's drop suggestions only decide what
     # goes first if the compiled result runs past one page. Work history is

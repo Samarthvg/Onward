@@ -171,5 +171,34 @@ class InstructionTests(unittest.TestCase):
         self.assertEqual(len(tailor.clean_instruction("x" * 2000)), tailor.MAX_INSTRUCTION)
 
 
+class SkillsRowTests(unittest.TestCase):
+    JD = ("Build Java services on Azure, with unit testing and JUnit. " * 6).strip()
+
+    def plan(self, row, confirmed=()):
+        res = rt.confirm(rt.parse(TEX), confirmed)
+        _, changes, state = rt.plan_edits(res, json.loads(answer([], skills_rows=[{"id": "S1", "text": row}])), self.JD)
+        return next((c for c in changes if c.kind == "skills"), None), state
+
+    def test_a_category_name_is_left_out_and_the_tools_kept(self):
+        c, state = self.plan("Python, Go, TypeScript, Testing")
+        self.assertEqual((c, state["rows"]), (None, {}), "without Testing nothing changed")
+        c, state = self.plan("Python, Go, TypeScript, Testing, Java", confirmed=["Java"])
+        self.assertEqual((c.status, state["rows"]["S1"]), ("applied", "Python, Go, TypeScript, Java"))
+        self.assertIn("left out Testing", c.reason)
+
+    def test_skills_confirmed_under_review_skills_may_be_listed(self):
+        c, _ = self.plan("Python, Go, TypeScript, Azure")
+        self.assertEqual(c.status, "rejected")
+        c, state = self.plan("Python, Go, TypeScript, Azure", confirmed=["Azure"])
+        self.assertEqual((c.status, state["rows"]["S1"]), ("applied", "Python, Go, TypeScript, Azure"))
+        self.assertIn("Azure", rt.describe(rt.confirm(rt.parse(TEX), ["Azure"])))
+
+    def test_confirmed_skills_stay_out_of_bullets(self):
+        res = rt.confirm(rt.parse(TEX), ["Azure"])
+        _, changes, _ = rt.plan_edits(res, json.loads(answer([], bullet_rewrites=[
+            {"id": "B1", "text": r"Built billing APIs in 	extbf{Python} and FastAPI on Azure."}])), self.JD)
+        self.assertEqual(changes[0].status, "rejected")
+
+
 if __name__ == "__main__":
     unittest.main()
