@@ -25,6 +25,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NamedTuple
 
 import texengine
 
@@ -606,6 +607,24 @@ def drop_umbrella(old: str, new: str) -> tuple[str, list[str]]:
     return (", ".join(keep), dropped) if dropped else (new, [])
 
 
+def trim_appended(old: str, new: str, chars: float) -> tuple[str, list[str]] | None:
+    """`new`, a tool list that reorders and extends `old`, without enough of
+    the items it added (last first) to print `chars` fewer characters:
+    (text, items left out). None when the added items alone aren't enough."""
+    before = {_norm_item(i) for i in _items(old)}
+    parts = _split_top(new)
+    added = [i for i, p in enumerate(parts) if _norm_item(plain(p).strip()) not in before]
+    cut, gone = 0.0, []
+    for i in reversed(added):
+        if cut >= chars:
+            break
+        cut += len(plain(parts[i]).strip()) + 2
+        gone.append(i)
+    if cut < chars:
+        return None
+    return ", ".join(p for i, p in enumerate(parts) if i not in gone), [plain(parts[i]).strip() for i in reversed(gone)]
+
+
 def _left_out(generic: list[str]) -> str:
     return f"left out {', '.join(generic)}: a category name, not a tool" if generic else ""
 
@@ -767,9 +786,12 @@ def build_spans(res: Resume, state: dict, changes: list[Change] | None = None) -
         if eid not in moved:
             spans += sp
 
-    for rid, new in state["rows"].items():
-        row = next(r for r in res.skill_rows if r.id == rid)
-        spans.append((row.span, new))
+    measure = state.get("measure")
+    for row in res.skill_rows:
+        new = state["rows"].get(row.id)
+        if new is not None or measure:
+            text = row.tex if new is None else new
+            spans.append((row.span, marked(row.id, text) if measure else text))
     return spans
 
 
@@ -777,8 +799,10 @@ def _entry_spans(res: Resume, e: Entry, state: dict, changes: list[Change] | Non
     """Edits inside one kept entry: tech line, bullet rewrites, order and trims."""
     spans: list[tuple[Span, str]] = []
     rank = state["rank"]
-    if e.id in state["tech"]:
-        spans.append((e.tech, state["tech"][e.id]))
+    measure = state.get("measure")
+    if e.tech is not None and (e.id in state["tech"] or measure):
+        text = state["tech"].get(e.id, e.tech_tex)
+        spans.append((e.tech, marked(e.id, text) if measure else text))
     kept = [b for b in e.bullets if b.id not in state["drop_bullets"]]
     if len(kept) < min(2, len(e.bullets)):
         kept = sorted(e.bullets, key=lambda b: rank.get(b.id, 999))[:min(2, len(e.bullets))]
@@ -790,6 +814,8 @@ def _entry_spans(res: Resume, e: Entry, state: dict, changes: list[Change] | Non
         if [b.id for b in ordered] != [b.id for b in kept]:
             changes.append(Change("reorder", e.id, e.title, after="most relevant bullets first"))
     texts = [state["rewrites"].get(b.id, b.tex) for b in ordered]
+    if measure:
+        texts = [marked(b.id, t) for b, t in zip(ordered, texts)]
     # Write the reordered bullets back into the original bullet slots.
     slots = e.bullets
     for i, slot in enumerate(slots):
@@ -816,6 +842,85 @@ def apply(tex: str, spans: list[tuple[Span, str]]) -> str:
 
 
 # --------------------------------------------------------------------------
+# Line layout: where each bullet, tech line and skills row starts and ends on
+# the page, so an edit that spills a few words onto an extra line is caught.
+# Each one is wrapped in \jrpos marks that save their position (\pdfsavepos,
+# in pdfTeX and XeTeX) and write it to the log when the page ships. They
+# print nothing and don't change the layout.
+
+# A mark that starts a paragraph (a list item, a table cell) starts a line, so
+# its lines all begin where it does; one that follows a label on the line
+# ("Languages: ...") writes the paragraph's left edge, where the rest begin.
+MEASURE_PREAMBLE = r"""\makeatletter
+\providecommand\jrpos[1]{}%
+\ifdefined\pdfsavepos
+\renewcommand\jrpos[1]{\ifvmode\def\jr@left{-1pt}\else\edef\jr@left{\the\dimexpr1in+\hoffset+\oddsidemargin+\@totalleftmargin+\leftskip\relax}\fi\leavevmode\pdfsavepos\begingroup\edef\jr@pos{\endgroup\write-1{JRPOS #1 \noexpand\the\pdflastxpos\space\noexpand\the\pdflastypos\space\the\linewidth\space\the\dimexpr\baselineskip\relax\space\noexpand\the\c@page\space\jr@left}}\jr@pos}%
+\fi
+\makeatother
+"""
+JRPOS = re.compile(r"^JRPOS (\S+):([se]) (-?\d+) (-?\d+) ([\d.]+)pt ([\d.]+)pt (\d+) (-?[\d.]+)pt", re.M)
+
+
+class Fit(NamedTuple):
+    lines: int
+    fill: float     # how much of the width the last line holds, 0 to 1
+    lead: float     # how much of the first line a label before it takes
+
+
+def marked(mid: str, text: str) -> str:
+    """`text` with a mark before its first character and after its last.
+    Trailing comments (hidden skill tags) stay after the end mark, since a
+    mark inside a comment would never be read."""
+    body = text.rstrip()
+    while True:
+        last = body.rfind("\n") + 1
+        line = body[last:]
+        cut = re.search(r"(?<!\\)%", line)
+        if not cut:
+            break
+        body = body[:last + cut.start()].rstrip()
+    lead = len(body) - len(body.lstrip())
+    if lead == len(body):
+        return text
+    return (text[:lead] + f"\\jrpos{{{mid}:s}}" + body[lead:] + f"\\jrpos{{{mid}:e}}" + text[len(body):])
+
+
+def with_marks(tex: str) -> str:
+    """The resume with \\jrpos defined; the marks themselves come from
+    build_spans with state["measure"]."""
+    i = tex.find("\\begin{document}")
+    return tex if i < 0 else tex[:i] + MEASURE_PREAMBLE + tex[i:]
+
+
+def read_layout(log: str) -> dict[str, dict]:
+    """{id: {"s": (x, y, page), "e": (x, y, page), "width", "baseline", "left"}}
+    from a compile log, in sp; "left" is None when the piece starts a line."""
+    out: dict[str, dict] = {}
+    for m in JRPOS.finditer(log):
+        mid, end, x, y, w, bs, page, left = m.groups()
+        d = out.setdefault(mid, {})
+        d[end] = (int(x), int(y), int(page))
+        if end == "s":
+            d["width"], d["baseline"] = float(w) * 65536, float(bs) * 65536
+            d["left"] = None if float(left) < 0 else float(left) * 65536
+    return out
+
+
+def line_fit(layout: dict, mid: str) -> Fit | None:
+    """How one marked piece sits on the page, or None when it wasn't
+    measured (split across pages, or an engine without \\pdfsavepos)."""
+    d = layout.get(mid) or {}
+    s, e, w = d.get("s"), d.get("e"), d.get("width", 0)
+    if not s or not e or s[2] != e[2] or w <= 0:
+        return None
+    dy, bs = s[1] - e[1], d.get("baseline", 0)
+    lines = 1 if abs(dy) < 65536 or bs <= 0 else max(1, round(dy / bs) + 1)
+    left = s[0] if d.get("left") is None else d["left"]
+    clamp = lambda v: min(1.0, max(0.0, v))
+    return Fit(lines, clamp((e[0] - left) / w), clamp((s[0] - left) / w))
+
+
+# --------------------------------------------------------------------------
 # Compilation
 
 class CompileError(Exception):
@@ -826,9 +931,10 @@ def engine_for(tex: str) -> str:
     return "xelatex" if re.search(r"\\usepackage(\[[^\]]*\])?\{fontspec\}", tex) else "pdflatex"
 
 
-def compile_pdf(tex: str, out_pdf: Path | None = None, timeout: int = 120) -> int:
+def compile_pdf(tex: str, out_pdf: Path | None = None, timeout: int = 120, layout: dict | None = None) -> int:
     """Compile and return the page count. Shell escape is always off. An
-    installed TeX is used when there is one, else Tectonic (texengine.py)."""
+    installed TeX is used when there is one, else Tectonic (texengine.py).
+    `layout` gets the marked pieces' positions (read_layout)."""
     engine = engine_for(tex)
     found = texengine.pick(engine)
     if not found:
@@ -859,4 +965,7 @@ def compile_pdf(tex: str, out_pdf: Path | None = None, timeout: int = 120) -> in
         if out_pdf is not None:
             out_pdf.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(Path(tmp) / "resume.pdf", out_pdf)
+        if layout is not None:
+            layout.clear()
+            layout.update(read_layout(log))
         return int(m.group(1))

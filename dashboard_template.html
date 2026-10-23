@@ -2551,8 +2551,8 @@ function renderResult(r, out, onAdjust) {
     applied.length ? el("p", { class: "note", text: "Reworded to use the job's own words for things your resume already says. Added words are underlined, removed ones struck through." }) : null,
     applied.length ? el("div", { class: "changes" }, ...applied.map(card))
       : el("p", { text: "No wording changes: your resume already uses the job's words, or nothing more could be added without claiming something it doesn't say." }),
-    rejected.length ? el("p", { class: "section-h", text: `Blocked by the honesty check (${rejected.length})` }) : null,
-    rejected.length ? el("p", { class: "note", text: "The model suggested these, but each would have claimed a skill, number or term your master resume doesn't back, so your original wording stays." }) : null,
+    rejected.length ? el("p", { class: "section-h", text: `Not used (${rejected.length})` }) : null,
+    rejected.length ? el("p", { class: "note", text: "The model suggested these, but each would have claimed something your master resume doesn't back or left a line mostly empty, so your original wording stays." }) : null,
     rejected.length ? el("div", { class: "changes" }, ...rejected.map(card)) : null,
     removed.length ? el("p", { class: "section-h", text: `Removed to fit the page limit (${removed.length})` }) : null,
     removed.length ? el("p", { class: "note", text: "The least relevant to this job went first. They're still in your master resume." }) : null,

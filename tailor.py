@@ -753,6 +753,141 @@ def verify_keywords(claimed: list[dict], master_tex: str, final_tex: str) -> lis
     return out
 
 
+# --------------------------------------------------------------------------
+# Line fit: an edit that runs onto an extra line holding only a few words
+# ("...Net-" / "working, Operating Systems") wastes the line. Lists drop the
+# items they added, last first; bullets are rewritten once to a length that
+# ends near a line's end; whatever still spills keeps the master's wording.
+
+MIN_FILL = 0.6          # the least share of the width a wrapped piece's last line may hold
+SPILLED = "would leave a few words on a line of their own"
+
+REFIT_RULES = """You adjust resume bullets so each one ends close to the end of a printed line, instead of spilling a few words onto a line of their own.
+
+Each bullet comes with the applicant's ORIGINAL wording, the CURRENT tailored version, and a TARGET length: how many characters it should print (letters, spaces and punctuation, not LaTeX commands).
+
+Rules
+1. Write a version of CURRENT whose printed length is inside TARGET.
+2. Keep its meaning and the job keywords it uses. To shorten, cut filler and repeated words. To lengthen, use only wording ORIGINAL or CURRENT already supports.
+3. Never add a skill, tool, number, date, employer or claim that isn't in ORIGINAL or CURRENT.
+4. Keep the LaTeX commands CURRENT uses (\\textbf{...}, \\%, and so on) and add none.
+5. Return every bullet you were given, by its id.
+"""
+
+REFIT_SCHEMA = {
+    "type": "object",
+    "properties": {"bullets": {"type": "array", "items": {
+        "type": "object", "properties": {"id": {"type": "string"}, "text": {"type": "string"}},
+        "required": ["id", "text"], "additionalProperties": False}}},
+    "required": ["bullets"],
+    "additionalProperties": False,
+}
+
+
+def spilled(state: dict, layout: dict) -> dict[str, rt.Fit]:
+    """The edited pieces whose last line holds too little."""
+    out = {}
+    for mid in [*state["rewrites"], *state["tech"], *state["rows"]]:
+        fit = rt.line_fit(layout, mid)
+        if fit and fit.lines > 1 and fit.fill < MIN_FILL:
+            out[mid] = fit
+    return out
+
+
+def _per_line(text: str, fit: rt.Fit) -> float:
+    """Printed characters a full line of this piece holds: its text covers
+    every line but the label's share of the first and the last line's gap."""
+    return len(rt.plain(text)) / max(0.5, fit.lines - 1 - fit.lead + fit.fill)
+
+
+def refit_targets(text: str, fit: rt.Fit) -> tuple[int, int]:
+    """The printed length to aim for: one line fewer when only a few words
+    spilled, else enough to fill the last line."""
+    per = _per_line(text, fit)
+    n = (fit.lines - 1 if fit.fill <= 0.45 else fit.lines) - fit.lead
+    return int((n - 0.12) * per), int(n * per) - 2
+
+
+def refit_bullets(res: rt.Resume, state: dict, bad: dict, backend: str, jd: str) -> tuple[dict[str, str], float | None]:
+    """New wording for spilled bullets, each held to the same honesty checks
+    as the first rewrite: {id: text} for the ones that passed, and the cost."""
+    blocks = []
+    for bid, fit in bad.items():
+        _, b = res.bullet(bid)
+        lo, hi = refit_targets(state["rewrites"][bid], fit)
+        blocks.append(f"ID {bid}\nORIGINAL\n{b.tex.strip()}\nCURRENT\n{state['rewrites'][bid].strip()}\nTARGET {lo} to {hi} characters")
+    raw, _, cost = ask(backend, REFIT_RULES, "BULLETS\n\n" + "\n\n".join(blocks), REFIT_SCHEMA, "refit")
+    out = {}
+    for item in raw.get("bullets") or []:
+        bid = str(item.get("id", ""))
+        found = res.bullet(bid)
+        new = rt.sanitize(str(item.get("text", "")))
+        if bid not in bad or not found or not new:
+            continue
+        entry, b = found
+        if not (rt.check_latex(new) or rt.check_honesty(b.tex, new, entry.allowed, res.vocabulary, jd)):
+            out[bid] = new
+    return out, cost
+
+
+def fit_lines(res: rt.Resume, state: dict, changes: list[rt.Change], layout: dict, measure,
+              backend: str, jd: str) -> float | None:
+    """Fix the edits that spill (see above). `measure()` compiles the current
+    state into `layout`. Returns what the extra model call cost."""
+    bad = spilled(state, layout)
+    if not bad:
+        return None
+    log = {c.target: c for c in changes if c.status == "applied" and c.kind in ("bullet", "tech", "skills")}
+
+    def revert(mid: str) -> None:
+        for k in ("rewrites", "tech", "rows"):
+            state[k].pop(mid, None)
+        if mid in log:
+            log[mid].status, log[mid].reason = "rejected", SPILLED
+
+    for mid, fit in bad.items():
+        kind = "tech" if mid in state["tech"] else "rows" if mid in state["rows"] else None
+        if not kind:
+            continue
+        old = next(e.tech_tex for e in res.entries if e.id == mid) if kind == "tech" \
+            else next(r.tex for r in res.skill_rows if r.id == mid)
+        new = state[kind][mid]
+        got = rt.trim_appended(old, new, fit.fill * _per_line(new, fit) + 2)
+        if not got or rt.plain(got[0]) == rt.plain(old):
+            revert(mid)
+            continue
+        state[kind][mid] = got[0]
+        if mid in log:
+            note = f"left out {', '.join(got[1])} so it doesn't spill onto another line"
+            log[mid].after = rt.plain(got[0])
+            log[mid].reason = "; ".join(x for x in (log[mid].reason, note) if x)
+
+    bullets = {bid: fit for bid, fit in bad.items() if bid in state["rewrites"]}
+    cost = None
+    if bullets:
+        new = {}
+        if backend != "manual":
+            try:
+                new, cost = refit_bullets(res, state, bullets, backend, jd)
+            except BackendError:
+                new = {}
+        for bid in bullets:
+            if bid in new:
+                state["rewrites"][bid] = new[bid]
+                if bid in log:
+                    log[bid].after = rt.plain(new[bid])
+            else:
+                revert(bid)
+
+    measure()
+    still = spilled(state, layout)
+    for mid in still:
+        revert(mid)
+    if still:
+        measure()
+    return cost
+
+
 def _slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_")[:40] or "job"
 
@@ -779,19 +914,45 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
     if not rewrite_bullets:
         raw = {**raw, "bullet_rewrites": []}
 
-    spans, changes, state = rt.plan_edits(res, raw, jd, level)
-    tex = rt.apply(master_tex, spans)
+    _, changes, state = rt.plan_edits(res, raw, jd, level)
+
+    # Every compile marks where each piece's lines end (resume_tex "Line
+    # layout"); the saved .tex has no marks. Should the marks themselves not
+    # compile with some resume, it's compiled without them and not measured.
+    layout: dict = {}
+    marks, last = [True], [0]
+
+    def build(measure: bool) -> str:
+        tex = rt.apply(master_tex, rt.build_spans(res, {**state, "measure": measure}))
+        return rt.with_marks(tex) if measure else tex
+
+    def compile_now(out_pdf: Path | None = None) -> int:
+        """Compiles the current state; returns (and remembers) its page count."""
+        if marks[0]:
+            try:
+                last[0] = rt.compile_pdf(build(True), out_pdf, layout=layout)
+                return last[0]
+            except rt.CompileError:
+                marks[0] = False
+        layout.clear()
+        last[0] = rt.compile_pdf(build(False), out_pdf)
+        return last[0]
 
     # Compile; if a model edit broke LaTeX, fall back to selection-only edits.
     try:
-        pages = rt.compile_pdf(tex)
+        pages = compile_now()
     except rt.CompileError as e:
         for c in changes:
             if c.kind in ("bullet", "tech", "skills") and c.status == "applied":
                 c.status, c.reason = "rejected", f"reverted: the edited resume didn't compile ({e})"
         state.update(rewrites={}, tech={}, rows={})
-        tex = rt.apply(master_tex, rt.build_spans(res, state))
-        pages = rt.compile_pdf(tex)
+        marks[0] = True
+        pages = compile_now()
+
+    refit = fit_lines(res, state, changes, layout, compile_now, backend, jd)
+    if refit is not None:
+        cost = (cost or 0) + refit
+    pages = last[0]
 
     # Trim only while the PDF runs long. Order: the model's suggested bullets,
     # then the least relevant bullet (entries keep 2), then suggested projects,
@@ -817,17 +978,18 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
             projects = [e for e in res.entries if e.kind == "project" and e.id not in state["drop_entries"]]
             if not projects:
                 break
-            victim = next((e for eid in state["suggest_entries"] for e in projects if e.id == eid), None)                 or max(projects, key=lambda e: min((rank.get(b.id, 999) for b in e.bullets), default=999))
+            victim = next((e for eid in state["suggest_entries"] for e in projects if e.id == eid), None) \
+                or max(projects, key=lambda e: min((rank.get(b.id, 999) for b in e.bullets), default=999))
             state["drop_entries"].add(victim.id)
-        tex = rt.apply(master_tex, rt.build_spans(res, state))
-        pages = rt.compile_pdf(tex)
+        pages = compile_now()
 
     name = f"{_slug(job.get('company', ''))}_{_slug(job.get('title', ''))}_{time.strftime('%Y%m%d-%H%M%S')}"
     out_dir.mkdir(parents=True, exist_ok=True)
     tex_path = out_dir / f"{name}.tex"
     pdf_path = out_dir / f"{name}.pdf"
+    tex = build(False)
     tex_path.write_text(tex, encoding="utf-8")
-    rt.compile_pdf(tex, pdf_path)
+    compile_now(pdf_path)
 
     # Drop and reorder entries are derived from the final state so the log
     # matches the PDF exactly.

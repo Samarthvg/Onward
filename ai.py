@@ -48,9 +48,9 @@ KEY_PATTERN = r"[A-Za-z0-9_\-.:]{20,400}"
 # Typical answer length per task, in output tokens (reasoning included),
 # for estimates before a call. Measured on real runs; the actual count is
 # what gets recorded.
-OUTPUT_TOKENS = {"tailor": 7000, "draft": 1800, "rewrite": 1500, "answers": 1500}
+OUTPUT_TOKENS = {"tailor": 7000, "draft": 1800, "rewrite": 1500, "answers": 1500, "refit": 1200}
 OUTPUT_PER_QUESTION = 350
-MAX_TOKENS = {"tailor": 32000, "draft": 8000, "rewrite": 8000, "answers": 16000}
+MAX_TOKENS = {"tailor": 32000, "draft": 8000, "rewrite": 8000, "answers": 16000, "refit": 8000}
 # A reservation left by a process that died mid-call stops counting after this.
 RESERVATION_TTL = 2 * 3600
 
@@ -320,7 +320,7 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     month         TEXT NOT NULL,             -- YYYY-MM, local time
     provider      TEXT NOT NULL,
     model         TEXT NOT NULL,
-    purpose       TEXT NOT NULL,             -- tailor, draft, answers, rewrite
+    purpose       TEXT NOT NULL,             -- tailor, draft, answers, rewrite, refit
     state         TEXT NOT NULL,             -- reserved, done, failed
     estimate      REAL NOT NULL DEFAULT 0,
     cost          REAL NOT NULL DEFAULT 0,
