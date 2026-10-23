@@ -1280,7 +1280,7 @@ def prepare() -> None:
     STORE.load()
     for w in STORE.warnings:
         log(f"settings: {w}")
-    if not DASHBOARD.exists():
+    if not radar.page_current(DASHBOARD):        # missing, or built by an older version
         radar.rerender(STORE)
 
 

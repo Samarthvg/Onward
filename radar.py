@@ -19,6 +19,7 @@ import bisect
 import csv
 import email.utils
 import gzip
+import hashlib
 import os
 import math
 import html
@@ -2296,10 +2297,28 @@ def update_h1b_legacy() -> None:
 # --------------------------------------------------------------------------
 # Dashboard
 
+def _template_mark(template: str) -> str:
+    return f"<!-- onward-template {hashlib.sha256(template.encode('utf-8')).hexdigest()[:16]} -->"
+
+
+def page_current(path: Path) -> bool:
+    """Whether the dashboard page at `path` was built from this template. An
+    update brings a new template; the page from the old one must not be
+    served until the next search rebuilds it."""
+    mark = _template_mark(TEMPLATE_PATH.read_text(encoding="utf-8")).encode()
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - 200))
+            return mark in f.read()
+    except OSError:
+        return False
+
+
 def render(jobs: list[dict], meta: dict) -> None:
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     payload = json.dumps({"jobs": jobs, "meta": meta}, separators=(",", ":")).replace("</", "<\\/")
-    page = template.replace("/*__DATA__*/null", payload)
+    page = template.replace("/*__DATA__*/null", payload) + "\n" + _template_mark(template) + "\n"
     DASHBOARD_PATH.parent.mkdir(parents=True, exist_ok=True)
     # The helper re-renders after a settings change while a scheduled run may
     # be rendering too; each writes its own temp file.
