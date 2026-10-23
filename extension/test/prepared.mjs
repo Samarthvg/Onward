@@ -70,6 +70,58 @@ await test("greenhouse: attaches the prepared resume and fills answers drafted a
   expect("prepared gh: nothing submitted", (await page.evaluate(() => window.__submitted)) === 0);
 });
 
+await test("a drafted answer is redrafted with a note, never over the user's own edits", async (page) => {
+  const drafts = [];
+  await env.ctx.route(/^http:\/\/127\.0\.0\.1:8765\/api\/draft/, async (route) => {
+    const req = route.request();
+    if (req.method() === "POST") {
+      drafts.push(JSON.parse(req.postData() || "{}"));
+      return route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ id: "abc123" + drafts.length }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ state: "done", result: { answer: `Redraft ${drafts.length}: my Onward project. (TEST)` } }) });
+  });
+  helper.prepared = tailored([
+    { question: "Why do you want to work at Mock Co?", kind: "textarea", options: [], answer: "I build developer tools. (TEST)", choices: [] },
+  ]);
+  await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001");
+  await runFill(page);
+  const host = page.locator("#jobradar-autofill");
+  const li = host.locator("li", { hasText: "Why do you want to work at Mock Co?" });
+  const redraft = async (note) => {
+    await li.locator("button", { hasText: "Redraft with a note" }).click();
+    await li.locator(".redo input").fill(note);
+    await li.locator(".redo input").press("Enter");
+  };
+  await redraft("Use my Onward project instead");
+  await page.waitForFunction(() => window.__mockState().why.startsWith("Redraft 1"), null, { timeout: 15000 });
+  expect("redraft: the helper got the note and the answer it changes",
+    drafts[0].note === "Use my Onward project instead" && drafts[0].previous === "I build developer tools. (TEST)" &&
+    drafts[0].question === "Why do you want to work at Mock Co?", JSON.stringify(drafts[0]));
+  expect("redraft: still marked for review", /draft, edit it/.test(await li.innerText()), await li.innerText());
+
+  // The user edits the answer while a redraft runs: the new one is offered, not typed over theirs.
+  await env.ctx.unroute(/^http:\/\/127\.0\.0\.1:8765\/api\/draft/);
+  let release;
+  const held = new Promise((r) => { release = r; });
+  await env.ctx.route(/^http:\/\/127\.0\.0\.1:8765\/api\/draft/, async (route) => {
+    if (route.request().method() === "POST") {
+      drafts.push(JSON.parse(route.request().postData() || "{}"));
+      return route.fulfill({ status: 202, contentType: "application/json", body: '{"id":"def456"}' });
+    }
+    await held;
+    return route.fulfill({ status: 200, contentType: "application/json", body: '{"state":"done","result":{"answer":"Redraft 2. (TEST)"}}' });
+  });
+  await redraft("Shorter");
+  await page.locator("#question_9").fill("My own words.");
+  release();
+  await li.locator("textarea").waitFor({ timeout: 15000 });
+  expect("redraft over an edit: the user's words stay", (await page.evaluate(() => window.__mockState().why)) === "My own words.");
+  expect("redraft over an edit: the new draft is offered to copy", (await li.locator("textarea").inputValue()) === "Redraft 2. (TEST)");
+  expect("redraft: nothing submitted", (await page.evaluate(() => window.__submitted)) === 0);
+  await env.ctx.unroute(/^http:\/\/127\.0\.0\.1:8765\/api\/draft/);
+});
+
 await test("ashby: attaches the prepared resume, fills drafted radios and essays", async (page) => {
   helper.prepared = tailored([
     { question: "Which team interests you most?", kind: "choice", options: ["Platform", "Product", "Infrastructure"], answer: "Platform", choices: [] },

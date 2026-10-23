@@ -31,14 +31,17 @@
     .q:hover { text-decoration: underline; }
     .v { color: #4e3c30; overflow-wrap: anywhere; }
     .why { color: #8a5a00; }
-    .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 999px; background: #e7efe3; color: #2f5a2a; margin-left: 4px; }
+    .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 999px; background: #f6e2cc; color: #86391a; margin-left: 4px; }
     .tag.amber { background: #fbefd5; color: #7a4b00; }
     .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
     .note { color: #6b5646; font-size: 12px; margin-top: 10px; }
     textarea { width: 100%; min-height: 90px; font: 12px/1.4 ui-monospace, monospace; margin-top: 4px; }
     details > summary { cursor: pointer; color: #4e3c30; margin-top: 10px; }
     a { color: #2f5a8a; }
-    .prep { margin: 0 0 8px; padding: 6px 8px; border-radius: 6px; background: #eef3ec; color: #2f5a2a; }
+    .prep { margin: 0 0 8px; padding: 6px 8px; border-radius: 6px; background: #f6e2cc; color: #6e2f12; }
+    .redo { display: flex; gap: 6px; margin-top: 4px; }
+    .redo input { flex: 1; min-width: 0; font: inherit; padding: 4px 7px; border: 1px solid #d5c3ab; border-radius: 6px; background: #fff; color: #2b1b14; }
+    .redo input:focus { outline: 2px solid #a24a1a; outline-offset: -1px; }
     .warn { margin-top: 4px; padding: 5px 8px; border-radius: 6px; background: #f7e6df; color: #7a2e14; }
     .sec { margin: 0 0 8px; padding: 6px 8px; border-radius: 6px; background: #fbefd5; color: #5e3b00; }
     .next { margin-top: 8px; padding: 8px 10px; border: 1px solid #e2d2bc; border-radius: 8px; display: grid; gap: 6px; }
@@ -53,10 +56,11 @@
       .x { background: none; color: #b5b2a7; }
       .q { color: #f2e7d9; } .v, .status, details > summary { color: #c4c1b6; } .note, h3 { color: #a29f94; }
       li { border-color: #3a2a22; } .why { color: #f0b85a; }
-      .tag { background: #2f4429; color: #cfe6c6; } .tag.amber { background: #4a3a17; color: #f5d797; }
+      .tag { background: #4a2a17; color: #f6c9a4; } .tag.amber { background: #4a3a17; color: #f5d797; }
+      .redo input { background: #150c0c; color: #f2e7d9; border-color: #5a4436; }
       textarea { background: #150c0c; color: #f2e7d9; border-color: #5a4436; }
       a { color: #8fb6e8; }
-      .prep { background: #2a3626; color: #cfe6c6; } .sec { background: #4a3a17; color: #f5d797; } .warn { background: #3a241c; color: #f0a084; } .next { border-color: #4a372c; }
+      .prep { background: #4a2a17; color: #f6c9a4; } .sec { background: #4a3a17; color: #f5d797; } .warn { background: #3a241c; color: #f0a084; } .next { border-color: #4a372c; }
       a.btn { color: #fff; }
     }
   `;
@@ -119,6 +123,10 @@
         it.source === "remembered" ? el("span", { class: "tag amber" }, "saved answer") : null,
         it.source === "draft" ? el("span", { class: "tag amber" }, "draft, edit it") : null,
         it.source === "ai" ? el("span", { class: "tag amber" }, "AI answer, check it") : null));
+      if (it.why) kids.push(el("div", { class: "why" }, sentence(it.why)));
+      if (handlers.canRedraft(it)) kids.push(redraftBox(it));
+      if (it.prompt) kids.push(el("textarea", { readonly: true }, it.prompt),
+        el("div", { class: "row" }, el("button", { onclick: (e) => handlers.copy(it.prompt, e.target) }, "Copy")));
     } else if (it.differs) {
       kids.push(el("div", { class: "v" }, "On the form: " + short(it.value, 100)),
         el("div", { class: "v" }, "Your resume: " + short(it.resume, 100)));
@@ -146,6 +154,27 @@
       }
     }
     return el("li", null, kids);
+  }
+
+  /** "Redraft with a note": the model writes the answer again, as told ("use my Y project, not X"). */
+  function redraftBox(it) {
+    if (!it.noteOpen) {
+      return el("div", { class: "row" }, el("button", { onclick: () => { it.noteOpen = true; render(); focusNote(it); } }, "Redraft with a note"));
+    }
+    const go = () => { if (!it.drafting && (it.note || "").trim()) handlers.draft(it, it.note.trim()); };
+    const input = el("input", { type: "text", maxlength: "500", "aria-label": "What to change in this answer",
+      placeholder: "e.g. Use my Onward project instead", disabled: it.drafting,
+      oninput: (e) => { it.note = e.target.value; },
+      onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); go(); } else if (e.key === "Escape") { it.noteOpen = false; render(); } } });
+    input.value = it.note || "";
+    input.dataset.noteFor = String(view.items.indexOf(it));
+    return el("div", { class: "redo" }, input,
+      el("button", { disabled: it.drafting, onclick: go }, it.drafting ? "Redrafting…" : "Redraft"));
+  }
+
+  function focusNote(it) {
+    const n = shadow && shadow.querySelector(`input[data-note-for="${view.items.indexOf(it)}"]`);
+    if (n) n.focus();
   }
 
   /** A Work Experience / Education section the page filled differently from the resume. */

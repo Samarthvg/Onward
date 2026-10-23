@@ -431,23 +431,37 @@
 
   /* -------------------------------------------------------------- drafts */
 
-  async function draft(it) {
+  /** An answer the model wrote may be written again with a note ("use my Y project, not X"). */
+  function canRedraft(it) {
+    return !!(store.settings.helper && (it.source === "draft" || it.source === "ai") && it.q
+      && (it.q.kind === "textarea" || it.q.kind === "text") && !notForAI(it.q));
+  }
+
+  /** A draft for `it`; with `note`, a rewrite of the answer now in the field, as the note asks. */
+  async function draft(it, note = "") {
     it.drafting = true;
+    it.prompt = "";
     const b = store.settings.draftBackend;
-    it.why = b === "chatgpt" || b === "claude-code" ? "Drafting with your " + BACKEND_NAMES[b] + " login…"
-      : "Drafting with your " + (BACKEND_NAMES[b] || b) + " key…";
+    const verb = note ? "Redrafting" : "Drafting";
+    it.why = b === "chatgpt" || b === "claude-code" ? verb + " with your " + BACKEND_NAMES[b] + " login…"
+      : verb + " with your " + (BACKEND_NAMES[b] || b) + " key…";
     JR.panel.render();
     const info = JR.sites.jobInfo(document);
+    const before = note ? W.get(it.q) || "" : "";
     const payload = {
       question: it.label, context: it.q.container ? textOf(it.q.container).slice(0, 1500) : "",
       company: info.company, title: info.title, url: location.href,
       jd: JR.sites.jobDescription(document), max_chars: it.q.el.maxLength > 0 ? it.q.el.maxLength : 0,
-      backend: store.settings.draftBackend,
+      backend: store.settings.draftBackend, note, previous: before,
     };
     try {
       const start = await api.runtime.sendMessage({ type: "jr:draftStart", payload });
       if (!start || start.error) throw new Error((start && start.error) || "The Onward helper didn't answer.");
-      if (start.prompt) { it.prompt = start.prompt; it.why = "Manual mode: copy the prompt below."; return; }
+      if (start.prompt) {
+        it.prompt = start.prompt;
+        it.why = "Manual mode: paste this into ChatGPT or Claude, then paste the answer into the field.";
+        return;
+      }
       if (start.estimate != null) {
         it.why = "Drafting with your " + (BACKEND_NAMES[b] || b) + " key, about " + (start.estimate < 0.01 ? "under 1¢" : "$" + start.estimate.toFixed(2)) + "…";
         JR.panel.render();
@@ -459,11 +473,17 @@
         if (st && st.state === "done") {
           const answer = String(st.result && st.result.answer || "").trim();
           if (!answer) throw new Error("The draft came back empty.");
-          if (W.get(it.q)) { it.why = "You started typing, so the draft wasn't inserted."; it.prompt = answer; return; }
+          // Never over what the user typed: an empty field, or (for a redraft) the answer as it was asked about.
+          if ((W.get(it.q) || "") !== before) {
+            it.why = note ? "You changed the answer meanwhile, so the new draft wasn't put in. Here it is to copy:"
+              : "You started typing, so the draft wasn't inserted.";
+            it.prompt = answer;
+            return;
+          }
           typeInto(it.q.el, answer);
           filledByUs.set(it.q.el, { value: answer, source: "draft" });
           mark(it.q, "review");
-          Object.assign(it, { status: "filled", value: answer, source: "draft", why: "" });
+          Object.assign(it, { status: "filled", value: answer, source: "draft", why: "", noteOpen: false, note: "" });
           return;
         }
         if (!st || st.state === "error") throw new Error((st && st.error) || "Drafting failed.");
@@ -502,6 +522,7 @@
       JR.panel.render();
     },
     draft,
+    canRedraft,
     /** "Replace with my resume": overwrite what the page put in this section, keeping Undo. */
     async replaceSection(sec) {
       if (running || sec.undo) return;

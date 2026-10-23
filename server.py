@@ -592,7 +592,8 @@ def run_draft(jid: str, params: dict) -> None:
                                                    params["jd"], params["backend"])
         else:
             call = lambda: tailor.draft_answer(master, job, params["question"], params["context"], params["jd"],
-                                               params["backend"], params["max_chars"])
+                                               params["backend"], params["max_chars"],
+                                               params.get("note", ""), params.get("previous", ""))
         result = call()
         update(state="done", result=result)
     except (tailor.BackendError, ValueError) as e:
@@ -1225,16 +1226,20 @@ class Handler(BaseHTTPRequestHandler):
                   "context": str(data.get("context", ""))[:2000],
                   "company": row.get("company") or str(data.get("company", ""))[:200],
                   "title": row.get("title") or str(data.get("title", ""))[:300],
-                  "jd": row.get("description") or str(data.get("jd", ""))[:30000]}
+                  "jd": row.get("description") or str(data.get("jd", ""))[:30000],
+                  # A redraft: what to change, and the answer it changes.
+                  "note": tailor.clean_instruction(data.get("note")), "previous": str(data.get("previous") or "")[:20000]}
         if backend == "manual":
             prompt = tailor.build_draft_prompt(MASTER.read_text(encoding="utf-8"),
                                                {"company": params["company"], "title": params["title"]},
-                                               question, params["context"], params["jd"], max_chars)
+                                               question, params["context"], params["jd"], max_chars,
+                                               params["note"], params["previous"])
             return self._json(200, {"prompt": prompt})
         est = None
         if backend in pricing.API_BACKENDS:
             est = tailor.estimate_draft(MASTER.read_text(encoding="utf-8"), {"company": params["company"], "title": params["title"]},
-                                        question, params["context"], params["jd"], backend, max_chars, exact=False)
+                                        question, params["context"], params["jd"], backend, max_chars, exact=False,
+                                        note=params["note"], previous=params["previous"])
         return self._json(202, {"id": submit_draft(params), "estimate": est and est["cost"]})
 
     def _answers(self, data: dict):

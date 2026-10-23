@@ -521,8 +521,11 @@ def _about_and_samples(parts: list[str], v: dict) -> None:
         parts.append(samples)
 
 
-def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0) -> tuple[str, str]:
-    """(instructions, material) for drafting one answer."""
+def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0,
+                 note: str = "", previous: str = "") -> tuple[str, str]:
+    """(instructions, material) for drafting one answer. With `note`, the
+    applicant's request for a new version of `previous` ("use my Y project,
+    not X")."""
     v = voice_settings()
     length = (f"at most {max_chars} characters, including spaces; aim for about {int(max_chars * 0.8)}"
               if max_chars else "about 90 to 130 words in one or two short paragraphs, or shorter if the question asks for something brief")
@@ -535,20 +538,28 @@ def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: st
         parts.append(f"JOB POSTING\n{jd.strip()[:20000]}")
     parts.append(f"RESUME\n{rt.plain(master_tex)}")
     _about_and_samples(parts, v)
+    note = clean_instruction(note)
+    if note:
+        if previous.strip():
+            parts.append(f"THE EARLIER DRAFT\n{previous.strip()[:20000]}")
+        parts.append("THE APPLICANT'S REQUEST FOR THIS ANSWER\n" + note + "\nWrite the answer again so it does this. "
+                     "The rules above still win: if it asks for something the resume and ABOUT THE APPLICANT don't "
+                     "support, use what they do support and invent nothing.")
     # .replace, not .format: only {length} is a placeholder, and the voice
     # rules (the user's own phrases among them) may contain braces.
     return DRAFT_RULES.replace("{length}", length) + voice_rules(v), "\n\n".join(parts)
 
 
-def build_draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0) -> str:
+def build_draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0,
+                       note: str = "", previous: str = "") -> str:
     """The whole drafting prompt, for pasting into a chat by hand."""
-    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars)
+    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars, note, previous)
     return instructions.replace('Put only the answer text in the "answer" field.', "Reply with only the answer text.") + "\n\n" + material
 
 
 def estimate_draft(master_tex: str, job: dict, question: str, context: str, jd: str, backend: str,
-                   max_chars: int = 0, exact: bool = True) -> dict | None:
-    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars)
+                   max_chars: int = 0, exact: bool = True, note: str = "", previous: str = "") -> dict | None:
+    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars, note, previous)
     return estimate(backend, instructions, material, "draft", exact=exact)
 
 
@@ -656,13 +667,13 @@ def answer_questions(master_tex: str, job: dict, profile: dict, questions: list[
 
 
 def draft_answer(master_tex: str, job: dict, question: str, context: str, jd: str,
-                 backend: str, max_chars: int = 0) -> dict:
+                 backend: str, max_chars: int = 0, note: str = "", previous: str = "") -> dict:
     if backend not in DRAFT_BACKENDS:
         raise BackendError(f"Drafting can't use {backend}.")
     if not question.strip():
         raise BackendError("No question to answer.")
     started = time.time()
-    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars)
+    instructions, material = draft_prompt(master_tex, job, question, context, jd, max_chars, note, previous)
     raw, model, cost = ask(backend, instructions, material, DRAFT_SCHEMA, "draft")
     costs = [cost] if cost is not None else []
     answer = _fit(str((raw or {}).get("answer", "")), max_chars)

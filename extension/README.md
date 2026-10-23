@@ -74,6 +74,7 @@ On an application form, press the **Autofill** button in the bottom-right corner
   - Claude, through the `claude` CLI on your Claude login;
   - an OpenAI or Anthropic API key saved in Onward's settings, billed to that key within its monthly budget;
   - **Manual**, which shows a prompt to paste into any chat.
+- **Redraft with a note:** any drafted or AI answer in the panel has **Redraft with a note**. Say what to change ("use my Onward project instead", "shorter") and press Enter: the model writes the answer again from the same resume and notes, with the current answer and your note. It replaces the answer only if you haven't edited it meanwhile; otherwise the new draft is shown for you to copy. Drafts only use what your resume and "About me" notes say, never your chat history.
 
 ## Apply queue
 

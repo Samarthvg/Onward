@@ -2672,6 +2672,13 @@ async function queueAction(path, body, text, label, onUndo) {
   await loadQueue();
 }
 
+// Why the queue kept the master resume, in a few words (prep.decide writes the long form).
+function masterWhy(reason) {
+  const r = reason || "";
+  const cov = /covers (\d+)%/.exec(r);
+  return /every keyword/.test(r) ? "fits as is" : cov ? `covers ${cov[1]}% already` : /reorder|backs/.test(r) ? "nothing to add" : "fits";
+}
+
 function queueItem(it) {
   // The posting as All jobs shows it, when this page has it: same score, same details.
   const j = jobByKey(it.key), sc = j && scores.get(j);
@@ -2694,22 +2701,15 @@ function queueItem(it) {
     } else if (it.tailored_id) {
       lines.push(el("div", { class: "qline" }, el("b", { text: "Resume:" }), "your master, which you chose over the tailored one"));
     } else {
-      // "Your master resume has every keyword…" reads as "your master, since it has every keyword…".
-      const why = (it.reason || "").replace(/^Your master resume /, "it ").replace(/\.$/, "");
-      lines.push(el("div", { class: "qline" }, el("b", { text: "Resume:" }),
-        el("span", { text: "your master" + (why ? ", since " + why.charAt(0).toLowerCase() + why.slice(1) : "") })));
+      // A few words; the whole reason on hover. What's missing is under Details.
+      lines.push(el("div", { class: "qline", title: it.reason || "" }, el("b", { text: "Resume:" }), "master · " + masterWhy(it.reason)));
     }
-    // A note (the day's runs used up) says what happens to the answers instead.
-    if (it.answers || !it.note) {
-      lines.push(el("div", { class: "qline" }, el("b", { text: "Answers:" }), it.answers
-        ? `${it.answers} drafted for the form's own questions`
-        : "none drafted ahead; the extension drafts any at fill time"));
-    }
+    if (it.answers) lines.push(el("div", { class: "qline" }, el("b", { text: "Answers:" }), `${it.answers} drafted`));
   } else if (it.state === "working") {
     lines.push(el("div", { class: "qline" }, progressLine(it.decision === "tailor" ? "Tailoring now…" : "Drafting answers now…")));
   } else if (it.state === "queued") {
-    lines.push(el("div", { class: "qline" }, el("b", { text: "Waiting." }),
-      el("span", { text: it.decision === "tailor" ? it.reason : "Master resume fits; drafts come next." })));
+    lines.push(el("div", { class: "qline", title: it.reason || "" }, el("b", { text: "Waiting" }),
+      el("span", { text: it.decision === "tailor" ? " to tailor" : " to draft answers" })));
   } else if (it.state === "error") {
     lines.push(el("div", { class: "qline" }, el("span", { class: "warnline", text: `Couldn't prepare this one: ${it.note}. ` +
       "Press Retry to try again, or open the application and fill it in yourself." })));
