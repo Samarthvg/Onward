@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 import match
+import prep
 import radar
 import reqparse
 
@@ -101,6 +102,15 @@ Requirements
 - Microservices, Kafka, MySQL
 - Experience with Datadog and Terraform
 """, 1, True),
+    # Names a nice-to-have or two and requires nothing (a platform admin role).
+    ("Platform Engineer- Communications Platform", """Responsibilities
+- Configure and support the email marketing and customer feedback platforms.
+- Troubleshoot integrations between business systems.
+Preferred qualifications
+- Familiarity with data structures and debugging.
+- Basic SQL is a plus.
+- Scripting experience is helpful but not required.
+""", None, False),
 ]
 
 
@@ -155,7 +165,7 @@ for (const r of input.resumes) {
   const ctx = { years, degree: resumeDegree(r.text),
     hasTerm: (t) => { if (!cache.has(t)) cache.set(t, termRegex(t).test(r.text)); return cache.get(t); } };
   out.push({ name: r.name, skills: [...have].sort(), years, degree: ctx.degree,
-    scores: input.jobs.map((j) => { const s = scoreJob(j, have, ctx); if (s.pct != null) s.unjudged = tooFewToJudge(s); return s; }) });
+    scores: input.jobs.map((j) => { const s = scoreJob(j, have, ctx); if (s.pct != null) { s.unjudged = tooFewToJudge(s); s.noreq = noRequirements(s); } return s; }) });
 }
 process.stdout.write(JSON.stringify(out));
 """
@@ -202,6 +212,7 @@ class ParityTests(unittest.TestCase):
                     for k in ("cov", "thin", "req", "pref", "degree", "matched", "missing", "exp"):
                         self.assertEqual(got[k], w[k], k)
                     self.assertEqual(match.too_few_to_judge(got), w["unjudged"], "too few to judge")
+                    self.assertEqual(match.no_requirements(got), w["noreq"], "no requirements")
                     self.assertEqual([(i["k"], i["ok"]) for i in got["items"]],
                                      [(i["k"], i["ok"]) for i in w["items"]])
                     for a, b in zip(got["items"], w["items"]):
@@ -210,11 +221,26 @@ class ParityTests(unittest.TestCase):
     def test_too_few_to_judge(self):
         item = lambda k, ok, kind="req": {"k": k, "ok": ok, "kind": kind, "weight": 1.0}
         sc = {"thin": True, "exp": {"v": 0.8, "label": "years not stated"},
-              "items": [item("Python", True, "pref"), item("Agile", False, "pref")]}
+              "items": [item("Java", True), item("Python", True, "pref"), item("Agile", False, "pref")]}
         self.assertTrue(match.too_few_to_judge(sc), "only nice-to-haves missing")
         self.assertFalse(match.too_few_to_judge({**sc, "items": sc["items"] + [item("Go", False)]}), "a required one missing")
         self.assertFalse(match.too_few_to_judge({**sc, "exp": {"v": 0.5, "ok": False}}), "asks for more years")
         self.assertFalse(match.too_few_to_judge({**sc, "thin": False}), "enough skills to judge by the score")
+
+    def test_no_requirements(self):
+        """A posting that names only a nice-to-have or two (a platform admin role
+        listing "data structures" and "basic SQL or willingness to learn") scores
+        high on what little it says, but requires nothing: not picked or queued."""
+        item = lambda k, ok, kind="pref": {"k": k, "ok": ok, "kind": kind, "weight": 0.5}
+        sc = {"thin": True, "pct": 70, "exp": {"v": 0.8, "label": "years not stated"},
+              "items": [item("Data Structures & Algorithms", True), item("SQL", True)]}
+        self.assertTrue(match.no_requirements(sc))
+        self.assertFalse(match.too_few_to_judge(sc), "nothing required, so nothing the resume is known to meet")
+        self.assertFalse(prep.Preparer.wanted(sc, {"threshold": 60}), "70% on two nice-to-haves isn't queued")
+        req = {**sc, "items": sc["items"] + [item("Java", True, "req")]}
+        self.assertFalse(match.no_requirements(req))
+        self.assertTrue(prep.Preparer.wanted(req, {"threshold": 60}))
+        self.assertFalse(match.no_requirements({**sc, "thin": False}), "enough skills named to go by the score")
 
     def test_fixtures_cover_the_interesting_cases(self):
         jobs, resumes, skill_w, term_w = fixtures()
@@ -225,6 +251,8 @@ class ParityTests(unittest.TestCase):
         kinds = {k[2] for j in jobs for k in j["kw"]}
         self.assertTrue({"title", "req", "pref"} <= kinds, kinds)
         self.assertTrue(any(k[0] in term_w for j in jobs for k in j["kw"]), "no learned term in fixtures")
+        scored = [match.score_job(j, res, skill_w, term_w) for j in jobs]
+        self.assertTrue(any(s["pct"] is not None and match.no_requirements(s) for s in scored), "no posting that requires nothing")
         # Internship counted half, education skipped: 1.8y at Acme + 4 months/2.
         self.assertGreater(res.years, 1.5)
 

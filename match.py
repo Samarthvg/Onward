@@ -152,12 +152,20 @@ class Resume:
         return self._terms[t]
 
 
+def no_requirements(sc: dict) -> bool:
+    """A posting that names too few skills to judge and none of them as
+    required: nothing says the resume has what the job needs, however well
+    its one or two nice-to-haves match. It isn't picked or queued. The
+    dashboard's noRequirements is the same rule."""
+    return bool(sc.get("thin")) and not any(i["kind"] != "pref" for i in sc.get("items", []))
+
+
 def too_few_to_judge(sc: dict) -> bool:
     """A posting that names too few skills for its score to mean much, and
     whose required skills (and years) the resume has: match thresholds don't
     leave it out, since its score can only sit near the middle. The
     dashboard's tooFewToJudge is the same rule."""
-    return bool(sc.get("thin")) and sc.get("exp", {}).get("ok") is not False and \
+    return bool(sc.get("thin")) and sc.get("exp", {}).get("ok") is not False and not no_requirements(sc) and \
         all(i["ok"] for i in sc.get("items", []) if i["kind"] != "pref")
 
 

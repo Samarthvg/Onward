@@ -585,7 +585,7 @@
         <dt>Skills</dt>
         <dd>The skills and tools in a posting's requirements are checked word for word against your resume. Required ones count fully and nice-to-have ones half. Rare skills (Rust, CUDA) count more than ones nearly every posting names (Git). Sentences with no concrete skill, like "strong communication", aren't scored, since a resume can't settle them.</dd>
         <dt>Confidence</dt>
-        <dd>Every score is mixed with a few average skills at half credit, so matching 3 of 3 can't look as sure as 14 of 21. A posting that names only a few skills stays near the middle, and even a perfect match stays under 100%. So that such a posting isn't lost, a match filter or the apply queue's minimum never leaves it out when you have the skills and years it requires.</dd>
+        <dd>Every score is mixed with a few average skills at half credit, so matching 3 of 3 can't look as sure as 14 of 21. A posting that names only a few skills stays near the middle, and even a perfect match stays under 100%. So that such a posting isn't lost, a match filter or the apply queue's minimum never leaves it out when you have the skills and years it requires. One that requires no skill at all, only a nice-to-have or two, is marked "Unclear fit": it stays in All jobs but isn't picked or queued, since nothing says you have what the job needs.</dd>
         <dt>Experience</dt>
         <dd>Your years come from the dates on your resume, internships counting half. A posting asking for more lowers the score; one that doesn't say lowers it a little.</dd>
         <dt>Degree</dt>
@@ -1090,7 +1090,13 @@ function scoreJob(job, have, ctx) {
 // middle doesn't decide whether a posting is shown or queued, once the resume
 // has the skills (and years) it requires.
 function tooFewToJudge(sc) {
-  return !!sc && sc.thin && sc.exp.ok !== false && (sc.items || []).every((i) => i.ok || i.kind === "pref");
+  return !!sc && sc.thin && sc.exp.ok !== false && !noRequirements(sc) && (sc.items || []).every((i) => i.ok || i.kind === "pref");
+}
+
+// Same rule as match.no_requirements: too few skills to judge, and none of
+// them required. Shown with its score, but not picked or queued.
+function noRequirements(sc) {
+  return !!sc && sc.thin && !(sc.items || []).some((i) => i.kind !== "pref");
 }
 
 let scores = new Map();
@@ -1140,12 +1146,13 @@ function scoreReason(sc, j, brief = false) {
   // Whatever pulled the score down, most telling first.
   const parts = [bits.join(", but "),
     brief ? "" : missReq.length ? `missing ${listOf(missReq)}` : missPref.length && sc.pct < 70 ? `missing nice-to-have ${listOf(missPref)}` : "",
-    sc.thin ? "it names only a few skills, so this is a rough guess"
+    noRequirements(sc) ? "it requires no specific skill, so there's too little to tell"
+      : sc.thin ? "it names only a few skills, so this is a rough guess"
       : !missReq.length && !missPref.length && sc.exp.v < 1 && sc.exp.ok !== false ? "it doesn't say how many years it wants, which lowers the score a little" : "",
   ].filter(Boolean);
   const line = parts.join(". ").replace(/\. ([a-z])/g, (m, c) => ". " + c.toUpperCase());
-  return el("div", { class: "reason" }, el("b", { text: sc.pct >= 70 ? "Strong match" : sc.pct >= 50 ? "Partial match" : "Weak match" }),
-    line ? ": " + line + "." : "");
+  const label = noRequirements(sc) ? "Unclear fit" : sc.pct >= 70 ? "Strong match" : sc.pct >= 50 ? "Partial match" : "Weak match";
+  return el("div", { class: "reason" }, el("b", { text: label }), line ? ": " + line + "." : "");
 }
 
 // The score in full, for a job's Details.
@@ -1166,7 +1173,8 @@ function scoreSection(sc, j) {
       ...(miss.length ? [el("span", { class: "kwlbl", text: "Missing" }), ...chips(miss, "miss")] : [])));
   }
   if (sc.thin) row("Confidence", `Low: the posting names only ${items.length} skill${items.length === 1 ? "" : "s"}, so the score stays near the middle` +
-    (tooFewToJudge(sc) ? ". You have the ones it requires, so match filters don't hide it." : ""));
+    (noRequirements(sc) ? ", and none of them is required, so it isn't picked or queued."
+      : tooFewToJudge(sc) ? ". You have the ones it requires, so match filters don't hide it." : ""));
   if (j.min_yoe != null) {
     row("Experience", `Asks ${j.min_yoe}+ year${j.min_yoe === 1 ? "" : "s"}, you have ${yearsText()}`,
       ...(sc.exp.ok === false ? [" · ", el("span", { class: "why-bad", text: "lowers the score" })] : []));
@@ -1978,7 +1986,7 @@ function picks(now) {
     if (state.marks[j.url]) return false;
     if (V.sponsor && (j.sponsorship === "no" || (V.opt && j.no_opt))) return false;
     const sc = scores.get(j);
-    if (!sc || sc.pct == null || sc.exp.ok === false) return false;
+    if (!sc || sc.pct == null || sc.exp.ok === false || noRequirements(sc)) return false;
     return sc.pct >= PICK_MIN || tooFewToJudge(sc);
   };
   const n = state.pickN;

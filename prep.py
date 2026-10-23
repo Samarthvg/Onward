@@ -263,8 +263,10 @@ class Preparer:
     @staticmethod
     def wanted(sc: dict, s: dict) -> bool:
         """At or above the queue's threshold, or too few skills named to judge
-        while the resume has the ones it requires."""
-        return sc["pct"] is not None and (sc["pct"] >= s["threshold"] or match.too_few_to_judge(sc))
+        while the resume has the ones it requires. Never one that requires
+        no skill at all (match.no_requirements)."""
+        return sc["pct"] is not None and not match.no_requirements(sc) and \
+            (sc["pct"] >= s["threshold"] or match.too_few_to_judge(sc))
 
     @staticmethod
     def eligible(job: dict, s: dict) -> str | None:
