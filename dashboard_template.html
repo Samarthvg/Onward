@@ -1726,7 +1726,7 @@ function jobCard(j, now, V, hasResume) {
   actions.append(el("a", {
     class: "btn apply", href: j.apply_url || j.url, target: "_blank", rel: "noopener", text: "Apply ↗",
     "data-fk": fk("apply"), "aria-label": `Apply: ${j.title} at ${j.company} (opens the application form in a new tab)`,
-    onclick: () => { state.opened[j.url] = true; setTimeout(() => keepFocus(render), 0); },
+    onclick: () => { state.opened[j.url] = true; rememberApplyList(j.key); setTimeout(() => keepFocus(render), 0); },
   }));
   if (HELPER) actions.prepend(el("button", { type: "button", text: "Tailor", "data-fk": fk("tailor"),
     title: "Tailor your resume to this posting",
@@ -1861,6 +1861,17 @@ function showHidden(keys) {
   undoable("Showing the hidden jobs too. The filters that hid them are off.", "showing hidden jobs", () => apply(before));
 }
 
+// The jobs shown in All jobs, in order. Clicking Apply tells the helper the
+// ones below it, so the autofill panel's "Next job" continues down this list
+// instead of sending you back here. From the Apply queue, the queue's order is used.
+let shownOrder = [];
+function rememberApplyList(key) {
+  if (!HELPER) return;
+  const i = key ? shownOrder.indexOf(key) : -1;
+  const keys = i >= 0 ? shownOrder.slice(i, i + 500) : [];
+  api("/api/apply/list", { keys }).catch(() => {});
+}
+
 function render() {
   const now = Date.now() / 1000;
   const q = state.q.trim().toLowerCase();
@@ -1912,6 +1923,7 @@ function render() {
           (hiddenText ? " " + hiddenText : "") + (older.length && state.hours ? ` ${older.length} older job${older.length === 1 ? " is" : "s are"} still open.` : "") }),
         opts.length ? el("div", { class: "row" }, ...opts) : null));
     }
+    shownOrder = jobs.map((j) => j.key);
     for (const j of jobs) list.append(jobCard(j, now, V, hasResume));
     // Filled now, not on "toggle", so focus can go back to a control inside.
     if (open.size) for (const x of list.querySelectorAll("details > summary")) if (open.has(x.dataset.fk)) { x.parentNode.open = true; if (x.parentNode.fill) x.parentNode.fill(); }
@@ -2722,6 +2734,7 @@ function queueItem(it) {
   const actions = el("div", { class: "actions" });
   if (it.state === "ready" || it.state === "queued" || it.state === "error") {
     actions.append(el("a", { class: "btn apply", href: it.apply_url, target: "_blank", rel: "noopener", "data-fk": fk("open"),
+      onclick: () => rememberApplyList(null),
       text: "Open application ↗", "aria-label": `Open application: ${name} (new tab)`,
       title: "The extension attaches the prepared resume and fills the form. You review and submit." }));
   }

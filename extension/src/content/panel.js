@@ -211,6 +211,7 @@
       needs.length ? [el("h3", null, `Needs you (${needs.length})`), el("ul", null, needs.map(item))] : null,
       filled.length ? [el("h3", null, `Filled (${filled.length})`), el("ul", null, filled.map(item))] : null,
       had.length ? el("details", null, el("summary", null, `Already answered (${had.length})`), el("ul", null, had.map(item))) : null,
+      view.next ? nextBox(view.next, "Go to next job") : null,
       el("div", { class: "note" }, "Nothing is submitted. Check every answer, then press Submit yourself. ",
         el("a", { href: "#", onclick: (e) => { e.preventDefault(); handlers.options(); } }, "Edit saved answers")));
     wrap.append(el("div", { class: "panel", role: "dialog", "aria-label": "Onward Autofill" },
@@ -221,16 +222,22 @@
   }
 
   /** After the ATS confirmed the application: what was recorded, and the next job in the queue. */
+  /** The next job to apply to: in the list you were working through in Onward, or the apply queue. */
+  function nextBox(n, action) {
+    const where = n.from === "list" ? "Next in your list" : "Next in your apply queue";
+    return el("div", { class: "next" },
+      el("div", null, el("b", null, where), el("br"), `${n.title} at ${n.company}` + (n.score != null ? ` · ${n.score}% match` : "")),
+      el("a", { class: "btn", href: n.apply_url, rel: "noopener" }, action));
+  }
+
   function renderDone(wrap) {
     const d = view.done;
     const n = d.next;
     const body = el("div", { class: "body" },
       el("div", { class: "status" }, d.error ? d.error : `Marked as applied${d.title ? `: ${d.title} at ${d.company}` : ""}.`),
-      n ? el("div", { class: "next" },
-        el("div", null, el("b", null, "Next in your apply queue"), el("br"), `${n.title} at ${n.company} · ${n.score}% match`),
-        el("a", { class: "btn", href: n.apply_url, rel: "noopener" }, "Open next application"))
-        : el("div", { class: "note" }, "Nothing else is ready in your apply queue. ",
-          el("a", { href: "http://127.0.0.1:8765/#queue", target: "_blank", rel: "noopener" }, "Open the queue")));
+      n ? nextBox(n, "Open next application")
+        : el("div", { class: "note" }, "Nothing else to apply to in your list or your apply queue. ",
+          el("a", { href: "http://127.0.0.1:8765/", target: "_blank", rel: "noopener" }, "Open Onward")));
     wrap.append(el("div", { class: "panel", role: "dialog", "aria-label": "Onward" },
       el("header", null, el("b", null, "Onward"),
         el("button", { class: "x", title: "Close", "aria-label": "Close", onclick: () => { view.open = false; view.done = null; unmount(); } }, "×")),

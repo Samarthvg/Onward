@@ -1,6 +1,7 @@
 // End-to-end tests: the real extension in Chromium against mocks of each
 // ATS served on the real host names. Checks the pages' own React state, that
 // nothing was submitted or advanced, and that saved answers come back.
+import { readFileSync } from "node:fs";
 import { launch, seed, runFill, panelText, expectState, expect, results, RESUME_BYTES } from "./harness.mjs";
 
 const headless = !process.argv.includes("--headed");
@@ -252,6 +253,54 @@ await test("workday: empty sections get rows from the resume, plus skills and la
   expect("empty workday: missing skill reported", /Skills not in this site's list[\s\S]*Vue\.js/.test(text), text);
   expect("empty workday: only the user's own Next", (await page.evaluate(() => window.__navClicks)) === 1);
   expect("empty workday: nothing submitted", (await page.evaluate(() => window.__submitted)) === 0);
+});
+
+await test("panel offers the next job in the list, in the same tab", async (page) => {
+  const NEXT = { key: "k2", title: "Software Engineer, New Grad", company: "Mock Lever Co", from: "list",
+    apply_url: "https://jobs.lever.co/mockco/next-123/apply" };
+  await env.ctx.route(/^http:\/\/127\.0\.0\.1:8765\/api\/apply\/next/, (r) =>
+    r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ key: "k1", next: NEXT }) }));
+  try {
+    await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001");
+    const text = await runFill(page);
+    expect("next: shown in the panel", /Next in your list[\s\S]*Software Engineer, New Grad at Mock Lever Co/.test(text), text);
+    await page.locator("#jobradar-autofill a", { hasText: "Go to next job" }).click();
+    await page.waitForURL(/jobs\.lever\.co\/mockco\/next-123\/apply/, { timeout: 10000 });
+    expect("next: opened in the same tab", page.url() === NEXT.apply_url, page.url());
+  } finally {
+    await env.ctx.unroute(/^http:\/\/127\.0\.0\.1:8765\/api\/apply\/next/);
+  }
+});
+
+await test("dashboard: Apply remembers the list from that job down", async (page) => {
+  // The edited template with the running app's current jobs; every write is intercepted.
+  const served = await fetch("http://127.0.0.1:8765/").then((r) => (r.ok ? r.text() : ""), () => "");
+  const m = served.match(/const DATA = (.*?);\r?\n/s);
+  if (!m) { console.log("  (skipped: Onward isn't running)"); return; }
+  const tpl = readFileSync(new URL("../../dashboard_template.html", import.meta.url), "utf8");
+  const page_ = tpl.replace("/*__DATA__*/null", m[1]);
+  let sent = null;
+  await page.route(/^http:\/\/127\.0\.0\.1:8765\//, (r) => {
+    const req = r.request();
+    if (req.method() === "GET" && new URL(req.url()).pathname === "/") return r.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: page_ });
+    if (req.method() !== "GET") {
+      if (req.url().endsWith("/api/apply/list")) sent = JSON.parse(req.postData() || "{}");
+      return r.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    }
+    return r.continue();
+  });
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("http://127.0.0.1:8765/");
+  const apply = page.locator("#list a.btn.apply");
+  await apply.first().waitFor({ state: "attached", timeout: 10000 }).catch(() => {});
+  const n = await apply.count();
+  if (!n) { console.log("  (skipped: no jobs listed)"); return; }
+  const i = Math.min(1, n - 1);
+  await apply.nth(i).evaluate((a) => { a.addEventListener("click", (e) => e.preventDefault(), { once: true }); a.click(); });
+  await sleep(500);
+  expect("dashboard: list sent from that job down", !!sent && Array.isArray(sent.keys) && sent.keys.length === n - i, JSON.stringify(sent || {}).slice(0, 200));
+  expect("dashboard: no page errors", !errors.length, errors.join("; "));
 });
 
 await test("toolbar button fills the active tab", async (page) => {

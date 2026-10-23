@@ -337,6 +337,48 @@ def master_path(role: str = "") -> Path:
     return own if own and own.exists() else MASTER
 
 
+# The list the user is working through: the jobs shown below the one whose
+# Apply they clicked in the dashboard, in order. Kept in memory; after a
+# restart, or when they apply from the queue, "next" is the next ready job
+# in the Apply queue instead.
+APPLY_LIST: dict = {"keys": [], "at": 0.0}
+APPLY_LIST_LOCK = threading.Lock()
+
+
+def set_apply_list(keys: list[str]) -> None:
+    with APPLY_LIST_LOCK:
+        APPLY_LIST["keys"] = keys[:500]
+        APPLY_LIST["at"] = time.time()
+
+
+def next_job(after_key: str) -> dict | None:
+    """The job to apply to after `after_key`: the next one in the list the
+    user is working through that isn't applied or dismissed, else the next
+    ready job in the Apply queue."""
+    with APPLY_LIST_LOCK:
+        keys = list(APPLY_LIST["keys"])
+    if after_key in keys:
+        rest = keys[keys.index(after_key) + 1:][:200]
+        if rest:
+            q = ",".join("?" * len(rest))
+            conn = db()
+            try:
+                done = {r[0] for r in conn.execute(
+                    f"SELECT job_key FROM prep WHERE job_key IN ({q}) AND state IN ('applied', 'dismissed')", rest)}
+                rows = {r[0]: r for r in conn.execute(
+                    f"SELECT key, company, title, apply_url, url FROM jobs WHERE key IN ({q})", rest)}
+            except sqlite3.OperationalError:   # no prep table yet
+                done, rows = set(), {}
+            finally:
+                conn.close()
+            for k in rest:
+                r = rows.get(k)
+                if r and k not in done:
+                    return {"key": k, "company": r[1], "title": r[2], "apply_url": r[3] or r[4], "from": "list"}
+    nxt = PREP.next_ready(after_key)
+    return dict(nxt, **{"from": "queue"}) if nxt else None
+
+
 def master_meta(role: str = "") -> dict | None:
     path = master_path(role)
     if not path.exists():
@@ -774,6 +816,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(HTTPStatus.FORBIDDEN, "Only the Onward extension can ask for this")
             return self._resume_entries((q.get("url") or [""])[0][:2000])
 
+        if path == "/api/apply/next":
+            # "Next job" in the autofill panel: after the job whose form this tab shows.
+            if not self._origin_ok(allow_extension=True):
+                return self._err(HTTPStatus.FORBIDDEN, "Only the Onward extension can ask for this")
+            key = (q.get("key") or [""])[0][:500]
+            if not key:
+                job = job_by_url((q.get("url") or [""])[0][:2000])
+                key = job["key"] if job else ""
+            return self._json(200, {"key": key, "next": next_job(key)})
+
         if path in ("/api/prepared", "/api/queue/next"):
             if not self._origin_ok(allow_extension=True):
                 return self._err(HTTPStatus.FORBIDDEN, "Only the Onward extension can ask for this")
@@ -890,6 +942,12 @@ class Handler(BaseHTTPRequestHandler):
             done = queue_undo([key], "the retry")
             PREP.retry(key)
             return self._json(200, {"ok": True, "undo": done()})
+        if path == "/api/apply/list":
+            # The dashboard's list from the job whose Apply was clicked on down.
+            keys = [str(k)[:500] for k in (data.get("keys") or []) if k][:500]
+            set_apply_list(keys)
+            return self._json(200, {"ok": True, "count": len(keys)})
+
         if path == "/api/marks":
             # The dashboard's Applied / Dismiss marks, so the queue skips those jobs.
             marks = data.get("marks") if isinstance(data.get("marks"), dict) else {}
@@ -1206,7 +1264,7 @@ class Handler(BaseHTTPRequestHandler):
             key = job["key"] if job else ""
         if not key or not PREP.mark(key, "applied"):
             return self._err(HTTPStatus.NOT_FOUND, "Onward doesn't know this job")
-        return self._json(200, {"ok": True, "key": key, "next": PREP.next_ready(key)})
+        return self._json(200, {"ok": True, "key": key, "next": next_job(key)})
 
     def _draft(self, data: dict):
         if not MASTER.exists():

@@ -592,6 +592,21 @@
     return location.pathname + "|" + (t ? textOf(t) : "");
   }
 
+  // "Go to next job" in the panel, so moving on never needs a trip back to
+  // the dashboard: the next job in the list the user was applying from, else
+  // the next ready one in the apply queue. Asked once per page.
+  let nextAsked = false;
+  function askNext() {
+    if (nextAsked) return;
+    nextAsked = true;
+    load().then(() => {
+      if (!store.settings.helper) return;
+      return api.runtime.sendMessage({ type: "jr:nextJob", url: location.href }).then((r) => {
+        if (r && r.next && r.next.apply_url && r.next.apply_url !== location.href) JR.panel.update({ next: r.next });
+      });
+    }).catch(() => {});
+  }
+
   let checkTimer = 0;
   function check() {
     checkConfirmation();
@@ -602,6 +617,7 @@
     if (!prepared) load().then(() => { if (store.settings.helper) getPrepared(); });
     JR.panel.mount(handlers);
     if (inFrame) JR.panel.update({ frame: true });
+    askNext();
     const sig = stepSignature();
     if (sig !== stepSig) {
       const first = !stepSig;

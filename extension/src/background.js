@@ -113,6 +113,13 @@ const HANDLERS = {
     return Object.assign({ found: true }, data);
   },
   /* The ATS showed its "application received" page. */
+  async "jr:nextJob"(msg, sender) {
+    // The job after this tab's one: next in the dashboard list being worked through, else the queue.
+    const tabId = sender.tab && sender.tab.id;
+    const known = tabId != null ? await tabJobs.get(tabId) : null;
+    const q = known ? "key=" + encodeURIComponent(clip(known.key, 500)) : "url=" + encodeURIComponent(clip(msg.url, 2000));
+    return helper("/api/apply/next?" + q);
+  },
   async "jr:applied"(msg, sender) {
     const tabId = sender.tab && sender.tab.id;
     const known = tabId != null ? await tabJobs.get(tabId) : null;
