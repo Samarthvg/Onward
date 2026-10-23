@@ -6,7 +6,7 @@ import os
 NAME = "Onward"
 SLUG = "onward"                 # file names, the Linux autostart entry, package ids
 TAGLINE = "Fresh entry-level job postings, a tailored resume and an apply queue, on your own computer"
-VERSION = "0.1.5"                       # bump with each release; tags are v<VERSION>
+VERSION = "0.1.6"                       # bump with each release; tags are v<VERSION>
 
 # Where the helper serves the dashboard. The extension talks to 8765;
 # JOBRADAR_PORT is only for tests next to a running copy.
