@@ -45,7 +45,7 @@ def check(name, cond, detail=""):
 
 Q = {"question": "Why do you want to work at Example Test Corp?", "company": "Example Test Corp",
      "title": "Software Engineer", "url": "https://jobs.lever.co/example/123/apply", "jd": "We build tools.", "backend": "manual"}
-EXT = {"X-JobRadar-Client": "autofill"}
+EXT = {"X-Onward-Client": "autofill"}
 
 s, _ = call("POST", "/api/draft", Q)
 check("no origin, no client header: refused", s == 403, s)
@@ -69,8 +69,8 @@ if server.MASTER.exists():
     check("character limit reaches the prompt", s == 200 and "at most 500 characters" in body["prompt"], s)
     s, body = call("POST", "/api/draft", {**Q, "url": "https://job-boards.greenhouse.io/chime/jobs/8875663002"}, EXT)
     check("job looked up from the application URL", s == 200 and "Chime" in body["prompt"], s)
-    s, _ = call("POST", "/api/draft", {**Q, "backend": "claude-api"}, EXT)
-    check("paid API backend refused", s == 400, s)
+    s, _ = call("POST", "/api/draft", {**Q, "backend": "no-such-backend"}, EXT)
+    check("unknown backend refused (API backends are allowed now, within their budget)", s == 400, s)
     s, _ = call("POST", "/api/draft", {**Q, "question": "  "}, EXT)
     check("empty question refused", s == 400, s)
 else:

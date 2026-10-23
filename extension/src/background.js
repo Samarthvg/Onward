@@ -10,7 +10,7 @@ const SUPPORTED = /^https:\/\/([a-z0-9-]+\.)*(greenhouse\.io|lever\.co|ashbyhq\.
 async function helper(path, body) {
   // The custom header makes a browser preflight any cross-site attempt to
   // send the same request, and the helper never answers preflights.
-  const init = { headers: { "X-JobRadar-Client": "autofill" } };
+  const init = { headers: { "X-Onward-Client": "autofill" } };
   if (body !== undefined) {
     init.method = "POST";
     init.headers["Content-Type"] = "application/json";

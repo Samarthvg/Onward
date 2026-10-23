@@ -86,7 +86,7 @@ export async function seed(env, extra = {}) {
 
 /** Clicks the in-page Autofill launcher (or the panel's fill button) and waits for the result. */
 export async function runFill(frame, timeout = 30000) {
-  const host = frame.locator("#jobradar-autofill");
+  const host = frame.locator("#onward-autofill");
   await host.waitFor({ state: "attached", timeout: 10000 });
   const btn = host.locator("button.launch, header button.primary");
   await btn.first().click();
@@ -95,7 +95,7 @@ export async function runFill(frame, timeout = 30000) {
 }
 
 export async function panelText(frame) {
-  return frame.locator("#jobradar-autofill .panel").innerText();
+  return frame.locator("#onward-autofill .panel").innerText();
 }
 
 let failures = 0, passes = 0;

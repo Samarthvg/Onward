@@ -47,7 +47,7 @@ for (const [name, url, want] of PAGES) {
       expect(`${name} ${sel}`, got === v, `got ${JSON.stringify(got)}`);
     }
     console.log(text.split("\n").map((l) => "    " + l).join("\n"));
-    if (shots) await page.locator("#jobradar-autofill .panel").screenshot({ path: `${shots}/${name.replace(/\W+/g, "-")}.png` });
+    if (shots) await page.locator("#onward-autofill .panel").screenshot({ path: `${shots}/${name.replace(/\W+/g, "-")}.png` });
   } catch (e) {
     expect(name, false, e.message);
   } finally {

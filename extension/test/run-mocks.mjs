@@ -49,7 +49,7 @@ await test("greenhouse: fills text, react-select, async select, combobox, resume
 
 await test("greenhouse: remembers custom answers and offers written ones", async (page) => {
   await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001");
-  await page.locator("#jobradar-autofill").waitFor({ state: "attached" });
+  await page.locator("#onward-autofill").waitFor({ state: "attached" });
   // The user answers three custom questions by hand.
   await page.click("#question_7");
   await page.locator("#react-select-question_7-listbox [role=option]", { hasText: "No" }).click();
@@ -89,7 +89,7 @@ await test("greenhouse: saved answers written for another company stay behind a 
   const st = await page.evaluate(() => window.__mockState());
   expectState("cross-company", st, { why: "", question_8: "", question_7: "No" });
   expect("cross-company: warning shown", /written for ElevenLabs and mentions ElevenLabs, ElevenMusic/.test(text), text);
-  const panel = page.locator("#jobradar-autofill .panel");
+  const panel = page.locator("#onward-autofill .panel");
   expect("cross-company: no one-click reuse", (await panel.locator("button", { hasText: "Use saved answer" }).count()) === 0);
   await panel.locator("li", { hasText: "Why do you want to work at Mock Co" }).locator("button", { hasText: "Show it" }).click();
   await panel.locator("button", { hasText: "Use it anyway" }).first().click();
@@ -121,7 +121,7 @@ await test("greenhouse: works inside a company site's iframe embed", async (page
   await runFill(frame);
   const f = page.frames().find((x) => x.url().includes("embed/job_app"));
   expectState("embed", await f.evaluate(() => window.__mockState()), { first_name: "Testy", email: "testy.mctestface@example.com", resume: RESUME, question_5: "Yes" });
-  expect("embed: no panel on the host page", (await page.locator("#jobradar-autofill").count()) === 0);
+  expect("embed: no panel on the host page", (await page.locator("#onward-autofill").count()) === 0);
 });
 
 await test("greenhouse: leaves sponsorship alone without a saved answer", async (page) => {
@@ -175,7 +175,7 @@ await test("workday: fills each step only when asked, never presses Next", async
 
   const next = async () => { await page.click("[data-automation-id='bottom-navigation-next-button']"); await sleep(900); };
   await next();   // the user moves on
-  const panel = page.locator("#jobradar-autofill .panel");
+  const panel = page.locator("#onward-autofill .panel");
   await panel.locator("button", { hasText: "Fill this step" }).waitFor({ timeout: 5000 });
   await runFill(page);
   const DESC2 = "Shipped React.js and Angular dashboards for 3 client products, cutting page load time by 30%.\n" +
@@ -230,7 +230,7 @@ await test("workday: fills each step only when asked, never presses Next", async
 
 await test("workday: empty sections get rows from the resume, plus skills and languages", async (page) => {
   await page.goto("https://mockco.wd5.myworkdayjobs.com/en-US/External/job/Boston-MA/Software-Engineer_JR1001/apply/applyManually?empty=1");
-  await page.locator("#jobradar-autofill").waitFor({ state: "attached" });
+  await page.locator("#onward-autofill").waitFor({ state: "attached" });
   await page.click("[data-automation-id='bottom-navigation-next-button']");   // the user moves to My Experience
   await sleep(900);
   const text = await runFill(page, 120000);
@@ -270,7 +270,7 @@ await test("panel offers the next job in the list, in the same tab", async (page
     await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001");
     const text = await runFill(page);
     expect("next: shown in the panel", /Next in your list[\s\S]*Software Engineer, New Grad at Mock Lever Co/.test(text), text);
-    await page.locator("#jobradar-autofill a", { hasText: "Go to next job" }).click();
+    await page.locator("#onward-autofill a", { hasText: "Go to next job" }).click();
     await page.waitForURL(/jobs\.lever\.co\/mockco\/next-123\/apply/, { timeout: 10000 });
     expect("next: opened in the same tab", page.url() === NEXT.apply_url, page.url());
   } finally {
@@ -328,7 +328,7 @@ await test("options: entries imported from the resume, edited, then used on Work
   await opt.close();
 
   await page.goto("https://mockco.wd5.myworkdayjobs.com/en-US/External/job/Boston-MA/Software-Engineer_JR1001/apply/applyManually?empty=1");
-  await page.locator("#jobradar-autofill").waitFor({ state: "attached" });
+  await page.locator("#onward-autofill").waitFor({ state: "attached" });
   await page.click("[data-automation-id='bottom-navigation-next-button']");
   await sleep(900);
   await runFill(page, 120000);
@@ -362,14 +362,14 @@ await test("options: removes saved answers tied to one company", async (page) =>
 
 await test("toolbar button fills the active tab", async (page) => {
   await page.goto("https://jobs.lever.co/mockco/abc-123/apply");
-  await page.locator("#jobradar-autofill").waitFor({ state: "attached" });
+  await page.locator("#onward-autofill").waitFor({ state: "attached" });
   await page.bringToFront();
   // Same code path as the toolbar button and Alt+Shift+F.
   await env.sw.evaluate(async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     await fillTab(tab);
   });
-  await page.locator("#jobradar-autofill .status").filter({ hasText: /^Filled \d+/ }).waitFor({ timeout: 15000 });
+  await page.locator("#onward-autofill .status").filter({ hasText: /^Filled \d+/ }).waitFor({ timeout: 15000 });
   expectState("toolbar", await page.evaluate(() => window.__mockState()), { name: "Testy McTestface" });
 });
 
@@ -379,8 +379,8 @@ await test("draft (manual mode) shows a prompt built by the helper", async (page
   if (!/Draft an answer/.test(text)) { expect("draft button offered", false, text); return; }
   const status = await env.sw.evaluate(async () => { try { return (await fetch("http://127.0.0.1:8765/api/status")).ok; } catch (e) { return false; } });
   if (!status) { console.log("  (skipped: helper not running)"); return; }
-  await page.locator("#jobradar-autofill button", { hasText: "Draft an answer" }).first().click();
-  const ta = page.locator("#jobradar-autofill textarea");
+  await page.locator("#onward-autofill button", { hasText: "Draft an answer" }).first().click();
+  const ta = page.locator("#onward-autofill textarea");
   await ta.waitFor({ timeout: 15000 }).catch(() => {});
   const prompt = (await ta.count()) ? await ta.inputValue() : await panelText(page);
   expect("draft prompt has the question and resume", /Why do you want to work at Mock Co/.test(prompt) && /RESUME/.test(prompt), prompt.slice(0, 400));
@@ -392,8 +392,8 @@ if (process.argv.includes("--real-draft")) await test("draft (ChatGPT login) is 
   await seed(env, { settings: { autoRun: false, remember: true, fillRemembered: true, helper: true, draftBackend: "chatgpt" } });
   await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001");
   await runFill(page);
-  await page.locator("#jobradar-autofill button", { hasText: "Draft an answer" }).first().click();
-  await page.locator("#jobradar-autofill .tag", { hasText: "draft, edit it" }).waitFor({ timeout: 300000 });
+  await page.locator("#onward-autofill button", { hasText: "Draft an answer" }).first().click();
+  await page.locator("#onward-autofill .tag", { hasText: "draft, edit it" }).waitFor({ timeout: 300000 });
   const st = await page.evaluate(() => window.__mockState());
   expect("draft inserted", st.why.length > 40 && st.why.length <= 600, JSON.stringify(st.why));
   console.log("  draft:", st.why);

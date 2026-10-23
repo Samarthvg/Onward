@@ -109,12 +109,16 @@ class Routes(unittest.TestCase):
         self.assertEqual(server.APPLY_LIST["keys"], ["a", "b"])
 
     def test_websites_and_extension_cannot_set_the_list(self):
-        for h in ({"Origin": "https://evil.example"}, {"Origin": "moz-extension://abc", "X-JobRadar-Client": "autofill"}):
+        for h in ({"Origin": "https://evil.example"}, {"Origin": "moz-extension://abc", "X-Onward-Client": "autofill"}):
             self.assertEqual(self.call("POST", "/api/apply/list", {"keys": ["x"]}, h)[0], 403)
+
+    def test_older_extensions_header_still_accepted(self):
+        status, _ = self.call("GET", "/api/apply/next?key=zzz", None, {"Origin": "moz-extension://abc", "X-JobRadar-Client": "autofill"})
+        self.assertEqual(status, 200)
 
     def test_next_is_for_the_extension_only(self):
         self.assertEqual(self.call("GET", "/api/apply/next?key=a", None, {"Origin": "https://evil.example"})[0], 403)
-        status, body = self.call("GET", "/api/apply/next?key=zzz", None, {"Origin": "moz-extension://abc", "X-JobRadar-Client": "autofill"})
+        status, body = self.call("GET", "/api/apply/next?key=zzz", None, {"Origin": "moz-extension://abc", "X-Onward-Client": "autofill"})
         self.assertEqual(status, 200)
 
 

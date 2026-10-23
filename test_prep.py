@@ -424,7 +424,7 @@ class EndpointTests(Base):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read())
 
-    EXT = {"X-JobRadar-Client": "autofill", "Origin": "moz-extension://1234-abcd"}
+    EXT = {"X-Onward-Client": "autofill", "Origin": "moz-extension://1234-abcd"}
 
     def test_prepared_resume_for_the_form(self):
         url = "https://job-boards.greenhouse.io/tailorco/jobs/101"
@@ -470,7 +470,7 @@ class EndpointTests(Base):
         url = urllib.request.quote("https://job-boards.greenhouse.io/tailorco/jobs/101", safe="")
         st, _ = self.call("/api/prepared?url=" + url)
         self.assertEqual(st, 403)
-        st, _ = self.call("/api/prepared?url=" + url, headers={"X-JobRadar-Client": "autofill", "Origin": "https://evil.example"})
+        st, _ = self.call("/api/prepared?url=" + url, headers={"X-Onward-Client": "autofill", "Origin": "https://evil.example"})
         self.assertEqual(st, 403)
         st, _ = self.call("/api/applied", {"url": url}, headers={"Origin": "https://evil.example"})
         self.assertEqual(st, 403)

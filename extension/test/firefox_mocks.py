@@ -26,7 +26,7 @@ HERE = Path(__file__).resolve().parent
 EXT = HERE.parent
 DIST = HERE / "mocks" / "dist"
 PORT = 8781
-ADDON_ID = "jobradar-autofill@jobradar.local"
+ADDON_ID = "onward-autofill@samarthvg.github.io"
 UUID = "4f1d3a52-6c1e-4d7b-9a0e-1b2c3d4e5f60"
 FIREFOX = r"C:\Program Files\Mozilla Firefox\firefox.exe"
 
@@ -130,12 +130,12 @@ def main():
             check("storage seeded", ok == "ok", ok)
 
         def fill(frame=None):
-            host = WebDriverWait(driver, 15).until(lambda d: d.find_element(By.CSS_SELECTOR, "#jobradar-autofill"))
+            host = WebDriverWait(driver, 15).until(lambda d: d.find_element(By.CSS_SELECTOR, "#onward-autofill"))
             root = host.shadow_root
             WebDriverWait(driver, 10).until(lambda d: root.find_elements(By.CSS_SELECTOR, "button.launch, header button.primary"))
             root.find_elements(By.CSS_SELECTOR, "button.launch, header button.primary")[0].click()
             # The panel re-renders while filling, so read it fresh each time.
-            read = "const h = document.querySelector('#jobradar-autofill'); const n = h && h.shadowRoot.querySelector(arguments[0]); return n ? n.innerText : '';"
+            read = "const h = document.querySelector('#onward-autofill'); const n = h && h.shadowRoot.querySelector(arguments[0]); return n ? n.innerText : '';"
             WebDriverWait(driver, 40).until(lambda d: d.execute_script(read, ".status").startswith("Filled "))
             return driver.execute_script(read, ".panel")
 

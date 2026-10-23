@@ -86,7 +86,7 @@ await test("a drafted answer is redrafted with a note, never over the user's own
   ]);
   await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001");
   await runFill(page);
-  const host = page.locator("#jobradar-autofill");
+  const host = page.locator("#onward-autofill");
   const li = host.locator("li", { hasText: "Why do you want to work at Mock Co?" });
   const redraft = async (note) => {
     await li.locator("button", { hasText: "Redraft with a note" }).click();
@@ -154,7 +154,7 @@ await test("greenhouse confirmation page marks the job applied and offers the ne
   await env.ctx.route("https://job-boards.greenhouse.io/mockco/jobs/1001/confirmation", (route) => route.fulfill({
     status: 200, contentType: "text/html", body: "<!doctype html><title>Thank you</title><h1>Thank you for applying.</h1><p>Your application has been received.</p>" }));
   await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001/confirmation");
-  const panel = page.locator("#jobradar-autofill .panel");
+  const panel = page.locator("#onward-autofill .panel");
   await panel.waitFor({ timeout: 10000 });
   const text = await panel.innerText();
   expect("confirm gh: recorded", helper.applied.length === 1 && /\/confirmation$/.test(helper.applied[0].url), JSON.stringify(helper.applied));
@@ -168,21 +168,21 @@ await test("ashby thank-you message counts only in a tab that showed a radar job
   // A tab that never showed a known job's form: a thank-you heading is ignored.
   helper.prepared = null;
   await page.goto("https://jobs.ashbyhq.com/mockco/abc-123/application");
-  await page.locator("#jobradar-autofill").waitFor({ state: "attached" });
+  await page.locator("#onward-autofill").waitFor({ state: "attached" });
   await page.evaluate(() => { document.querySelector(".ashby-application-form-container").innerHTML = "<h2>Thank you for applying!</h2>"; });
   await sleep(2500);
   expect("confirm ashby: unknown job not recorded", helper.applied.length === 0, JSON.stringify(helper.applied));
 
   helper.prepared = tailored();
   await page.reload();
-  await page.locator("#jobradar-autofill").waitFor({ state: "attached" });
+  await page.locator("#onward-autofill").waitFor({ state: "attached" });
   await sleep(1500);   // the form's job is looked up as soon as the form shows
   // What Ashby shows after Submit (the user's own click; this mock just swaps it in).
   await page.evaluate(() => {
     document.querySelector(".ashby-application-form-container").outerHTML =
       '<div class="ashby-application-form-success-container"><h2>Thank you for applying!</h2><p>We will be in touch.</p></div>';
   });
-  await page.locator("#jobradar-autofill .panel").waitFor({ timeout: 10000 });
+  await page.locator("#onward-autofill .panel").waitFor({ timeout: 10000 });
   const text = await panelText(page);
   expect("confirm ashby: recorded with the tab's job", helper.applied.length === 1 && helper.applied[0].key === "mock|job", JSON.stringify(helper.applied));
   expect("confirm ashby: names the job", /Software Engineer, New Grad at Mock Co/.test(text), text);
@@ -193,7 +193,7 @@ await test("an application form itself is never taken for a confirmation", async
   for (const url of ["https://job-boards.greenhouse.io/mockco/jobs/1001", "https://jobs.lever.co/mockco/abc-123/apply",
     "https://jobs.ashbyhq.com/mockco/abc-123/application", "https://mockco.wd5.myworkdayjobs.com/en-US/External/job/Boston-MA/Software-Engineer_JR1001/apply/applyManually"]) {
     await page.goto(url);
-    await page.locator("#jobradar-autofill").waitFor({ state: "attached" });
+    await page.locator("#onward-autofill").waitFor({ state: "attached" });
     await sleep(1500);
   }
   expect("no false confirmations", helper.applied.length === 0, JSON.stringify(helper.applied));

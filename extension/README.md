@@ -115,7 +115,7 @@ The extension never:
 | `src/background.js` | Toolbar button, shortcut, and the only code that calls the helper. Remembers which job each tab's form belongs to (session storage), for the confirmation page. |
 | `src/options/` | Options page. |
 
-The helper side is `/api/draft` in `server.py` and `draft_answer()` in `tailor.py`; the apply queue's `/api/prepared` and `/api/applied` are in `server.py`, backed by `prep.py`; Import from dashboard reads `/api/state`. The endpoint accepts requests from the dashboard's origin, or from an extension origin that sends the `X-JobRadar-Client: autofill` header. Websites can't send that header without a CORS preflight, which the helper never answers.
+The helper side is `/api/draft` in `server.py` and `draft_answer()` in `tailor.py`; the apply queue's `/api/prepared` and `/api/applied` are in `server.py`, backed by `prep.py`; Import from dashboard reads `/api/state`. The endpoint accepts requests from the dashboard's origin, or from an extension origin that sends the `X-Onward-Client: autofill` header. Websites can't send that header without a CORS preflight, which the helper never answers.
 
 ## Tests
 

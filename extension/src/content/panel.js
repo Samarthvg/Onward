@@ -93,7 +93,7 @@
     remounts.push(now);
     if (!host) {
       host = document.createElement("div");
-      host.id = "jobradar-autofill";
+      host.id = "onward-autofill";
       host.setAttribute("data-jr-ignore", "");
       shadow = host.attachShadow({ mode: "open" });
       const style = document.createElement("style");

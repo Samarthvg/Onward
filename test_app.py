@@ -646,7 +646,7 @@ class ExtensionPackagingTests(unittest.TestCase):
         gecko = m["browser_specific_settings"]["gecko"]
         self.assertEqual(gecko["update_url"],
                          f"https://github.com/{appinfo.GITHUB_REPO}/releases/latest/download/updates.json")
-        self.assertEqual(gecko["id"], "jobradar-autofill@jobradar.local", "changing the id would orphan installed copies")
+        self.assertEqual(gecko["id"], "onward-autofill@samarthvg.github.io", "changing the id would orphan installed copies")
 
     def test_an_already_signed_version_is_reused_not_sent_again(self):
         old = self.dist / "old.xpi"

@@ -500,7 +500,7 @@ $("memSearch").addEventListener("input", drawMemory);
 $("exportAll").addEventListener("click", async () => {
   const all = await api.storage.local.get(null);
   delete all.resume;
-  const blob = new Blob([JSON.stringify({ jobradar: "autofill-backup", version: 1, data: all }, null, 1)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ onward: "autofill-backup", version: 1, data: all }, null, 1)], { type: "application/json" });
   const a = el("a", { href: URL.createObjectURL(blob), download: "onward-autofill-backup.json" });
   document.body.append(a);
   a.click();
@@ -514,7 +514,8 @@ $("importAll").addEventListener("change", async (e) => {
   if (!f) return;
   try {
     const doc = JSON.parse(await f.text());
-    if (!doc || doc.jobradar !== "autofill-backup" || typeof doc.data !== "object") throw new Error();
+    // Backups from before the rename carry the old "jobradar" tag.
+    if (!doc || (doc.onward !== "autofill-backup" && doc.jobradar !== "autofill-backup") || typeof doc.data !== "object") throw new Error();
     const data = {};
     for (const [k, v] of Object.entries(doc.data)) {
       if (["profile", "answers", "settings", "useLogSince", "history"].includes(k) || k.startsWith("mem:") || k.startsWith("use:")) data[k] = v;

@@ -54,9 +54,9 @@
   }
 
   function ensureStyle() {
-    if (document.getElementById("jobradar-autofill-style")) return;
+    if (document.getElementById("onward-autofill-style")) return;
     const st = document.createElement("style");
-    st.id = "jobradar-autofill-style";
+    st.id = "onward-autofill-style";
     st.textContent = '[data-jr-state="filled"]{outline:2px solid rgba(47,107,58,.55)!important;outline-offset:1px}' +
       '[data-jr-state="review"]{outline:2px solid rgba(200,140,0,.8)!important;outline-offset:1px}';
     (document.head || document.documentElement).append(st);
@@ -307,7 +307,7 @@
   function confirmationShown() {
     if (CONFIRM_URL.test(location.pathname)) return "url";
     for (const n of document.querySelectorAll(CONFIRM_SPOTS)) {
-      if (n.closest("#jobradar-autofill")) continue;
+      if (n.closest("#onward-autofill")) continue;
       const t = textOf(n);
       if (t.length <= 400 && CONFIRM_TEXT.test(t)) return "text";
     }

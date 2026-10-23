@@ -135,13 +135,13 @@ class Endpoint(unittest.TestCase):
             return e.code, None
 
     def test_extension_gets_entries(self):
-        status, body = self.get({"Origin": "moz-extension://abc-123", "X-JobRadar-Client": "autofill"})
+        status, body = self.get({"Origin": "moz-extension://abc-123", "X-Onward-Client": "autofill"})
         self.assertEqual(status, 200)
         self.assertEqual(body["work"][0]["company"], "Example Labs")
         self.assertEqual(body["education"][1]["degree"], "Bachelor of Technology")
 
     def test_websites_are_refused(self):
-        status, _ = self.get({"Origin": "https://evil.example", "X-JobRadar-Client": "autofill"})
+        status, _ = self.get({"Origin": "https://evil.example", "X-Onward-Client": "autofill"})
         self.assertEqual(status, 403)
         status, _ = self.get({})
         self.assertEqual(status, 403)

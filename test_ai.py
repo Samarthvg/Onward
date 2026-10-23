@@ -273,7 +273,7 @@ class KeyEndpointTests(Base):
         self.assertEqual(json.loads(raw), {"profile": {"value": kit, "at": 2000},
                                            "marks": {"value": {"https://x/1": "applied"}, "at": 5}})
         # The extension may read it; other sites may not, and only the dashboard writes.
-        ext = {"Origin": "moz-extension://1234-abcd", "X-JobRadar-Client": "autofill"}
+        ext = {"Origin": "moz-extension://1234-abcd", "X-Onward-Client": "autofill"}
         conn = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=10)
         conn.request("GET", "/api/state", headers={"Host": f"{server.HOST}:{server.PORT}", **ext})
         r = conn.getresponse()

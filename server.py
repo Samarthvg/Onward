@@ -57,7 +57,7 @@ LOG_PATH = STORE.path_for("logs_dir") / "server.log"
 MAX_BODY = 2 * 1024 * 1024
 FILE_NAME = re.compile(r"^[A-Za-z0-9_.-]+\.(pdf|tex)$")
 # Browser extensions' own pages; websites can't send these origins. The
-# extension also sends X-JobRadar-Client, which no website can add without a
+# extension also sends X-Onward-Client, which no website can add without a
 # CORS preflight, and this server never answers preflights.
 EXT_ORIGIN = re.compile(r"^(moz|chrome)-extension://[A-Za-z0-9-]+$")
 EXT_CLIENT = "autofill"
@@ -704,8 +704,10 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if origin in ORIGINS:
             return True
-        # Firefox may omit Origin on an extension's own requests.
-        return (allow_extension and self.headers.get("X-JobRadar-Client") == EXT_CLIENT
+        # Firefox may omit Origin on an extension's own requests. Extension
+        # versions before 0.2.5 sent the header under its old name.
+        client = self.headers.get("X-Onward-Client") or self.headers.get("X-JobRadar-Client")
+        return (allow_extension and client == EXT_CLIENT
                 and (origin is None or bool(EXT_ORIGIN.match(origin))))
 
     def _body(self) -> dict | None:
