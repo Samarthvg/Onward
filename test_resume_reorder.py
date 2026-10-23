@@ -193,11 +193,19 @@ class SkillsRowTests(unittest.TestCase):
         self.assertEqual((c.status, state["rows"]["S1"]), ("applied", "Python, Go, TypeScript, Azure"))
         self.assertIn("Azure", rt.describe(rt.confirm(rt.parse(TEX), ["Azure"])))
 
-    def test_confirmed_skills_stay_out_of_bullets(self):
+    def test_confirmed_skills_go_where_the_entry_shows_the_same_field(self):
+        """Azure, confirmed under Review skills: in a bullet of the job that
+        ran on AWS (cloud work), not in the one that built React dashboards."""
         res = rt.confirm(rt.parse(TEX), ["Azure"])
+        tb = chr(92) + "textbf"
         _, changes, _ = rt.plan_edits(res, json.loads(answer([], bullet_rewrites=[
-            {"id": "B1", "text": r"Built billing APIs in 	extbf{Python} and FastAPI on Azure."}])), self.JD)
-        self.assertEqual(changes[0].status, "rejected")
+            {"id": "B1", "text": "Built billing APIs in " + tb + "{Python} and FastAPI on AWS and Azure."},
+            {"id": "B3", "text": "Wrote React dashboards on Azure for the ops team."}])), self.JD)
+        status = {c.target: c.status for c in changes}
+        self.assertEqual(status, {"B1": "applied", "B3": "rejected"})
+        _, changes, _ = rt.plan_edits(rt.parse(TEX), json.loads(answer([], bullet_rewrites=[
+            {"id": "B1", "text": "Built billing APIs in " + tb + "{Python} and FastAPI on AWS and Azure."}])), self.JD)
+        self.assertEqual(changes[0].status, "rejected", "not confirmed: still needs the entry's own evidence")
 
 
 class HonestyTests(unittest.TestCase):

@@ -38,6 +38,9 @@ SKILLS = [
 ]
 SKILL_NAMES = {name.lower(): name for name, _ in SKILLS}
 IMPLIES = {s["n"]: set(s.get("implies", [])) for s in _TAXONOMY}
+# Skills that name a field of work (DevOps, Frontend, Machine Learning), not
+# a language or practice everyone uses.
+AREAS = {s["n"] for s in _TAXONOMY if s.get("area")}
 
 
 def find_skills(text: str) -> set[str]:
@@ -45,10 +48,16 @@ def find_skills(text: str) -> set[str]:
 
 
 def with_implied(skills: set[str]) -> set[str]:
-    """Concrete tools imply the umbrella skill (React -> Frontend)."""
+    """Concrete tools imply what using them involves, all the way along
+    (Helm -> Kubernetes -> Docker -> DevOps, React -> Frontend). The
+    dashboard's detectSkills follows the same chains."""
     out = set(skills)
-    for k in skills:
-        out |= IMPLIES.get(k, set())
+    todo = list(skills)
+    while todo:
+        for to in IMPLIES.get(todo.pop(), ()):
+            if to not in out:
+                out.add(to)
+                todo.append(to)
     if {"Frontend", "Backend"} <= out:
         out.add("Full Stack")
     return out
@@ -300,12 +309,18 @@ def parse(tex: str) -> Resume:
 
 def confirm(res: Resume, skills) -> Resume:
     """Add skills the person confirmed they have (the dashboard's Review
-    skills) to what the skills section may list. Bullets and tech lines
-    still need their own entry's evidence."""
+    skills) to what the skills section may list, and to the bullets and tech
+    line of each entry that shows work in the same field: Kubernetes where an
+    entry shows DevOps (its CI/CD or Docker work), not in a frontend one."""
     text = ", ".join(str(x).strip() for x in skills or () if str(x).strip())
     if text:
-        res.inventory = with_implied(res.inventory | tag_skills("% inventory: " + text, "inventory"))
+        named = tag_skills("% inventory: " + text, "inventory")
+        res.inventory = with_implied(res.inventory | named)
         res.vocabulary |= words(text)
+        for e in res.entries:
+            for s in named:
+                if with_implied({s}) & AREAS & e.allowed:
+                    e.allowed = e.allowed | with_implied({s})
     return res
 
 

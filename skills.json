@@ -13,7 +13,10 @@
  },
  {
   "n": "TypeScript",
-  "re": "typescript"
+  "re": "typescript",
+  "implies": [
+   "JavaScript"
+  ]
  },
  {
   "n": "C++",
@@ -71,7 +74,10 @@
  },
  {
   "n": "Bash",
-  "re": "bash|shell scripting|unix shell"
+  "re": "bash|shell scripting|unix shell",
+  "implies": [
+   "Linux"
+  ]
  },
  {
   "n": "R",
@@ -99,46 +105,60 @@
   "re": "React(?:\\.js|JS)?(?! Native)|react\\.js|reactjs|MERN",
   "cs": true,
   "implies": [
-   "Frontend"
+   "Frontend",
+   "JavaScript",
+   "HTML/CSS"
   ]
  },
  {
   "n": "React Native",
-  "re": "react native"
+  "re": "react native",
+  "implies": [
+   "React",
+   "JavaScript"
+  ]
  },
  {
   "n": "Next.js",
   "re": "next\\.js|nextjs",
   "implies": [
-   "Frontend"
+   "Frontend",
+   "React"
   ]
  },
  {
   "n": "Vue",
   "re": "vue(?:\\.js|js)?|nuxt|mevn",
   "implies": [
-   "Frontend"
+   "Frontend",
+   "JavaScript",
+   "HTML/CSS"
   ]
  },
  {
   "n": "Angular",
   "re": "angular(?:js)?|mean stack",
   "implies": [
-   "Frontend"
+   "Frontend",
+   "TypeScript",
+   "HTML/CSS"
   ]
  },
  {
   "n": "Svelte",
   "re": "svelte(?:kit)?",
   "implies": [
-   "Frontend"
+   "Frontend",
+   "JavaScript",
+   "HTML/CSS"
   ]
  },
  {
   "n": "Redux",
   "re": "redux",
   "implies": [
-   "Frontend"
+   "Frontend",
+   "JavaScript"
   ]
  },
  {
@@ -152,7 +172,8 @@
   "n": "Node.js",
   "re": "node\\.js|nodejs|node(?=\\s*(?:[,/)]|and |or ))|express\\.js|expressjs|nestjs|mern|mean stack|mevn",
   "implies": [
-   "Backend"
+   "Backend",
+   "JavaScript"
   ]
  },
  {
@@ -188,35 +209,41 @@
   "n": "Django",
   "re": "django",
   "implies": [
-   "Backend"
+   "Backend",
+   "Python"
   ]
  },
  {
   "n": "Flask",
   "re": "flask",
   "implies": [
-   "Backend"
+   "Backend",
+   "Python"
   ]
  },
  {
   "n": "FastAPI",
   "re": "fastapi",
   "implies": [
-   "Backend"
+   "Backend",
+   "Python",
+   "REST APIs"
   ]
  },
  {
   "n": "Spring Boot",
   "re": "spring boot|spring framework|spring mvc|spring cloud",
   "implies": [
-   "Backend"
+   "Backend",
+   "Java"
   ]
  },
  {
   "n": "Microservices",
   "re": "micro-?services?|service-oriented|soa",
   "implies": [
-   "Backend"
+   "Backend",
+   "Distributed Systems"
   ]
  },
  {
@@ -245,11 +272,13 @@
  },
  {
   "n": "Networking",
-  "re": "tcp/ip|tcp|udp|http/2|networking|dns|load balanc(?:er|ers|ing)"
+  "re": "tcp/ip|tcp|udp|http/2|networking|dns|load balanc(?:er|ers|ing)",
+  "area": true
  },
  {
   "n": "Operating Systems",
-  "re": "operating systems?|kernel|os internals"
+  "re": "operating systems?|kernel|os internals",
+  "area": true
  },
  {
   "n": "Data Structures & Algorithms",
@@ -261,7 +290,8 @@
  },
  {
   "n": "Security",
-  "re": "application security|appsec|security engineering|cryptograph(?:y|ic)|owasp|penetration testing|threat model(?:ing)?|vulnerability (?:research|management|assessment)|secure coding"
+  "re": "application security|appsec|security engineering|cryptograph(?:y|ic)|owasp|penetration testing|threat model(?:ing)?|vulnerability (?:research|management|assessment)|secure coding",
+  "area": true
  },
  {
   "n": "Compilers",
@@ -269,7 +299,8 @@
  },
  {
   "n": "Embedded",
-  "re": "embedded (?:systems|software|c|linux|devices)|firmware|rtos|microcontrollers?"
+  "re": "embedded (?:systems|software|c|linux|devices)|firmware|rtos|microcontrollers?",
+  "area": true
  },
  {
   "n": "PostgreSQL",
@@ -287,19 +318,34 @@
  },
  {
   "n": "MongoDB",
-  "re": "mongo(?:db)?|mern|mean stack|mevn"
+  "re": "mongo(?:db)?|mern|mean stack|mevn",
+  "implies": [
+   "NoSQL"
+  ]
  },
  {
   "n": "DynamoDB",
-  "re": "dynamo(?:db)?"
+  "re": "dynamo(?:db)?",
+  "implies": [
+   "NoSQL",
+   "AWS",
+   "Cloud"
+  ]
  },
  {
   "n": "Cassandra",
-  "re": "cassandra|scylla"
+  "re": "cassandra|scylla",
+  "implies": [
+   "NoSQL",
+   "Distributed Systems"
+  ]
  },
  {
   "n": "Elasticsearch",
-  "re": "elastic ?search|opensearch|lucene|solr"
+  "re": "elastic ?search|opensearch|lucene|solr",
+  "implies": [
+   "NoSQL"
+  ]
  },
  {
   "n": "NoSQL",
@@ -307,63 +353,117 @@
  },
  {
   "n": "Data Warehousing",
-  "re": "snowflake|bigquery|redshift|data warehous(?:e|ing)|databricks|delta lake|iceberg"
+  "re": "snowflake|bigquery|redshift|data warehous(?:e|ing)|databricks|delta lake|iceberg",
+  "implies": [
+   "SQL"
+  ],
+  "area": true
  },
  {
   "n": "Spark",
-  "re": "spark|pyspark"
+  "re": "spark|pyspark",
+  "implies": [
+   "Distributed Systems"
+  ]
  },
  {
   "n": "Airflow",
-  "re": "airflow|dagster|prefect"
+  "re": "airflow|dagster|prefect",
+  "implies": [
+   "Python",
+   "ETL"
+  ]
  },
  {
   "n": "dbt",
-  "re": "dbt"
+  "re": "dbt",
+  "implies": [
+   "SQL",
+   "Data Warehousing",
+   "ETL"
+  ]
  },
  {
   "n": "ETL",
-  "re": "etl|elt|data pipelines?"
+  "re": "etl|elt|data pipelines?",
+  "area": true
  },
  {
   "n": "Hadoop",
-  "re": "hadoop|hive|hdfs|mapreduce"
+  "re": "hadoop|hive|hdfs|mapreduce",
+  "implies": [
+   "Distributed Systems"
+  ]
  },
  {
   "n": "Flink",
-  "re": "flink|stream processing|apache beam"
+  "re": "flink|stream processing|apache beam",
+  "implies": [
+   "Distributed Systems"
+  ]
  },
  {
   "n": "Pandas",
-  "re": "pandas|numpy|scipy"
+  "re": "pandas|numpy|scipy",
+  "implies": [
+   "Python",
+   "Data Analysis"
+  ]
  },
  {
   "n": "AWS",
-  "re": "aws|amazon web services|ec2|s3|lambda|cloudformation|ecs|eks"
+  "re": "aws|amazon web services|ec2|s3|lambda|cloudformation|ecs|eks",
+  "implies": [
+   "Cloud"
+  ]
  },
  {
   "n": "GCP",
-  "re": "gcp|google cloud(?: platform)?|gke"
+  "re": "gcp|google cloud(?: platform)?|gke",
+  "implies": [
+   "Cloud"
+  ]
  },
  {
   "n": "Azure",
-  "re": "azure"
+  "re": "azure",
+  "implies": [
+   "Cloud"
+  ]
+ },
+ {
+  "n": "Cloud",
+  "re": "cloud computing|cloud infrastructure|cloud platforms?|cloud[- ]native|cloud services|public cloud",
+  "area": true
  },
  {
   "n": "Docker",
-  "re": "docker|containers?|containerization"
+  "re": "docker|containers?|containerization",
+  "implies": [
+   "DevOps"
+  ]
  },
  {
   "n": "Kubernetes",
-  "re": "kubernetes|k8s|helm"
+  "re": "kubernetes|k8s|helm",
+  "implies": [
+   "Docker",
+   "DevOps"
+  ]
  },
  {
   "n": "Terraform",
-  "re": "terraform|pulumi|infrastructure as code|iac|cdk"
+  "re": "terraform|pulumi|infrastructure as code|iac|cdk",
+  "implies": [
+   "Infrastructure as Code"
+  ]
  },
  {
   "n": "CI/CD",
-  "re": "ci/cd|ci|cd|continuous integration|continuous delivery|continuous deployment|github actions|jenkins|circleci|gitlab ci"
+  "re": "ci/cd|ci|cd|continuous integration|continuous delivery|continuous deployment|github actions|jenkins|circleci|gitlab ci",
+  "implies": [
+   "DevOps"
+  ]
  },
  {
   "n": "Git",
@@ -371,15 +471,23 @@
  },
  {
   "n": "Observability",
-  "re": "observability|prometheus|grafana|datadog|opentelemetry|distributed tracing|splunk|new relic"
+  "re": "observability|prometheus|grafana|datadog|opentelemetry|distributed tracing|splunk|new relic",
+  "area": true
  },
  {
   "n": "Serverless",
-  "re": "serverless|cloud functions"
+  "re": "serverless|cloud functions",
+  "implies": [
+   "Cloud"
+  ]
  },
  {
   "n": "SRE",
-  "re": "site reliability|sre|on-?call|incident response"
+  "re": "site reliability|sre|on-?call|incident response",
+  "implies": [
+   "DevOps"
+  ],
+  "area": true
  },
  {
   "n": "Testing",
@@ -387,17 +495,23 @@
  },
  {
   "n": "Machine Learning",
-  "re": "machine learning|ml|scikit-learn|sklearn|xgboost|regression|random forest"
+  "re": "machine learning|ml|scikit-learn|sklearn|xgboost|regression|random forest",
+  "area": true
  },
  {
   "n": "Deep Learning",
-  "re": "deep learning|neural networks?|lstm|cnns?|rnns?|convolutional"
+  "re": "deep learning|neural networks?|lstm|cnns?|rnns?|convolutional",
+  "implies": [
+   "Machine Learning"
+  ],
+  "area": true
  },
  {
   "n": "PyTorch",
   "re": "pytorch|torch",
   "implies": [
-   "Deep Learning"
+   "Deep Learning",
+   "Python"
   ]
  },
  {
@@ -409,27 +523,46 @@
  },
  {
   "n": "LLMs",
-  "re": "llms?|large language models?|gpt|generative ai|genai|foundation models?|transformers?|openai(?: api)?|anthropic|claude|hugging ?face|Gemini|Llama ?[0-9]?|Mistral"
+  "re": "llms?|large language models?|gpt|generative ai|genai|foundation models?|transformers?|openai(?: api)?|anthropic|claude|hugging ?face|Gemini|Llama ?[0-9]?|Mistral",
+  "area": true
  },
  {
   "n": "RAG",
-  "re": "rag|retrieval[- ]augmented|vector (?:databases?|search|stores?)|embeddings|pinecone|faiss|weaviate"
+  "re": "rag|retrieval[- ]augmented|vector (?:databases?|search|stores?)|embeddings|pinecone|faiss|weaviate",
+  "implies": [
+   "LLMs"
+  ]
  },
  {
   "n": "NLP",
-  "re": "nlp|natural language processing"
+  "re": "nlp|natural language processing",
+  "implies": [
+   "Machine Learning"
+  ],
+  "area": true
  },
  {
   "n": "Computer Vision",
-  "re": "computer vision|opencv|image processing|object detection"
+  "re": "computer vision|opencv|image processing|object detection",
+  "implies": [
+   "Machine Learning"
+  ],
+  "area": true
  },
  {
   "n": "MLOps",
-  "re": "mlops|model serving|model deployment|mlflow|kubeflow|sagemaker|vertex ai"
+  "re": "mlops|model serving|model deployment|mlflow|kubeflow|sagemaker|vertex ai",
+  "implies": [
+   "Machine Learning"
+  ],
+  "area": true
  },
  {
   "n": "Reinforcement Learning",
-  "re": "reinforcement learning|rlhf"
+  "re": "reinforcement learning|rlhf",
+  "implies": [
+   "Machine Learning"
+  ]
  },
  {
   "n": "CUDA",
@@ -437,7 +570,10 @@
  },
  {
   "n": "LangChain",
-  "re": "langchain|llamaindex|langgraph"
+  "re": "langchain|llamaindex|langgraph",
+  "implies": [
+   "LLMs"
+  ]
  },
  {
   "n": "Data Analysis",
@@ -445,11 +581,13 @@
  },
  {
   "n": "iOS",
-  "re": "ios|xcode|uikit|objective-c"
+  "re": "ios|xcode|uikit|objective-c",
+  "area": true
  },
  {
   "n": "Android",
-  "re": "android|jetpack compose"
+  "re": "android|jetpack compose",
+  "area": true
  },
  {
   "n": "Flutter",
@@ -457,15 +595,21 @@
  },
  {
   "n": "Frontend",
-  "re": "front[- ]?end|ui engineering|web applications?"
+  "re": "front[- ]?end|ui engineering|web applications?",
+  "area": true
  },
  {
   "n": "Backend",
-  "re": "back[- ]?end|server[- ]side|api design|api development|building apis"
+  "re": "back[- ]?end|server[- ]side|api design|api development|building apis",
+  "area": true
  },
  {
   "n": "Full Stack",
-  "re": "full[- ]?stack"
+  "re": "full[- ]?stack",
+  "implies": [
+   "Frontend",
+   "Backend"
+  ]
  },
  {
   "n": "Agile",
@@ -473,15 +617,18 @@
  },
  {
   "n": "Blockchain",
-  "re": "blockchain|web3|ethereum|smart contracts?|crypto(?:currency)?"
+  "re": "blockchain|web3|ethereum|smart contracts?|crypto(?:currency)?",
+  "area": true
  },
  {
   "n": "Game Development",
-  "re": "unity|unreal|game engine|game development"
+  "re": "unity|unreal|game engine|game development",
+  "area": true
  },
  {
   "n": "Robotics",
-  "re": "robotics|motion planning|slam|perception"
+  "re": "robotics|motion planning|slam|perception",
+  "area": true
  },
  {
   "n": "Jenkins",
@@ -517,7 +664,8 @@
   "n": "Kafka",
   "re": "kafka",
   "implies": [
-   "Message Queues"
+   "Message Queues",
+   "Distributed Systems"
   ]
  },
  {
@@ -531,7 +679,8 @@
   "n": "Redis",
   "re": "redis",
   "implies": [
-   "Caching"
+   "Caching",
+   "NoSQL"
   ]
  },
  {
@@ -553,21 +702,28 @@
   "n": "Snowflake",
   "re": "snowflake",
   "implies": [
-   "Data Warehousing"
+   "Data Warehousing",
+   "SQL"
   ]
  },
  {
   "n": "BigQuery",
   "re": "bigquery",
   "implies": [
-   "Data Warehousing"
+   "Data Warehousing",
+   "SQL",
+   "GCP",
+   "Cloud"
   ]
  },
  {
   "n": "Redshift",
   "re": "redshift",
   "implies": [
-   "Data Warehousing"
+   "Data Warehousing",
+   "SQL",
+   "AWS",
+   "Cloud"
   ]
  },
  {
@@ -586,7 +742,8 @@
   "n": "Jest",
   "re": "jest",
   "implies": [
-   "Testing"
+   "Testing",
+   "JavaScript"
   ]
  },
  {
@@ -614,14 +771,16 @@
   "n": "Pytest",
   "re": "pytest",
   "implies": [
-   "Testing"
+   "Testing",
+   "Python"
   ]
  },
  {
   "n": "JUnit",
   "re": "junit",
   "implies": [
-   "Testing"
+   "Testing",
+   "Java"
   ]
  },
  {
@@ -665,7 +824,8 @@
   "re": "nestjs|nest\\.js",
   "implies": [
    "Node.js",
-   "Backend"
+   "Backend",
+   "TypeScript"
   ]
  },
  {
@@ -712,7 +872,8 @@
   "cs": true,
   "implies": [
    "AWS",
-   "Serverless"
+   "Serverless",
+   "Cloud"
   ]
  },
  {
@@ -720,7 +881,8 @@
   "re": "S3|amazon s3",
   "cs": true,
   "implies": [
-   "AWS"
+   "AWS",
+   "Cloud"
   ]
  },
  {
@@ -765,7 +927,8 @@
  },
  {
   "n": "DevOps",
-  "re": "devops"
+  "re": "devops",
+  "area": true
  },
  {
   "n": "Ansible",
@@ -784,7 +947,10 @@
  },
  {
   "n": "Infrastructure as Code",
-  "re": "infrastructure as code|\\bIaC\\b"
+  "re": "infrastructure as code|\\bIaC\\b",
+  "implies": [
+   "DevOps"
+  ]
  },
  {
   "n": "ArgoCD",
@@ -845,7 +1011,8 @@
   "n": "OpenShift",
   "re": "openshift",
   "implies": [
-   "Kubernetes"
+   "Kubernetes",
+   "Cloud"
   ]
  },
  {
@@ -930,7 +1097,8 @@
   "re": "linux kernel|kernel development|device drivers?",
   "implies": [
    "Linux",
-   "Operating Systems"
+   "Operating Systems",
+   "C"
   ]
  },
  {
@@ -1005,7 +1173,8 @@
   "re": "MCP\\b|model context protocol",
   "cs": true,
   "implies": [
-   "LLMs"
+   "LLMs",
+   "LLM Agents"
   ]
  },
  {
@@ -1091,7 +1260,8 @@
   "re": "ai agents?|agentic|llm agents?|multi-agent",
   "implies": [
    "LLMs"
-  ]
+  ],
+  "area": true
  },
  {
   "n": "XGBoost/LightGBM",
@@ -1104,14 +1274,16 @@
   "n": "scikit-learn",
   "re": "scikit-learn|sklearn",
   "implies": [
-   "Machine Learning"
+   "Machine Learning",
+   "Python"
   ]
  },
  {
   "n": "NumPy",
   "re": "numpy",
   "implies": [
-   "Pandas"
+   "Pandas",
+   "Python"
   ]
  },
  {
@@ -1126,7 +1298,8 @@
   "n": "Jupyter",
   "re": "jupyter",
   "implies": [
-   "Data Analysis"
+   "Data Analysis",
+   "Python"
   ]
  },
  {
@@ -1226,14 +1399,17 @@
   "n": "Spanner/Bigtable",
   "re": "spanner|bigtable",
   "implies": [
-   "GCP"
+   "GCP",
+   "Cloud"
   ]
  },
  {
   "n": "Firebase",
   "re": "firebase|firestore",
   "implies": [
-   "GCP"
+   "GCP",
+   "NoSQL",
+   "Cloud"
   ]
  },
  {
@@ -1255,7 +1431,8 @@
   "re": "\\bsqs\\b|\\bsns\\b",
   "implies": [
    "AWS",
-   "Message Queues"
+   "Message Queues",
+   "Cloud"
   ]
  },
  {
@@ -1355,7 +1532,8 @@
   "n": "SolidJS",
   "re": "solidjs|solid\\.js",
   "implies": [
-   "Frontend"
+   "Frontend",
+   "JavaScript"
   ]
  },
  {

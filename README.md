@@ -53,7 +53,9 @@ questions, so opening an application is the last step, not the first.
 ### Honest tailoring
 
 Tailoring rewords your resume in the job's own words, and every change is checked against your master resume.
-It adds only skills your resume backs (or that you confirm under Review skills), invents no numbers, and keeps
+A bullet names only what that job backs: its own tools and what they involve (Kubernetes means containers,
+Django means Python), plus skills you confirm under Review skills where the job shows work in the same field
+(a confirmed Kubernetes in a job with DevOps work, not in a frontend one). It invents no numbers, and keeps
 your layout, on one page, with no line left holding a word or two. You see every change, the job keywords
 found in the final PDF, and anything it refused to claim. Tailored resumes are named
 `Firstname_Lastname_Company_Resume.pdf`.

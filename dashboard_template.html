@@ -955,7 +955,9 @@ const SKILLS = DATA.meta.skills.map((s) => ({
 const IMPLIES = Object.fromEntries(DATA.meta.skills.map((s) => [s.n, s.implies || []]));
 function detectSkills(text) {
   const found = new Set(SKILLS.filter((s) => s.rx.test(text)).map((s) => s.n));
-  for (const k of [...found]) for (const to of IMPLIES[k] || []) found.add(to);
+  // All the way along, like resume_tex.with_implied: a Set's iteration also
+  // visits what's added to it during the loop.
+  for (const k of found) for (const to of IMPLIES[k] || []) found.add(to);
   if (found.has("Frontend") && found.has("Backend")) found.add("Full Stack");
   return [...found];
 }
@@ -2560,7 +2562,7 @@ function renderResult(r, out, onAdjust) {
       r.keywords.some((k) => k.status === "missing") && state.resume ? el("p", { class: "note" },
         "Have one of the − skills? Add it under ",
         el("button", { type: "button", class: "linkish", text: "Review skills", onclick: openSkills }),
-        " and tailor again: it can then go in your skills section. Bullets still only claim what they describe.") : null) : null,
+        " and tailor again: it can then go in your skills section, and in the bullets of jobs that show work in the same field (Kubernetes where a job shows DevOps work).") : null) : null,
     el("p", { class: "section-h", text: `Changes (${applied.length})` }),
     applied.length ? el("p", { class: "note", text: "Reworded to use the job's own words for things your resume already says. Added words are underlined, removed ones struck through." }) : null,
     applied.length ? el("div", { class: "changes" }, ...applied.map(card))
