@@ -311,7 +311,7 @@ class Preparer:
                 self.status = "Preparation is off."
                 return 0
             if not corpus:
-                self.status = "Waiting for the next radar run."
+                self.status = "Waiting for the next search."
                 return 0
             if not self.master_path.exists():
                 self.status = "Upload your master .tex resume to start preparing jobs."

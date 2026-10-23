@@ -1559,7 +1559,7 @@ function evidence(j, quote = true) {
   }
 
   const firstRun = Math.abs(j.first_seen - DATA.meta.first_run) < 600;
-  add("Radar first saw it", fmt(j.first_seen) + (firstRun ? " (radar's first run, so the job was already up)" : ""));
+  add("Onward first saw it", fmt(j.first_seen) + (firstRun ? " (Onward's first search, so the job was already up)" : ""));
 
   if (j.verify_url) {
     const extra = [];
@@ -1581,7 +1581,7 @@ function evidence(j, quote = true) {
   // A bare date is read as local midnight, but sources write it in their own
   // zone (Amazon's "October 21" starts at 8 PM the day before in New York).
   if (j.posted_at && j.first_seen < j.posted_at - (dateOnly(j) ? 36 : 1) * 3600) {
-    ev.append(el("div", { class: "warnline", text: `The radar saw this job ${fmt(j.first_seen)}, before the date the source now reports. It was probably reposted with a new date.` }));
+    ev.append(el("div", { class: "warnline", text: `Onward saw this job ${fmt(j.first_seen)}, before the date the source now reports. It was probably reposted with a new date.` }));
   }
 
   const h = j.h1b;
@@ -2282,6 +2282,7 @@ const BACKENDS = [
     ok: (b) => b.claude_api, setup: "Add an Anthropic key in Settings, under AI models" },
 ];
 const PAID = new Set(["openai-api", "claude-api"]);
+const backendName = (id) => (BACKENDS.find((b) => b.id === id) || { name: id }).name;
 
 function progressLine(text) {
   return el("div", { class: "progress" }, el("span", { class: "spin", "aria-hidden": "true" }), el("span", { text }));
@@ -2518,7 +2519,8 @@ function renderResult(r, out, onAdjust) {
   const moved = r.changes.filter((c) => c.kind === "reorder_entries");
 
   const card = (c) => el("div", { class: "chg" + (c.status === "rejected" ? " rejected" : "") },
-    el("div", { class: "lbl", text: `${KIND[c.kind]} · ${c.label}` }),
+    // The entry by its name ("Example Labs"), not its whole header line.
+    el("div", { class: "lbl", text: `${KIND[c.kind]} · ${String(c.label).split(/ - | \| /)[0]}` }),
     c.status === "rejected"
       ? el("div", {}, el("div", { text: c.before }), el("div", { class: "after", text: c.after }))
       : (c.kind === "drop_bullet" || c.kind === "drop_entry") ? el("div", { text: c.before || c.label })
@@ -2540,7 +2542,8 @@ function renderResult(r, out, onAdjust) {
       el("a", { class: "btn primary", href: "/files/" + r.pdf, target: "_blank", rel: "noopener", text: "Open PDF ↗" }),
       el("a", { class: "btn", href: "/files/" + r.tex, download: r.tex, text: "Download .tex" })),
     r.instruction ? el("p", { class: "note", text: `Your request: “${r.instruction}”` }) : null,
-    r.summary ? el("p", { text: r.summary }) : null,
+    // The model sometimes writes the resume's LaTeX escapes into its summary ("\&").
+    r.summary ? el("p", { text: r.summary.replace(/\\([&%$#_{}])/g, "$1") }) : null,
     (r.keywords || []).length ? el("div", { style: "display:grid;gap:6px" },
       el("p", { class: "section-h", text: "Job keywords, checked against the final PDF" }), kw,
       el("p", { class: "note", text: "+ added for this job · plain: already in your resume · − not in your resume (not added, since there's no evidence for it)" }),
@@ -2673,7 +2676,7 @@ async function showChanges(it) {
 }
 
 const retailorMsg = () => "Re-tailoring with your request." +
-  (queue.data && queue.data.settings.backend === "chatgpt" ? " It uses one of today's ChatGPT runs." : "");
+  (queue.data ? ` It uses one of today's ${backendName(queue.data.settings.backend)} runs.` : "");
 
 // A queue change, then its message with Undo (the helper keeps the old row).
 async function queueAction(path, body, text, label, onUndo) {
@@ -2730,7 +2733,10 @@ function queueItem(it) {
   if (it.note && it.state !== "error") {
     lines.push(el("div", { class: "qline" }, el("span", { class: "warnline", text: it.note.charAt(0).toUpperCase() + it.note.slice(1) + (/[.!?]$/.test(it.note) ? "" : ".") })));
   }
-  if (j) lines.push(lazyDetails("Details", () => postingFacts(j, sc, visa()), fk("details")));
+  if (j) lines.push(lazyDetails("Details", () => {
+    const badges = otherBadges(j, state.marks[j.url]);
+    return [badges.length ? el("div", { class: "row" }, ...badges) : null, ...postingFacts(j, sc, visa())].filter(Boolean);
+  }, fk("details")));
 
   const actions = el("div", { class: "actions" });
   if (it.state === "ready" || it.state === "queued" || it.state === "error") {
@@ -2755,7 +2761,7 @@ function queueItem(it) {
   }
   if (it.state === "ready" && !it.tailored_id) {
     actions.append(el("button", { type: "button", text: "Tailor anyway", "data-fk": fk("tailor"), "aria-label": `Tailor anyway: ${name}`,
-      title: s.backend === "chatgpt" ? "Uses one ChatGPT run from today's limit" : null,
+      title: `Uses one ${backendName(s.backend)} run from today's limit`,
       onclick: () => queueAction("/api/queue/tailor", { key: it.key }, `Queued ${name} for tailoring.`, "the tailoring request") }));
   }
   if (it.state === "ready") {
@@ -2773,10 +2779,14 @@ function queueItem(it) {
       () => { if (prev) state.marks[it.url] = prev; else delete state.marks[it.url]; store.set("marks", state.marks); });
   } }));
 
+  // The one most telling visa badge, as on the posting's own card.
+  const meta = el("div", { class: "meta" }, el("span", { class: "company", text: it.company }), el("span", { text: it.location }));
+  const signals = j ? visaSignals(j, visa()) : [];
+  const lead = signals.find((x) => x.warn) || signals[0];
+  if (lead) meta.append(el("span", { class: lead.cls, text: lead.text }));
   return el("li", { class: "job q-" + it.state },
     el("div", { class: "head" },
-      el("a", { class: "title", href: it.url, target: "_blank", rel: "noopener", text: it.title }),
-      el("div", { class: "meta" }, el("span", { class: "company", text: it.company }), el("span", { text: it.location }))),
+      el("a", { class: "title", href: it.url, target: "_blank", rel: "noopener", text: it.title }), meta),
     right, el("div", { class: "side" }, el("span", { class: "pill " + stCls, text: stLabel })),
     ...lines, el("div", { class: "row" }, actions));
 }
@@ -2800,7 +2810,7 @@ function renderQueue() {
   head.replaceChildren(...[
     el("span", {}, el("b", { text: `${ready} ready` }), ` · ${(c.queued || 0) + (c.working || 0)} preparing`),
     c.parked ? el("span", { text: `${c.parked} more good match${c.parked === 1 ? "" : "es"} waiting for room (up to ${s.max_active} at a time)` }) : null,
-    el("span", { text: `ChatGPT runs today ${d.runs_today}/${s.daily_cap}` }),
+    el("span", { text: `${backendName(s.backend)} runs today ${d.runs_today}/${s.daily_cap}` }),
     appliedToday ? el("span", { text: `${appliedToday} applied today` }) : null,
     el("span", { text: `Prepares new jobs at ${s.threshold}%+ match` + (s.enabled ? "" : " (off)") }),
     d.status ? el("span", { class: "warnline", style: "color:var(--warn)", text: d.status }) : null,
@@ -2832,7 +2842,7 @@ function openPrefs() {
   const grid = el("div", { class: "prefs" }, ...[
     row("enabled", "Prepare jobs", chk("enabled")),
     row("threshold", "Minimum match", num("threshold", 0, 100), "New postings at or above this score are prepared."),
-    row("max_age_days", "Posted within (days)", num("max_age_days", 1, 60), "Older postings aren't prepared, even when the radar has only just found them."),
+    row("max_age_days", "Posted within (days)", num("max_age_days", 1, 60), "Older postings aren't prepared, even when Onward has only just found them."),
     row("max_active", "Jobs in the queue at most", num("max_active", 1, 500), "Your best matches. Others wait their turn and come in, already prepared, as you apply or dismiss."),
     row("backend", "Prepare with", select(["chatgpt", "claude-code", "openai-api", "claude-api"].map((b) => [b, LABELS.backends[b] || b]), s.backend),
       "API keys are billed per use and stop at their monthly budget."),
@@ -3361,7 +3371,7 @@ function companiesCard() {
     el("p", { text: "Onward reads company job boards directly. Paste a careers page or any job posting link to add a company: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Oracle, Eightfold and iCIMS are recognized." }),
     el("div", { class: "rowline" }, url, check), out,
     el("div", { class: "field" }, el("p", { class: "section-h", text: `Companies you added (${added.length})` }),
-      added.length ? boardList(added) : el("p", { class: "note", text: "None yet. They're read from the next radar run on." })),
+      added.length ? boardList(added) : el("p", { class: "note", text: "None yet. They're read from the next search on." })),
     el("div", { class: "field" }, el("label", { for: blockIn.id = "blockCompany", text: "Blocked companies" }),
       el("p", { class: "note", text: "Never fetched and never shown, in every profile." }),
       el("div", { class: "rowline" }, blockIn, el("button", { type: "button", text: "Block", onclick: doBlock })),
@@ -3378,7 +3388,7 @@ function drawFound(out) {
   const name = text(f.name, "Company name");
   const addBtn = el("button", { type: "button", class: "primary", text: f.tracked ? "Already tracked" : "Add company", disabled: f.tracked ? "disabled" : null });
   addBtn.addEventListener("click", () => companyAction("add", { source: f.source, token: f.token, name: name.value.trim() },
-    `Added ${name.value.trim() || f.token}. Its jobs show after the next radar run.`, "companyUrl"));
+    `Added ${name.value.trim() || f.token}. Its jobs show after the next search.`, "companyUrl"));
   out.replaceChildren(el("div", { class: "found" },
     el("div", {}, el("b", { text: where }), ` · ${n(f.jobs)} open posting${f.jobs === 1 ? "" : "s"} right now`),
     f.note ? el("div", { class: "note", text: f.note }) : null,
@@ -3591,7 +3601,7 @@ function radarCard() {
   simplify.checked = r.simplify_feed;
   const feedUrl = text(r.feed_url, "https://… (empty: search every board from here)");
   return el("section", { class: "card", "aria-labelledby": "radarH" },
-    el("h3", { id: "radarH", text: "Radar" }),
+    el("h3", { id: "radarH", text: "Search" }),
     el("div", { class: "fields" },
       field("Show postings up to (days old)", days),
       field("New-grad and entry-level programs up to (days old)", programDays,
@@ -3603,9 +3613,9 @@ function radarCard() {
       field("Shared job feed address", feedUrl, "A shared search's results, read instead of searching every board " +
         "from this computer. Companies you added are still searched from here. If the feed can't be read or stops " +
         "updating, Onward searches every board itself until it's back.", { wide: true })),
-    saveBar("Save radar settings", () => postSettings({ radar: { dashboard_days: +days.value, program_days: +programDays.value, stale_after_days: +stale.value,
-      purge_after_days: +purge.value, workers: +workers.value, timeout: +timeout.value, simplify_feed: simplify.checked, feed_url: feedUrl.value.trim() } }, "the radar settings"),
-      "Saved the radar settings. They're used from the next search.", "the radar settings"));
+    saveBar("Save search settings", () => postSettings({ radar: { dashboard_days: +days.value, program_days: +programDays.value, stale_after_days: +stale.value,
+      purge_after_days: +purge.value, workers: +workers.value, timeout: +timeout.value, simplify_feed: simplify.checked, feed_url: feedUrl.value.trim() } }, "the search settings"),
+      "Saved the search settings. They're used from the next search.", "the search settings"));
 }
 
 function storageCard() {

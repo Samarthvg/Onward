@@ -51,7 +51,7 @@ million reads a month, no charge for downloads). Check Cloudflare's pricing page
    The first `wrangler` command on an account may ask for a `workers.dev` subdomain: any free name will do,
    since this Worker has no public address (`workers_dev = false`). The Worker's logs, in the Cloudflare
    dashboard, show each start or GitHub's reason for refusing one.
-5. **Point Onward at it.** In Settings, under Radar (advanced settings), set the feed address to the
+5. **Point Onward at it.** In Settings, under Search (advanced settings), set the feed address to the
    bucket's `r2.dev` address, e.g. `https://pub-<id>.r2.dev/`.
 
 ## Keeping an eye on it

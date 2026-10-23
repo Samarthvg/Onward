@@ -1,28 +1,85 @@
-# Onward
+<p align="center">
+  <img src="extension/icons/icon-128.png" width="72" height="72" alt="">
+</p>
 
-Finds fresh entry-level job postings straight from company hiring systems, scores them against your resume,
-tailors your resume for the ones worth applying to, and fills in applications through a browser extension. You
-always review the form and press Submit yourself. It runs on your own computer, and your resume and details
-stay there.
+<h1 align="center">Onward</h1>
 
-- **Fresh postings, with proof.** Every 30 minutes it reads thousands of companies' own job boards (Greenhouse,
-  Lever, Ashby, Workday, SmartRecruiters, iCIMS, Oracle, Eightfold, and Amazon's, Google's and Microsoft's own
-  sites), adding more each run as it finds them in public lists of new-grad and internship postings. Each
-  posting shows when the company posted it, with a link to check, how long it has been up, and whether it was
-  reposted. Postings older than 30 days are left out (60 for new-grad programs).
-- **Scores you can check.** Each posting's required and nice-to-have skills are matched word for word against
-  your resume, with experience counted. Every score shows what you have and what's missing.
-- **Visa signals.** "No sponsorship" and "no OPT" are read from the posting itself, beside the company's H-1B
-  approvals from USCIS.
-- **Today's picks and the Apply queue.** The Apply queue opens on the few best new fits of the day. Behind
-  them, it prepares your best matches from the last 7 days (15 at a time to start): a tailored resume where
-  that helps, and drafted answers for the form's own questions.
-- **Honest tailoring.** Only skills your resume backs are added (a skill you confirm under Review skills may
-  also go in the skills section), no numbers are invented, and it stays one page.
-  Tailored resumes are named `Firstname_Lastname_Company_Resume.pdf`.
-- **Autofill.** The Onward Autofill extension for Firefox fills Greenhouse, Lever, Ashby and Workday forms,
-  attaches the prepared resume, and marks the job applied when the confirmation page appears. Its own README is
-  [extension/README.md](extension/README.md).
+<p align="center">
+  Fresh entry-level jobs from companies' own hiring systems, scored against your resume,<br>
+  with an honest tailored resume and a browser extension that fills the application.<br>
+  <b>You always review the form and press Submit yourself.</b>
+</p>
+
+<p align="center">
+  <a href="../../releases/latest"><b>Download</b></a> ·
+  <a href="#install">Install</a> ·
+  <a href="extension/README.md">Browser extension</a> ·
+  <a href="#shared-job-feed">Shared job feed</a> ·
+  <a href="#running-from-source">Running from source</a>
+</p>
+
+<p align="center">Windows · macOS · Linux · Firefox · MIT license</p>
+
+![The Apply queue: today's best new fits, each with its match score, visa signals and a prepared resume](docs/screenshots/queue.png)
+
+It runs on your own computer. Your resume, details and applications stay there; nothing is sent to Onward.
+
+## What it does
+
+### Fresh postings, with proof
+
+Every 30 minutes Onward reads thousands of companies' own job boards (Greenhouse, Lever, Ashby, Workday,
+SmartRecruiters, iCIMS, Oracle, Eightfold, and Amazon's, Google's and Microsoft's own sites), and finds more
+each day in public lists of new-grad and internship postings. Each posting shows when the company posted it,
+with a link to the raw record so you can check, how long it has been up, and whether it was reposted. Postings
+older than 30 days are left out (60 for new-grad programs).
+
+### Scores you can check
+
+A posting's required and nice-to-have skills are matched word for word against your resume, with your years of
+experience counted. Every score says what you have and what's missing, so you can see why it's 71% and not 90%.
+
+**Visa signals** come from two places: what the posting itself says ("no sponsorship", "U.S. citizens only",
+"no OPT"), and the company's H-1B approvals from USCIS's H-1B Employer Data Hub, refreshed automatically.
+
+![A posting's details: the skills you have and are missing, where its date comes from, and the company's H-1B approvals](docs/screenshots/details.png)
+
+### Today's picks and the Apply queue
+
+The Apply queue opens on the few best new fits of the day. Behind them it prepares your best matches from the
+last 7 days, 15 at a time to start: a tailored resume where that helps, and drafted answers for the form's own
+questions, so opening an application is the last step, not the first.
+
+### Honest tailoring
+
+Tailoring rewords your resume in the job's own words, and every change is checked against your master resume.
+It adds only skills your resume backs (or that you confirm under Review skills), invents no numbers, and keeps
+your layout, on one page, with no line left holding a word or two. You see every change, the job keywords
+found in the final PDF, and anything it refused to claim. Tailored resumes are named
+`Firstname_Lastname_Company_Resume.pdf`.
+
+![A tailoring result: the job's keywords checked against the final PDF, and each change with added and removed words marked](docs/screenshots/tailor.png)
+
+### Autofill that never submits
+
+The Onward Autofill extension for Firefox fills Greenhouse, Lever, Ashby and Workday forms: your details, work
+history, education and projects, the prepared resume, and standard questions you've answered once. It drafts
+written answers from your resume, which you can redraft with a note ("use my other project"). It never presses
+Submit, never signs in, and leaves sponsorship, salary and legal questions to you unless you've saved an answer.
+When the confirmation page appears, the job is marked applied and the next one in the queue is offered.
+Details in [extension/README.md](extension/README.md).
+
+<p align="center">
+  <img src="docs/screenshots/panel.png" width="380" alt="The autofill panel: what it filled, and what still needs you">
+</p>
+
+### Light and dark
+
+Every page follows your system's theme, or the one you pick.
+
+![All jobs in dark mode, best matches first](docs/screenshots/jobs-dark.png)
+
+<sub>The screenshots use a made-up resume (Testy McTestface) against real postings from the shared feed.</sub>
 
 ## Install
 
@@ -128,7 +185,7 @@ does it once: one search publishes its postings as static files, and every copy 
 instead of searching. Scoring, roles, tailoring and the apply queue stay on each computer. `feed.py` has
 the details.
 
-**Reading a feed.** Put its address in Settings, under Radar (advanced settings), or in `settings.json` as
+**Reading a feed.** Put its address in Settings, under Search (advanced settings), or in `settings.json` as
 `radar.feed_url`. A new copy downloads the whole snapshot once (a few MB per thousand postings); after
 that each run downloads only what changed. Companies you added yourself are still searched from your
 computer. If the feed can't be read, a file doesn't match its checksum, or the feed hasn't updated for
