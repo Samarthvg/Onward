@@ -272,6 +272,53 @@ class WindowTests(TmpHome):
             self.assertEqual(app.show_dashboard("http://127.0.0.1:8765/", self.home), "browser")
         self.assertEqual(opened, ["http://127.0.0.1:8765/"])
 
+    def fake_webview(self, after_start):
+        """A stand-in pywebview: start() runs the watcher on a non-daemon
+        thread, as pywebview does, and returns when the window closes."""
+        import threading
+        import types
+
+        class Hook(list):
+            def __iadd__(self, fn):
+                self.append(fn)
+                return self
+
+        class Win:
+            def __init__(self):
+                self.events = types.SimpleNamespace(closed=Hook())
+                self.gone = threading.Event()
+
+            def destroy(self):
+                self.gone.set()
+
+        win = Win()
+
+        def start(func, **kw):
+            t = threading.Thread(target=func)
+            t.start()
+            after_start(win)
+            win.gone.wait(10)
+            for fn in win.events.closed:
+                fn()
+            t.join(5)
+            win.thread_alive = t.is_alive()
+        return win, types.SimpleNamespace(settings={}, create_window=lambda *a, **kw: win, start=start)
+
+    def test_the_window_process_ends_when_the_window_closes(self):
+        win, fake = self.fake_webview(lambda w: w.destroy())       # the user closes it
+        with mock.patch.dict(sys.modules, {"webview": fake}):
+            self.assertEqual(app.run_window("http://127.0.0.1:8765/", self.home), 0)
+        self.assertFalse(win.thread_alive, "a watcher left running keeps the process alive")
+
+    def test_the_window_closes_when_the_tray_app_quits(self):
+        tray = oslock.FileLock(self.home / "app.lock")
+        self.assertTrue(tray.acquire())
+        win, fake = self.fake_webview(lambda w: (time.sleep(0.6), self.assertFalse(w.gone.is_set()), tray.release()))
+        with mock.patch.dict(sys.modules, {"webview": fake}):
+            app.run_window("http://127.0.0.1:8765/", self.home)
+        self.assertTrue(win.gone.is_set())
+        self.assertFalse(win.thread_alive)
+
     def test_window_command(self):
         self.assertEqual(app.window_command()[-2:], [str(ROOT / "app.py"), "--window"])
         with mock.patch.object(app.sys, "frozen", True, create=True):

@@ -87,6 +87,17 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM ""{#AppExe}"""; Flags: runhi
 const
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
 
+// Windows left open by an older version (one that didn't close them on
+// Quit) hold the program's files, so they're closed before files are copied.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Code: Integer;
+begin
+  Exec(ExpandConstant('{sys}	askkill.exe'), '/F /IM "{#AppExe}"', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Sleep(500);
+  Result := '';
+end;
+
 function Relaunch: Boolean;
 begin
   Result := ExpandConstant('{param:RELAUNCH|0}') = '1';

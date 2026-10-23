@@ -123,9 +123,22 @@ def run_window(url: str, home: Path) -> int:
     webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
     win = webview.create_window(appinfo.NAME, url, width=1440, height=900, min_size=(420, 600))
     signal = home / "window.show"
+    closed = threading.Event()
+    win.events.closed += lambda: closed.set()
+    # Opened by the tray app: close with it, so no window outlives Quit (or
+    # an update) holding the program's files open.
+    tray = oslock.FileLock(home / "app.lock")
+    with_tray = not tray.acquire()
+    tray.release()
 
     def watch() -> None:
-        while True:
+        # pywebview runs this on a thread that isn't a daemon: it must end
+        # when the window closes, or the process stays behind.
+        while not closed.wait(0.4):
+            if with_tray and tray.acquire():
+                tray.release()
+                win.destroy()
+                return
             if signal.exists():
                 try:
                     signal.unlink()
@@ -135,7 +148,6 @@ def run_window(url: str, home: Path) -> int:
                     win.on_top = False
                 except Exception:
                     pass
-            time.sleep(0.4)
 
     try:
         signal.unlink()
