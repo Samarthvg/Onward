@@ -886,7 +886,12 @@ def fit_lines(res: rt.Resume, state: dict, changes: list[rt.Change], layout: dic
             except BackendError:
                 new = {}
         for bid in bullets:
-            if bid in new:
+            if bid in new and rt.plain(new[bid]) == rt.plain(res.bullet(bid)[1].tex):
+                # Fitted back to the master's own wording: no change at all.
+                state["rewrites"].pop(bid)
+                if bid in log:
+                    changes.remove(log.pop(bid))
+            elif bid in new:
                 state["rewrites"][bid] = new[bid]
                 if bid in log:
                     log[bid].after = rt.plain(new[bid])

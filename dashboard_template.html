@@ -1545,7 +1545,8 @@ function rawExplain(j) {
   return j.posted_raw;
 }
 
-function evidence(j) {
+// `quote`: the posting's sponsorship sentence, unless a visa badge's reason already quotes it.
+function evidence(j, quote = true) {
   const ev = el("div", { class: "ev" });
   const dl = el("dl");
   const add = (k, ...v) => { dl.append(el("dt", { text: k }), el("dd", {}, ...v)); };
@@ -1596,7 +1597,7 @@ function evidence(j) {
   } else {
     ev.append(el("div", { class: "note", text: `No H-1B approvals found for "${j.company}" in USCIS FY${DATA.meta.h1b_years.join("/FY")} data.` }));
   }
-  if (j.sponsor_note) {
+  if (j.sponsor_note && quote) {
     ev.append(el("div", {}, el("span", { style: "color:var(--muted)", text: "Sponsorship text in posting: " }), "“" + j.sponsor_note + "”"));
   }
   return ev;
@@ -1791,7 +1792,7 @@ function jobCard(j, now, V, hasResume) {
 function postingFacts(j, sc, V) {
   // The H-1B badges' reasons are the approvals shown above them; the posting's own words need theirs.
   const signals = visaSignals(j, V).filter((x) => !/\bh1b\b/.test(x.cls));
-  const ev = evidence(j);
+  const ev = evidence(j, !(j.sponsor_note && signals.some((s) => String(s.why).includes(j.sponsor_note))));
   if (signals.length) {
     ev.append(el("div", { class: "why-box" }, el("p", { class: "section-h", text: "Why these visa badges" }),
       ...signals.map((s) => el("p", {}, el("b", { text: s.text + ": " }), s.why))));
@@ -2041,7 +2042,7 @@ function masterLine() {
   return el("div", { class: "note", style: "flex-basis:100%" },
     "Resume for tailoring: ", el("b", { text: m.name || "master.tex" }),
     m.own ? ` (for \u201c${roleName(state.search)}\u201d)` : "",
-    ` · ${m.entries.length} entries · ${m.pages || "?"} page${m.pages === 1 ? "" : "s"}`,
+    ` · ${m.entries.length} entries` + (m.pages ? ` · ${m.pages} page${m.pages === 1 ? "" : "s"}` : ""),
     tagged ? ` · ${tagged} with hidden skill tags` : " · no hidden skill tags yet",
     m.error ? el("span", { style: "color:var(--warn)", text: " · " + m.error }) : null);
 }

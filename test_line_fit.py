@@ -161,6 +161,14 @@ class CompiledTests(unittest.TestCase):
         self.assertNotIn("B1", self.state["rewrites"], "a new number fails the honesty check")
         self.assertEqual((self.changes[0].status, self.changes[0].reason), ("rejected", tailor.SPILLED))
 
+    def test_a_refit_back_to_the_master_wording_is_no_change(self):
+        self.spill_bullet()
+        same = self.res.entries[0].bullets[0].tex.strip()
+        with mock.patch.object(tailor, "ask", return_value=({"bullets": [{"id": "B1", "text": same}]}, "m", None)):
+            tailor.fit_lines(self.res, self.state, self.changes, self.layout, self.measure, "chatgpt", "")
+        self.assertNotIn("B1", self.state["rewrites"])
+        self.assertEqual(self.changes, [], "not listed as a change that changes nothing")
+
     def test_manual_answers_go_back_to_the_master(self):
         self.spill_bullet()
         tailor.fit_lines(self.res, self.state, self.changes, self.layout, self.measure, "manual", "")

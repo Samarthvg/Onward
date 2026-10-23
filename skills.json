@@ -981,7 +981,7 @@
  },
  {
   "n": "REST",
-  "re": "REST(?=\\s*(?:[,/)]|and |or |APIs?|services|$))",
+  "re": "REST(?=\\s*(?:[,/)]|and |or |APIs?|services|endpoints?|$))",
   "cs": true,
   "implies": [
    "REST APIs",
