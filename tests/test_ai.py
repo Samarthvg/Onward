@@ -147,7 +147,8 @@ class KeyStorageTests(Base):
         ai.use_keyring(None)
         self.assertEqual(ai.save_key("anthropic", KEY), "file")
         path = ai.key_file()
-        self.assertTrue(path.is_relative_to(self.tmp))
+        # Resolved: Windows can give the temp folder its short 8.3 name (RUNNER~1).
+        self.assertTrue(path.resolve().is_relative_to(self.tmp.resolve()))
         self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"anthropic": KEY})
         self.assertEqual(ai.get_key("anthropic"), KEY)
         # An install whose data folder is the code folder keeps keys elsewhere.

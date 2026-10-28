@@ -270,15 +270,16 @@ class PathTests(Tmp):
             st.update({"roles": [{**config.ROLE.default, "resume": "../../etc/passwd"}]})
 
     def test_data_folder_choice(self):
+        env = {k: v for k, v in os.environ.items() if k not in config.HOME_ENV}
         for var in config.HOME_ENV:
-            with mock.patch.dict(os.environ, {var: str(self.dir / var)}):
+            with mock.patch.dict(os.environ, {**env, var: str(self.dir / var)}, clear=True):
                 self.assertEqual(config.default_home(), self.dir / var)
         with mock.patch.dict(os.environ, {"ONWARD_HOME": str(self.dir / "new"), "JOBRADAR_HOME": str(self.dir / "old")}):
             self.assertEqual(config.default_home(), self.dir / "new", "the new name wins")
-        env = {k: v for k, v in os.environ.items() if k not in config.HOME_ENV}
         code = self.dir / "code"
         code.mkdir()
-        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(config, "CODE_DIR", code),                 mock.patch.object(config, "user_data_dir", lambda: self.dir / "user"):
+        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(config, "CODE_DIR", code), \
+                mock.patch.object(config, "user_data_dir", lambda: self.dir / "user"):
             self.assertEqual(config.default_home(), self.dir / "user", "a fresh install uses the user folder")
             (code / "jobs.db").write_bytes(b"")
             self.assertEqual(config.default_home(), code, "an existing install keeps its data where it is")
