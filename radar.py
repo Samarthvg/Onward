@@ -2391,7 +2391,7 @@ def public_settings(s: dict) -> dict:
     switcher and visa badges, scoring weights, tailoring defaults, notices.
     No paths or notification topics."""
     return {"roles": s["roles"], "active_role": s["active_role"], "scoring": s["scoring"],
-            "tailoring": {k: s["tailoring"][k] for k in ("backend", "draft_backend")}, "notices": s["notices"],
+            "tailoring": {k: s["tailoring"][k] for k in ("backend", "draft_backend", "strictness", "check_claims")}, "notices": s["notices"],
             "setup": s["setup"], "window": {"days": s["radar"]["dashboard_days"], "program_days": s["radar"]["program_days"]}}
 
 

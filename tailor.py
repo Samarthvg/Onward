@@ -28,7 +28,7 @@ import re
 import shutil
 import subprocess
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import ai
@@ -63,14 +63,15 @@ INSTRUCTIONS = """You tailor a software engineer's resume to one job description
 Rules
 1. Truthfulness comes first. A skill may appear in an entry's bullets or tech line only if it is in that entry's VERIFIED SKILLS list. Skills-section rows may use only the VERIFIED INVENTORY. If the job wants something the resume doesn't support, report it as "missing" in jd_keywords and do not add it anywhere.
 2. Never add or change numbers, metrics, company names, job titles, dates or URLs.
-3. Keep what each bullet says the person did. You may rephrase a bullet so it uses the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs" when the job says that), or so that a verified skill for that entry is named explicitly. Lead with a strong past-tense verb. Avoid filler such as "leveraged", "spearheaded", "utilized", "synergy".
+3. Keep what each bullet says the person did. You may rephrase a bullet so it uses the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs" when the job says that), or so that a verified skill for that entry is named explicitly. Change as few words as that takes.
 4. Keep LaTeX exactly as it appears in the original bullet: \\textbf{...}, \\textit{...} and \\href{url}{text} stay as they are. Use no other LaTeX commands. Write & % $ # _ as \\& \\% \\$ \\# \\_.
 5. A rewritten bullet must stay about the same length as the original (one printed line is about 110 characters). Only rewrite bullets where it clearly helps; leave the rest out of bullet_rewrites.
 6. tech_lines and skills_rows are comma-separated lists of the person's own tool names. Keep every existing item, spelled exactly as written (e.g. keep "React.js", "NumPy", "PouchDB"). You may only reorder items so the job's tools come first, and append a few items the job asks for that are in that entry's VERIFIED SKILLS (tech lines) or the VERIFIED INVENTORY (skills rows). Never replace a tool with a category name such as "Machine Learning", "Frontend" or "Full Stack". Only include a row or tech line in your output if you changed it.
 7. bullet_priority lists every bullet ID, most relevant to this job first. Projects are printed in this order too (by their most relevant bullet); work experience stays in date order.
 8. The result must fit on one page. Put the least relevant bullets in drop_bullets and, if needed, the least relevant projects in drop_entries. Never drop work experience entries. Keep at least two bullets per entry.
 9. jd_keywords lists the 8-15 most important skills or terms in the job description, each with status "added" (you worked it in), "already_present", or "missing" (the resume has no verified evidence), and a short note.
-10. summary: two sentences on what you emphasized and why."""
+10. summary: two sentences on what you emphasized and why.
+11. Write like the person, not like a model. Match how their own bullets read: their kind of verbs, sentence length and punctuation, plain and specific. Prefer their own words to new ones. No em dashes. No clause tacked on to sound like impact (", ensuring ...", ", enabling ...", ", driving ..."). No stock resume words such as "spearheaded", "leveraged", "utilized", "orchestrated", "robust", "seamless", "cutting-edge", "innovative", "comprehensive", "pivotal", "fostered", "facilitated". Don't start bullets next to each other with the same verb. Edits that read as machine-written are sent back."""
 
 SCHEMA = {
     "type": "object",
@@ -107,23 +108,65 @@ SCHEMA = {
 # The rules that change at the "reword" strictness. The truthfulness rules
 # (1, 2, 6) are the same at every level, and resume_tex checks them in code.
 STRICT_RULES = (
-    """3. Keep what each bullet says the person did. You may rephrase a bullet so it uses the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs" when the job says that), or so that a verified skill for that entry is named explicitly. Lead with a strong past-tense verb. Avoid filler such as "leveraged", "spearheaded", "utilized", "synergy".""",
+    """3. Keep what each bullet says the person did. You may rephrase a bullet so it uses the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs" when the job says that), or so that a verified skill for that entry is named explicitly. Change as few words as that takes.""",
     """5. A rewritten bullet must stay about the same length as the original (one printed line is about 110 characters). Only rewrite bullets where it clearly helps; leave the rest out of bullet_rewrites.""",
 )
 REWORD_RULES = (
-    """3. Keep what each bullet says the person did: the same work, scope, results and tools. Within that, you may rephrase a bullet freely: restructure the sentence, lead with the part that matters most for this job, pick different verbs, use the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs"), and name a verified skill for that entry explicitly. Lead with a strong past-tense verb. Avoid filler such as "leveraged", "spearheaded", "utilized", "synergy".""",
+    """3. Keep what each bullet says the person did: the same work, scope, results and tools. Within that, you may rephrase a bullet freely: restructure the sentence, lead with the part that matters most for this job, pick different verbs, use the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs"), and name a verified skill for that entry explicitly.""",
     """5. A rewritten bullet may grow a little, at most about a third longer than the original (one printed line is about 110 characters); shorter is better. Rewrite any bullet a rephrase makes clearly better for this job; leave the rest out of bullet_rewrites.""",
 )
 assert all(r in INSTRUCTIONS for r in STRICT_RULES)
 
 
-def instructions(level: str = "strict") -> str:
-    """The tailoring rules for a strictness level (config.STRICTNESS)."""
+# "rewrite": the most freedom. A bullet may be rewritten from scratch and use
+# facts from the rest of its entry (resume_tex checks it against the whole
+# entry); the truthfulness rules don't change.
+REWRITE_RULES = (
+    """3. Each bullet must stay true to its entry: everything it says has to come from that entry's own bullets, tech line or verified skills. Within that, you may rewrite a bullet from scratch: say what matters most for this job, combine details from the entry's other bullets (and put the bullet you took them from in drop_bullets if it would repeat them), pick a different angle on the same work, and use the job description's terminology for things the entry already describes. Never move work, tools or results from one entry to another.""",
+    """5. A rewritten bullet may be up to about two thirds longer than the original (one printed line is about 110 characters), but a bullet that ends a few words into a new line is sent back, so aim for one or two full lines. Rewrite every bullet you can make clearly better for this job; leave the rest out of bullet_rewrites.""",
+)
+LEVEL_RULES = {"reword": REWORD_RULES, "rewrite": REWRITE_RULES}
+
+
+def instructions(level: str = "strict", check: bool = True) -> str:
+    """The tailoring rules for a strictness level (config.STRICTNESS), with
+    or without the claim checks."""
     text = INSTRUCTIONS
-    if level == "reword":
-        for old, new in zip(STRICT_RULES, REWORD_RULES):
-            text = text.replace(old, new)
+    swaps = list(zip(STRICT_RULES, LEVEL_RULES.get(level, STRICT_RULES)))
+    if not check:
+        swaps += zip(CHECKED_RULES, OPEN_RULES)
+    for old, new in swaps:
+        text = text.replace(old, new)
     return text
+
+
+# Without the claim checks the model may name what the work plainly
+# involved; it still may not make anything up.
+CHECKED_RULES = (
+    """1. Truthfulness comes first. A skill may appear in an entry's bullets or tech line only if it is in that entry's VERIFIED SKILLS list. Skills-section rows may use only the VERIFIED INVENTORY. If the job wants something the resume doesn't support, report it as "missing" in jd_keywords and do not add it anywhere.""",
+    """2. Never add or change numbers, metrics, company names, job titles, dates or URLs.""",
+    """append a few items the job asks for that are in that entry's VERIFIED SKILLS (tech lines) or the VERIFIED INVENTORY (skills rows).""",
+)
+OPEN_RULES = (
+    """1. Stay true to the person's work. The VERIFIED lists are what the resume shows for sure; beyond them you may name tools, skills and practices an entry's work plainly involved (a REST API means HTTP and JSON, a deployed web app means some hosting), in bullets, tech lines and skills rows. Never claim experience the resume gives no grounds for: report it as "missing" in jd_keywords instead.""",
+    """2. Never invent metrics, company names, job titles, dates or URLs, and keep the person's numbers as they are.""",
+    """append a few items the job asks for that the entry's work plainly involved (tech lines) or that the resume as a whole backs (skills rows).""",
+)
+assert all(r in INSTRUCTIONS for r in CHECKED_RULES)
+
+
+@dataclass(frozen=True)
+class Rules:
+    """How one tailoring may change the resume: the strictness level
+    (config.STRICTNESS), the user's banned phrases, and whether edits are held
+    to the master resume's claims."""
+    level: str = "strict"
+    banned: tuple = ()
+    check: bool = True
+
+
+def check_claims() -> bool:
+    return bool(_tailoring("check_claims"))
 
 
 BackendError = ai.BackendError
@@ -250,15 +293,17 @@ def estimate(backend: str, system: str, user: str, purpose: str, questions: int 
     return ai.estimate(provider, system, user, purpose, questions, exact) if provider else None
 
 
-def tailor_prompt(res: rt.Resume, job: dict, jd: str, level: str = "strict") -> tuple[str, str]:
+def tailor_prompt(res: rt.Resume, job: dict, jd: str, level: str = "strict",
+                  check: bool = True) -> tuple[str, str]:
     """(system, user). The rules and resume are the same for every job, so
     the API backends cache them; only the job block varies."""
-    return instructions(level) + "\n\n" + _resume_block(res), _job_block(job, jd)
+    return instructions(level, check) + "\n\n" + _resume_block(res), _job_block(job, jd)
 
 
 def estimate_tailor(master_tex: str, job: dict, jd: str, backend: str, level: str | None = None,
                     exact: bool = True, confirmed=()) -> dict | None:
-    system, user = tailor_prompt(rt.confirm(rt.parse(master_tex), confirmed), job, jd, level or strictness())
+    system, user = tailor_prompt(rt.confirm(rt.parse(master_tex), confirmed), job, jd, level or strictness(),
+                                 check_claims())
     return estimate(backend, system, user, "tailor", exact=exact)
 
 
@@ -266,7 +311,7 @@ def build_manual_prompt(master_tex: str, job: dict, jd: str, level: str | None =
     """Everything a chat model needs, for pasting into ChatGPT or Claude by hand."""
     res = rt.confirm(rt.parse(master_tex), confirmed)
     return "\n\n".join([
-        instructions(level or strictness()),
+        instructions(level or strictness(), check_claims()),
         "Reply with a single JSON object and nothing else, matching this JSON Schema:\n"
         + json.dumps(SCHEMA, indent=1),
         _resume_block(res),
@@ -822,7 +867,25 @@ def refit_targets(text: str, fit: rt.Fit) -> tuple[int, int]:
     return int((n - 0.12) * per), int(n * per) - 2
 
 
-def refit_bullets(res: rt.Resume, state: dict, bad: dict, backend: str, jd: str) -> tuple[dict[str, str], float | None]:
+def accepted(res: rt.Resume, bid: str, text: str, jd: str, rules: Rules = Rules()) -> str | None:
+    """A model's second try at a bullet (a refit or a fix-up), held to the
+    first rewrite's checks and to reading like the person: the text to use,
+    or None."""
+    found = res.bullet(bid)
+    new = rt.sanitize(str(text or ""))
+    if not found or not new:
+        return None
+    entry, b = found
+    new = rt.match_ending(b.tex, new)
+    basis = rt.entry_evidence(entry) if rules.level == "rewrite" else b.tex
+    if rt.check_latex(new) or (rules.check and rt.check_honesty(basis, new, entry.allowed, res.vocabulary, jd)) \
+            or rt.style_problems(b.tex, new, rules.banned):
+        return None
+    return new
+
+
+def refit_bullets(res: rt.Resume, state: dict, bad: dict, backend: str, jd: str,
+                  rules: Rules = Rules()) -> tuple[dict[str, str], float | None]:
     """New wording for spilled bullets, each held to the same honesty checks
     as the first rewrite: {id: text} for the ones that passed, and the cost."""
     blocks = []
@@ -834,18 +897,65 @@ def refit_bullets(res: rt.Resume, state: dict, bad: dict, backend: str, jd: str)
     out = {}
     for item in raw.get("bullets") or []:
         bid = str(item.get("id", ""))
-        found = res.bullet(bid)
-        new = rt.sanitize(str(item.get("text", "")))
-        if bid not in bad or not found or not new:
-            continue
-        entry, b = found
-        if not (rt.check_latex(new) or rt.check_honesty(b.tex, new, entry.allowed, res.vocabulary, jd)):
+        new = accepted(res, bid, item.get("text"), jd, rules) if bid in bad else None
+        if new:
             out[bid] = new
     return out, cost
 
 
+# One fix-up pass for rewrites that read as machine-written (resume_tex.
+# style_problems): the problems are named, the result is checked again, and
+# what still reads that way keeps the master's wording.
+MACHINE = "reads as machine-written"
+
+POLISH_RULES = """You fix resume bullets that read as machine-written. Each comes with the applicant's ORIGINAL wording, the CURRENT tailored version, and the PROBLEMS found in it.
+
+Rules
+1. Rewrite CURRENT without the problems, keeping its meaning, the job keywords it uses and about its length.
+2. Write like the applicant's ORIGINAL: their kind of verbs and punctuation, plain and specific. No em dashes, no clause tacked on to sound like impact (", ensuring ...", ", enabling ..."), no stock resume words ("spearheaded", "leveraged", "utilized", "robust", "seamless").
+3. Never add a skill, tool, number, date, employer or claim that isn't in ORIGINAL or CURRENT.
+4. Keep the LaTeX commands CURRENT uses and add none.
+5. Return every bullet you were given, by its id.
+"""
+
+
+def polish(res: rt.Resume, state: dict, changes: list[rt.Change], backend: str, jd: str,
+           rules: Rules = Rules()) -> float | None:
+    """Fix the rewrites plan_edits listed in state["style"]. Returns the cost."""
+    bad = {bid: p for bid, p in (state.pop("style", None) or {}).items() if bid in state["rewrites"]}
+    if not bad:
+        return None
+    log = {c.target: c for c in changes if c.kind == "bullet" and c.status == "applied"}
+    fixed, cost = {}, None
+    if backend != "manual":
+        blocks = []
+        for bid, problems in bad.items():
+            _, b = res.bullet(bid)
+            blocks.append(f"ID {bid}\nORIGINAL\n{b.tex.strip()}\nCURRENT\n{state['rewrites'][bid].strip()}"
+                          f"\nPROBLEMS: {', '.join(problems)}")
+        try:
+            raw, _, cost = ask(backend, POLISH_RULES, "BULLETS\n\n" + "\n\n".join(blocks), REFIT_SCHEMA, "refit")
+        except BackendError:
+            raw = {}
+        for item in raw.get("bullets") or []:
+            bid = str(item.get("id", ""))
+            new = accepted(res, bid, item.get("text"), jd, rules) if bid in bad else None
+            if new:
+                fixed[bid] = new
+    for bid, problems in bad.items():
+        if bid in fixed:
+            state["rewrites"][bid] = fixed[bid]
+            if bid in log:
+                log[bid].after = rt.plain(fixed[bid])
+        else:
+            state["rewrites"].pop(bid)
+            if bid in log:
+                log[bid].status, log[bid].reason = "rejected", f"{MACHINE} ({', '.join(problems)})"
+    return cost
+
+
 def fit_lines(res: rt.Resume, state: dict, changes: list[rt.Change], layout: dict, measure,
-              backend: str, jd: str) -> float | None:
+              backend: str, jd: str, rules: Rules = Rules()) -> float | None:
     """Fix the edits that spill (see above). `measure()` compiles the current
     state into `layout`. Returns what the extra model call cost."""
     bad = spilled(state, layout)
@@ -882,7 +992,7 @@ def fit_lines(res: rt.Resume, state: dict, changes: list[rt.Change], layout: dic
         new = {}
         if backend != "manual":
             try:
-                new, cost = refit_bullets(res, state, bullets, backend, jd)
+                new, cost = refit_bullets(res, state, bullets, backend, jd, rules)
             except BackendError:
                 new = {}
         for bid in bullets:
@@ -922,18 +1032,24 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
     if len(jd.strip()) < 200:
         raise BackendError("The job description is too short to tailor against. Paste the full posting.")
     level = level or strictness()
+    check = check_claims()
     started = time.time()
     res = rt.confirm(rt.parse(master_tex), confirmed)
     cost = None
     if backend == "manual":
         raw, model = parse_manual_answer(manual_answer or ""), "pasted answer"
     else:
-        system, user = tailor_prompt(res, job, jd, level)
+        system, user = tailor_prompt(res, job, jd, level, check)
         raw, model, cost = ask(backend, system, user, SCHEMA, "tailor", cache_system=True)
     if not rewrite_bullets:
         raw = {**raw, "bullet_rewrites": []}
 
-    _, changes, state = rt.plan_edits(res, raw, jd, level)
+    # The user's own banned phrases, from Settings, writing voice.
+    rules = Rules(level, tuple(voice_settings()["banned_phrases"]), check)
+    _, changes, state = rt.plan_edits(res, raw, jd, level, rules.banned, check)
+    fixed = polish(res, state, changes, backend, jd, rules)
+    if fixed is not None:
+        cost = (cost or 0) + fixed
 
     # Every compile marks where each piece's lines end (resume_tex "Line
     # layout"); the saved .tex has no marks. Should the marks themselves not
@@ -968,7 +1084,7 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
         marks[0] = True
         pages = compile_now()
 
-    refit = fit_lines(res, state, changes, layout, compile_now, backend, jd)
+    refit = fit_lines(res, state, changes, layout, compile_now, backend, jd, rules)
     if refit is not None:
         cost = (cost or 0) + refit
     pages = last[0]
@@ -1035,5 +1151,6 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
         "master_digest": res.digest,
         "instruction": clean_instruction(job.get("instruction")),
         "strictness": level,
+        "check_claims": check,
         "cost": cost,
     }

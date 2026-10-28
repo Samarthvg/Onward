@@ -497,6 +497,127 @@ class StrictnessTests(unittest.TestCase):
         with self.assertRaises(config.SettingsError):
             st.update({"tailoring": {"strictness": "anything goes"}})
 
+    def test_rewrite_draws_on_the_whole_entry_only(self):
+        tex = TEX.replace(r"\section*{Skills}", "\n".join([
+            r"\textbf{Second Corp} \hfill 2024 \\", r"\textit{Intern}", r"\begin{itemize}",
+            r"\item Ran 300 load tests on the checkout service.", r"\end{itemize}", r"\section*{Skills}"]))
+        res = rt.parse(tex)
+
+        def plan(text, level):
+            return rt.plan_edits(res, {"bullet_rewrites": [{"id": "B1", "text": text}]}, JD, level)[1][0]
+        sibling = r"Built billing APIs in \textbf{Python} and FastAPI on AWS, cutting p95 latency by 40\%."
+        self.assertEqual(plan(sibling, "rewrite").status, "applied")
+        self.assertEqual(plan(sibling, "reword").status, "rejected")
+        other = r"Built billing APIs in \textbf{Python} and FastAPI on AWS, tested with 300 load tests."
+        self.assertEqual(plan(other, "rewrite").status, "rejected")
+
+    def test_rewrite_rules_reach_the_prompt(self):
+        rules = tailor.instructions("rewrite")
+        for line in tailor.REWRITE_RULES:
+            self.assertIn(line.strip()[:40], rules)
+        for rule in ("1. Truthfulness comes first.", "2. Never add or change numbers"):
+            self.assertIn(rule, rules)
+        self.assertIn("rewrite a bullet from scratch", tailor.build_manual_prompt(TEX, {}, JD, "rewrite"))
+
+    def test_the_run_level_wins_over_the_setting(self):
+        tmp = Path(tempfile.mkdtemp(prefix="jr-level-"))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        st = config.Store(tmp / "settings.json", tmp)
+        st.update({"tailoring": {"strictness": "reword"}})
+        with mock.patch.object(server, "STORE", st):
+            self.assertEqual(server.tailor_level({"strictness": "rewrite"}), "rewrite")
+            self.assertEqual(server.tailor_level({}), "reword")
+            self.assertEqual(server.tailor_level({"strictness": "anything goes"}), "reword")
+
+
+# --------------------------------------------------------------------------
+
+class HumanVoiceTests(unittest.TestCase):
+    """Tailored bullets read like the person wrote them."""
+
+    def setUp(self):
+        self.res = rt.parse(TEX)
+
+    def test_flags_only_what_the_rewrite_adds(self):
+        old = "Built billing APIs in Python on AWS."
+        self.assertEqual(rt.style_problems(old, old), [])
+        found = rt.style_problems(old, "Spearheaded robust billing APIs in Python on AWS \u2014 ensuring uptime, "
+                                       "enabling faster releases.")
+        self.assertIn('"Spearheaded"', found)
+        self.assertIn('"robust"', found)
+        self.assertIn("a dash", found)
+        self.assertTrue(any("tacked-on" in f for f in found), found)
+        # The person's own words stay theirs.
+        self.assertEqual(rt.style_problems("Leveraged Redis to cut latency.", "Leveraged Redis caching to cut latency."), [])
+        self.assertEqual(rt.style_problems(old, "Built billing APIs in Python on AWS for checkout.", ["for checkout"]),
+                         ['"for checkout"'])
+
+    def test_rewrites_end_like_the_originals(self):
+        self.assertEqual(rt.match_ending("Built APIs.", "Built billing APIs"), "Built billing APIs.")
+        self.assertEqual(rt.match_ending("Built APIs", "Built billing APIs."), "Built billing APIs")
+        self.assertEqual(rt.match_ending("Built APIs", "Built billing APIs"), "Built billing APIs")
+
+    def machine_written(self):
+        text = r"Spearheaded billing APIs in \textbf{Python} and FastAPI on AWS."
+        _, changes, state = rt.plan_edits(self.res, {"bullet_rewrites": [{"id": "B1", "text": text}]}, JD)
+        self.assertEqual(state["style"], {"B1": ['"Spearheaded"']})
+        return changes, state
+
+    def test_polish_fixes_a_machine_written_bullet(self):
+        changes, state = self.machine_written()
+        fix = {"bullets": [{"id": "B1", "text": r"Wrote billing APIs in \textbf{Python} and FastAPI on AWS."}]}
+        with mock.patch.object(tailor, "ask", return_value=(fix, "m", 0.01)) as ask:
+            self.assertEqual(tailor.polish(self.res, state, changes, "openai-api", JD), 0.01)
+        self.assertIn("PROBLEMS: \"Spearheaded\"", ask.call_args.args[2])
+        self.assertEqual(state["rewrites"]["B1"], fix["bullets"][0]["text"])
+        self.assertEqual((changes[0].status, changes[0].after),
+                         ("applied", "Wrote billing APIs in Python and FastAPI on AWS."))
+
+    def test_polish_reverts_what_it_cannot_fix(self):
+        for backend, answer in (("openai-api", {"bullets": [{"id": "B1", "text": "Leveraged billing APIs in "
+                                                                                  r"\textbf{Python} on AWS."}]}),
+                                ("manual", None)):
+            changes, state = self.machine_written()
+            with mock.patch.object(tailor, "ask", return_value=(answer, "m", 0.0)) as ask:
+                tailor.polish(self.res, state, changes, backend, JD)
+            self.assertEqual(ask.called, backend != "manual")
+            self.assertNotIn("B1", state["rewrites"])
+            self.assertEqual(changes[0].status, "rejected")
+            self.assertTrue(changes[0].reason.startswith(tailor.MACHINE), changes[0].reason)
+
+    def test_claim_checks_can_be_turned_off(self):
+        unbacked = r"Built billing APIs in \textbf{Python} and FastAPI on Kubernetes and AWS."
+        out = {"bullet_rewrites": [{"id": "B1", "text": unbacked}]}
+        self.assertEqual(rt.plan_edits(self.res, out, JD)[1][0].status, "rejected")
+        self.assertEqual(rt.plan_edits(self.res, out, JD, check=False)[1][0].status, "applied")
+        # Formatting rules hold either way.
+        bad = {"bullet_rewrites": [{"id": "B1", "text": r"Built \textbf{billing APIs."}]}
+        self.assertEqual(rt.plan_edits(self.res, bad, JD, check=False)[1][0].status, "rejected")
+        self.assertIsNone(tailor.accepted(self.res, "B1", unbacked, JD))
+        self.assertEqual(tailor.accepted(self.res, "B1", unbacked, JD, tailor.Rules(check=False)), unbacked)
+
+    def test_open_rules_replace_the_verified_only_rules(self):
+        checked, open_ = tailor.instructions("reword"), tailor.instructions("reword", check=False)
+        for old, new in zip(tailor.CHECKED_RULES, tailor.OPEN_RULES):
+            self.assertIn(old, checked)
+            self.assertNotIn(old, open_)
+            self.assertIn(new, open_)
+        self.assertIn("rephrase a bullet freely", open_)
+        tmp = Path(tempfile.mkdtemp(prefix="jr-claims-"))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        st = config.Store(tmp / "settings.json", tmp)
+        config.use(st)
+        self.addCleanup(config.use, None)
+        self.assertIn(tailor.CHECKED_RULES[0], tailor.build_manual_prompt(TEX, {}, JD))
+        st.update({"tailoring": {"check_claims": False}})
+        self.assertIn(tailor.OPEN_RULES[0], tailor.build_manual_prompt(TEX, {}, JD))
+
+    def test_the_prompt_asks_for_the_persons_voice(self):
+        for level in config.STRICTNESS:
+            rules = tailor.instructions(level)
+            self.assertIn("Write like the person", rules)
+            self.assertIn("No em dashes", rules)
+
 
 class MigrationTests(unittest.TestCase):
     def test_claude_model_moves_to_providers(self):

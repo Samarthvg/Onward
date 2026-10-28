@@ -52,7 +52,7 @@ class DefaultsTests(Tmp):
                                         "years_penalty": 0.35, "min_experience_fit": 0.15,
                                         "unstated_years_fit": 0.85, "unknown_keyword_weight": 0.8})
         self.assertEqual(d["tailoring"], {"backend": "chatgpt", "draft_backend": "chatgpt", "target_pages": 1,
-                                          "strictness": "strict"})
+                                          "strictness": "strict", "check_claims": True})
         self.assertEqual(d["providers"]["anthropic"]["model"], "claude-opus-5-5")
         (r,) = d["roles"]
         self.assertEqual((r["id"], r["title_keywords"], r["seniority"], r["countries"], r["visa"]["status"]),

@@ -2344,9 +2344,24 @@ function renderTailorForm(j, jd, history) {
       el("div", {}, el("b", { text: be.name }), el("span", { text: ready ? be.desc() : (be.setup || "Not available") }))));
   }
 
-  const rewrite = el("input", { type: "checkbox", id: "rewriteChk" });
-  rewrite.checked = store.get("rewrite", true);
-  rewrite.addEventListener("change", () => store.set("rewrite", rewrite.checked));
+  // How much this run may change: "none" only reorders and trims, the rest
+  // are the strictness levels. Remembered per browser, else the setting.
+  const levels = [["none", "Only reorder and trim"], ...["strict", "reword", "rewrite"].map((k) => [k, LABELS.strictness[k][0]])];
+  const change = el("select", { id: "changeSel" }, ...levels.map(([v, label]) => el("option", { value: v, text: label })));
+  const saved = store.get("change", store.get("rewrite", true) === false ? "none" : "");
+  change.value = levels.some(([v]) => v === saved) ? saved : (SETTINGS.tailoring.strictness || "strict");
+  const changeNote = el("p", { class: "note" });
+  const syncChange = () => {
+    changeNote.textContent = change.value === "none"
+      ? "Bullets keep their words. Only the order, the tech lines and the skills change, and weak bullets may be cut."
+      : LABELS.strictness[change.value][1]
+        + (SETTINGS.tailoring.check_claims === false ? " Edits aren't checked against your resume (Settings, Tailoring)." : "");
+  };
+  change.addEventListener("change", () => { store.set("change", change.value); syncChange(); estimate(); });
+  syncChange();
+  const level = () => change.value === "none"
+    ? { rewrite: false, strictness: SETTINGS.tailoring.strictness || "strict" }
+    : { rewrite: true, strictness: change.value };
 
   const jdBox = el("textarea", { class: "jd", id: "jdBox", placeholder: "Paste the full job description here." });
   jdBox.value = jd;
@@ -2360,7 +2375,7 @@ function renderTailorForm(j, jd, history) {
     el("p", { text: "1. Copy the prompt and paste it into ChatGPT, Claude or any chat. 2. Paste its whole reply below. 3. Apply." }),
     el("div", {}, el("button", { type: "button", text: "Copy prompt", onclick: async () => {
       try {
-        const { prompt } = await api("/api/prompt", { key: j.key, jd: jdBox.value, instruction: instr.value, role: tailorRole(j) });
+        const { prompt } = await api("/api/prompt", { key: j.key, jd: jdBox.value, instruction: instr.value, role: tailorRole(j), ...level() });
         await navigator.clipboard.writeText(prompt);
         toast("Prompt copied. Paste it into your chat.");
       } catch (e) { fail(e); }
@@ -2378,7 +2393,7 @@ function renderTailorForm(j, jd, history) {
     estTimer = setTimeout(async () => {
       const seq = ++estSeq;
       try {
-        const e = await api("/api/estimate", { backend: chosen, key: j.key, jd: jdBox.value, instruction: instr.value, role: tailorRole(j) });
+        const e = await api("/api/estimate", { backend: chosen, key: j.key, jd: jdBox.value, instruction: instr.value, role: tailorRole(j), ...level() });
         if (seq !== estSeq || e.cost == null) return;
         const month = new Date().toLocaleString(undefined, { month: "long" });
         costLine.replaceChildren(
@@ -2394,7 +2409,7 @@ function renderTailorForm(j, jd, history) {
   const start = () => {
     if (jdBox.value.trim().length < 200) { toast("The job description is too short to tailor from. Copy the whole posting from the job's page and paste it into the Job description box."); jdBox.focus(); return; }
     if (chosen === "manual" && !answer.value.trim()) { toast("Paste the chat's whole answer into the box first, then press Apply answer."); answer.focus(); return; }
-    runTailor(j, { backend: chosen, jd: jdBox.value, rewrite: rewrite.checked, answer: answer.value, instruction: instr.value },
+    runTailor(j, { backend: chosen, jd: jdBox.value, ...level(), answer: answer.value, instruction: instr.value },
       go, result, retailor, refreshHistory);
   };
   // "Adjust" under a result: the request goes into the form and tailoring runs again.
@@ -2423,7 +2438,7 @@ function renderTailorForm(j, jd, history) {
 
   $("tailorBody").replaceChildren(...[
     el("p", { class: "section-h", text: "Model" }), opts, costLine,
-    el("label", { class: "toggle" }, rewrite, " Reword bullets to use the job's keywords (otherwise only reorders, trims, and updates tech lines and skills)"),
+    el("label", { class: "section-h", for: "changeSel", text: "How much to change" }), el("div", { style: "display:grid;gap:4px" }, change, changeNote),
     el("label", { class: "section-h", for: "jdBox", text: "Job description" + (jd ? " (saved from the posting, edit if needed)" : "") }), jdBox,
     el("label", { class: "section-h", for: "tailorInstr", text: "Your request for this version" }), instr,
     manual,
@@ -2549,7 +2564,8 @@ function renderResult(r, out, onAdjust) {
     el("div", { class: "row" },
       el("b", { text: `${r.pages} page${r.pages === 1 ? "" : "s"}` }),
       el("span", { class: "note", text: `${r.model} · ${r.seconds}s` + (r.cost != null ? ` · ${money(r.cost)}` : "")
-        + (r.strictness === "reword" ? " · reworded freely" : "") }),
+        + (r.strictness && r.strictness !== "strict" && LABELS.strictness[r.strictness] ? ` · ${LABELS.strictness[r.strictness][0].toLowerCase()}` : "")
+        + (r.check_claims === false ? " · edits not checked against your resume" : "") }),
       el("span", { class: "spacer", style: "flex:1" }),
       el("a", { class: "btn primary", href: "/files/" + r.pdf, target: "_blank", rel: "noopener", text: "Open PDF ↗" }),
       el("a", { class: "btn", href: "/files/" + r.tex, download: r.tex, text: "Download .tex" })),
@@ -2909,7 +2925,8 @@ const LABELS = {
     "openai-api": "OpenAI API key (billed per use)", "claude-api": "Anthropic API key (billed per use)", manual: "Paste into any chat" },
   strictness: {
     strict: ["Strict", "Bullets keep their wording. The model may only swap in the job's terms for things a bullet already says."],
-    reword: ["Reword", "Bullets may be rephrased and restructured to fit the job. Still never adds a skill, number or job-only term your resume doesn't back."],
+    reword: ["Reword", "Bullets may be rephrased and restructured to fit the job."],
+    rewrite: ["Rewrite", "Bullets may be rewritten from scratch from everything that job or project's entry says, and may grow to fill their lines."],
   },
   tones: { casual: ["Casual", "Like a student talking to a person: contractions, plain words."],
     neutral: ["Neutral", "Friendly and direct, neither chatty nor stiff."],
@@ -3082,6 +3099,8 @@ function syncLocalSettings() {
   const s = cfg.data && cfg.data.settings;
   if (!s) return;
   SETTINGS.tailoring.backend = s.tailoring.backend;
+  SETTINGS.tailoring.strictness = s.tailoring.strictness;
+  SETTINGS.tailoring.check_claims = s.tailoring.check_claims;
   SETTINGS.notices = s.notices;
   if (!!s.ui.advanced !== state.advanced) setAdvanced(!!s.ui.advanced, { save: false });
 }
@@ -3466,6 +3485,8 @@ function tailoringCard() {
   const pages = number(t.target_pages, 1, 3, 1);
   const strict = radios("How much tailoring may change", "strictness",
     ch.strictness.map((k) => [k, ...LABELS.strictness[k]]), t.strictness);
+  const claims = el("input", { type: "checkbox" });
+  claims.checked = t.check_claims;
   const adv = advanced();
   return el("section", { class: "card", "aria-labelledby": "tailH" },
     el("h3", { id: "tailH", text: "Resume tailoring and the apply queue" }),
@@ -3473,13 +3494,17 @@ function tailoringCard() {
       field("Tailor with", backend, "The model picked first in the Tailor resume dialog."),
       field("Draft form answers with", draft, "Used by the browser extension when you don't pick one."),
       strict.node,
+      el("div", { class: "field wide" },
+        el("label", { class: "toggle" }, claims, "Block edits my resume doesn't back"),
+        el("p", { class: "note", text: "On: an edit that adds a skill, a number or a job-only term your resume doesn't show is undone. "
+          + "Off: the model may name what your work plainly involved, and nothing is undone. It's still told never to invent results, employers or dates, so read the changes before you send it." })),
       adv ? field("Resume length (pages)", pages) : null),
     el("div", { class: "rowline" },
       el("button", { type: "button", text: "Apply queue settings…", onclick: async () => { await loadQueue(); openPrefs(); } }),
       el("span", { class: "note", text: "Minimum match, daily model runs, notifications." })),
     saveBar("Save tailoring", () => postSettings({ tailoring: {
-      backend: backend.value, draft_backend: draft.value, strictness: strict.get(), ...(adv ? { target_pages: +pages.value } : {}),
-    } }, "the tailoring settings").then((data) => { SETTINGS.tailoring.backend = backend.value; store.del("backend"); return data; }),
+      backend: backend.value, draft_backend: draft.value, strictness: strict.get(), check_claims: claims.checked, ...(adv ? { target_pages: +pages.value } : {}),
+    } }, "the tailoring settings").then((data) => { SETTINGS.tailoring.backend = backend.value; SETTINGS.tailoring.strictness = strict.get(); SETTINGS.tailoring.check_claims = claims.checked; store.del("backend"); store.del("change"); return data; }),
       "Saved the tailoring settings.", "the tailoring settings"));
 }
 

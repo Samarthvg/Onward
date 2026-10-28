@@ -254,7 +254,7 @@ TAILOR_BACKENDS = ("chatgpt", "claude-code", "openai-api", "claude-api", "manual
 DRAFT_BACKENDS = ("chatgpt", "claude-code", "openai-api", "claude-api")
 # strict: bullets keep their wording except for the job's terms; reword: they may
 # be rephrased freely. Both reject new skills, numbers and job-only terms.
-STRICTNESS = ("strict", "reword")
+STRICTNESS = ("strict", "reword", "rewrite")
 SETUP_STEPS = ("welcome", "resume", "profile", "role", "ai", "extension", "fetch")
 SOURCES = ("greenhouse", "lever", "ashby", "workday", "smartrecruiters", "oracle", "eightfold", "amazon", "icims")
 
@@ -393,6 +393,9 @@ SCHEMA = Obj({
         "draft_backend": Str("chatgpt", choices=DRAFT_BACKENDS),
         "target_pages": Int(1, 1, 3),
         "strictness": Str("strict", choices=STRICTNESS),
+        # Block edits that name a skill, number or job-only term the master
+        # resume doesn't back (resume_tex.check_honesty).
+        "check_claims": Bool(True),
     }),
     # The user's own API keys (stored by ai.py, never here): model and monthly
     # budget in US dollars. A budget of 0 blocks every paid call.

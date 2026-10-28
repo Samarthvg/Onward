@@ -618,6 +618,13 @@ UNDO_APPLY = {"settings": _undo_settings, "files": _undo_files, "prep": _undo_pr
 # --------------------------------------------------------------------------
 # Jobs
 
+def tailor_level(data: dict) -> str:
+    """How much one tailoring may change (config.STRICTNESS): the dashboard's
+    choice for this run, else the user's setting."""
+    level = str(data.get("strictness") or "")
+    return level if level in config.STRICTNESS else STORE.section("tailoring")["strictness"]
+
+
 def run_job(jid: str, params: dict) -> None:
     def update(**kw):
         with JOBS_LOCK:
@@ -631,7 +638,8 @@ def run_job(jid: str, params: dict) -> None:
                 "instruction": params.get("instruction", "")}
         result = tailor.tailor(master, meta, params["jd"], backend, OUT_DIR,
                                rewrite_bullets=params.get("rewrite", True),
-                               manual_answer=params.get("answer"), confirmed=PREP.confirmed_skills())
+                               manual_answer=params.get("answer"), level=params.get("level"),
+                               confirmed=PREP.confirmed_skills())
         conn = db()
         try:
             with conn:
@@ -1079,11 +1087,11 @@ class Handler(BaseHTTPRequestHandler):
                       "title": row.get("title", data.get("title", "")),
                       "backend": str(data.get("backend") or STORE.section("tailoring")["backend"]), "rewrite": bool(data.get("rewrite", True)),
                       "answer": data.get("answer"), "instruction": tailor.clean_instruction(data.get("instruction")),
-                      "role": role}
+                      "role": role, "level": tailor_level(data)}
             if path == "/api/prompt":
                 try:
                     prompt = tailor.build_manual_prompt(master_path(role).read_text(encoding="utf-8"), params, jd,
-                                                        confirmed=PREP.confirmed_skills())
+                                                        params["level"], confirmed=PREP.confirmed_skills())
                 except ValueError as e:
                     return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
                 return self._json(200, {"prompt": prompt})
@@ -1206,7 +1214,7 @@ class Handler(BaseHTTPRequestHandler):
                "instruction": tailor.clean_instruction(data.get("instruction"))}
         try:
             est = tailor.estimate_tailor(master_path(role).read_text(encoding="utf-8"), job, jd, backend,
-                                         confirmed=PREP.confirmed_skills())
+                                         tailor_level(data), confirmed=PREP.confirmed_skills())
         except ValueError as e:
             return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
         budget = ai.settings(provider)["monthly_budget"]

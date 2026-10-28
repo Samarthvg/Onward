@@ -29,6 +29,7 @@ from typing import NamedTuple
 
 import skillset
 import texengine
+import voice
 
 ROOT = Path(__file__).resolve().parent
 _TAXONOMY = skillset.TAXONOMY
@@ -689,17 +690,70 @@ class Change:
 
 # How far a rewritten bullet may grow, per tailoring strictness: (factor,
 # extra characters) over the original's plain text. "reword" lets a bullet
-# be restructured, which tends to lengthen it. Everything else, the honesty
-# checks above in particular, is the same at every level.
-BULLET_GROWTH = {"strict": (1.3, 40), "reword": (1.5, 40)}
+# be restructured, which tends to lengthen it; "rewrite" may also draw on the
+# entry's other bullets. The honesty checks above are the same at every
+# level, measured against the bullet, or for "rewrite" against its entry.
+BULLET_GROWTH = {"strict": (1.3, 40), "reword": (1.5, 40), "rewrite": (1.8, 50)}
+
+# Words and shapes that mark a resume line as machine-written, on top of the
+# user's own banned phrases (Settings, writing voice). A rewrite may not add
+# one its original didn't have.
+RESUME_TELLS = (
+    "spearhead*", "utiliz*", "orchestrat*", "champion*", "showcas*", "harness*", "pioneer*", "revolutioniz*",
+    "transformative", "pivotal", "innovative", "state-of-the-art", "best-in-class", "world-class", "meticulous*",
+    "comprehensive", "holistic", "empower*", "foster*", "facilitat*", "elevat*", "bolster*", "underscor*",
+    "proven track record", "results-driven", "detail-oriented", "high-impact", "game-changing", "a wide range of",
+    "myriad", "plethora", "delv*", "tapestry", "seamless*", "robust", "cutting-edge", "leverag*", "synerg*",
+    "not only ... but also", "in order to",
+)
+DASH = re.compile("[—–]")
+# ", ensuring reliability" / ", enabling faster releases": a clause tacked on
+# to sound like impact.
+TACKED_ON = re.compile(r",\s+(?:thereby\s+)?(?:ensuring|enabling|driving|fostering|resulting in|leading to|"
+                       r"allowing|empowering|showcasing|highlighting|underscoring|enhancing|boosting)\b", re.I)
 
 
-def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict") -> tuple[list[tuple[Span, str]], list[Change], dict]:
+def style_problems(old: str, new: str, banned=()) -> list[str]:
+    """What a rewrite adds that reads as machine-written, as short phrases
+    for the change log and the fix-up prompt."""
+    old_p, new_p = plain(old), plain(new)
+    out = []
+    for rx in voice.compile_phrases(tuple(banned) + RESUME_TELLS):
+        m = rx.search(new_p)
+        if m and not rx.search(old_p):
+            out.append(f'"{m.group(0)}"')
+    if len(DASH.findall(new_p)) > len(DASH.findall(old_p)):
+        out.append("a dash")
+    m = TACKED_ON.search(new_p)
+    if m and not TACKED_ON.search(old_p):
+        out.append(f'a tacked-on "{m.group(0).strip(", ")} ..." ending')
+    return out
+
+
+def match_ending(old: str, new: str) -> str:
+    """The rewrite ends the way the person ends their bullets: with a full
+    stop or without."""
+    if plain(old).rstrip().endswith("."):
+        return new if plain(new).rstrip().endswith(".") else new.rstrip() + "."
+    return new.rstrip()[:-1] if new.rstrip().endswith(".") else new
+
+
+def entry_evidence(e: Entry) -> str:
+    """Everything an entry says, which a "rewrite" bullet may draw on."""
+    return "\n".join([e.title, e.tech_tex, *(b.tex for b in e.bullets)])
+
+
+def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict",
+               banned=(), check: bool = True) -> tuple[list[tuple[Span, str]], list[Change], dict]:
     """Turn model output into concrete span replacements plus a change log.
-    Anything that fails validation is logged as rejected and left unchanged."""
+    Anything that fails validation is logged as rejected and left unchanged.
+    `check` False skips check_honesty (the user turned it off).
+    Rewrites that read as machine-written are kept for now and listed in
+    state["style"] ({id: problems}) for one fix-up pass (tailor.polish)."""
     factor, extra = BULLET_GROWTH.get(strictness, BULLET_GROWTH["strict"])
     changes: list[Change] = []
     rewrites: dict[str, str] = {}
+    style: dict[str, list[str]] = {}
 
     for item in out.get("bullet_rewrites", []):
         found = res.bullet(item.get("id", ""))
@@ -709,14 +763,19 @@ def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict") -> t
         new = sanitize(item.get("text", ""))
         if not new or plain(new) == plain(b.tex):
             continue
+        new = match_ending(b.tex, new)
+        basis = entry_evidence(entry) if strictness == "rewrite" else b.tex
         reason = (check_latex(new)
                   or (len(plain(new)) > len(plain(b.tex)) * factor + extra and "makes the bullet much longer")
-                  or check_honesty(b.tex, new, entry.allowed, res.vocabulary, jd))
+                  or (check and check_honesty(basis, new, entry.allowed, res.vocabulary, jd)))
         if reason:
             changes.append(Change("bullet", b.id, entry.title, plain(b.tex), plain(new), "rejected", reason))
         else:
             rewrites[b.id] = new
             changes.append(Change("bullet", b.id, entry.title, plain(b.tex), plain(new)))
+            problems = style_problems(b.tex, new, banned)
+            if problems:
+                style[b.id] = problems
 
     tech_new: dict[str, str] = {}
     by_id = {e.id: e for e in res.entries}
@@ -728,7 +787,7 @@ def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict") -> t
         if not new or plain(new) == plain(e.tech_tex):
             continue
         reason = (check_latex(new) or check_list_edit(e.tech_tex, new)
-                  or check_honesty(e.tech_tex, new, e.allowed, res.vocabulary, jd))
+                  or (check and check_honesty(e.tech_tex, new, e.allowed, res.vocabulary, jd)))
         if reason:
             changes.append(Change("tech", e.id, e.title, plain(e.tech_tex), plain(new), "rejected", reason))
         else:
@@ -745,7 +804,7 @@ def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict") -> t
         if not new or plain(new) == plain(r.tex):
             continue
         reason = (check_latex(new) or check_list_edit(r.tex, new)
-                  or check_honesty(r.tex, new, res.inventory, res.vocabulary, jd))
+                  or (check and check_honesty(r.tex, new, res.inventory, res.vocabulary, jd)))
         if reason:
             changes.append(Change("skills", r.id, r.label, plain(r.tex), plain(new), "rejected", reason))
         else:
@@ -765,7 +824,7 @@ def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict") -> t
     suggest_bullets = [bid for bid in out.get("drop_bullets", []) if res.bullet(bid)]
     state = {"rewrites": rewrites, "tech": tech_new, "rows": rows_new,
              "drop_entries": set(), "drop_bullets": set(), "rank": rank,
-             "suggest_entries": suggest_entries, "suggest_bullets": suggest_bullets}
+             "suggest_entries": suggest_entries, "suggest_bullets": suggest_bullets, "style": style}
     return build_spans(res, state), changes, state
 
 
