@@ -101,6 +101,10 @@ const HANDLERS = {
     // Jobs and schools from the master resume, for Work Experience and Education sections.
     return helper("/api/resume/entries?url=" + encodeURIComponent(clip(msg.url, 2000)));
   },
+  /* The keywords Onward scores this job by, read from its stored description. */
+  async "jr:jobKeywords"(msg) {
+    return helper("/api/job/keywords?url=" + encodeURIComponent(clip(msg.url, 2000)));
+  },
   async "jr:prepared"(msg, sender) {
     const url = clip(msg.url, 2000);
     let data;

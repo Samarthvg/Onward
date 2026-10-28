@@ -1,9 +1,11 @@
 // Mock of a Workday candidate application (*.myworkdayjobs.com .../apply),
-// a React wizard whose fields carry data-automation-id names. Real Workday
-// markup varies by tenant; this follows the commonly seen ids: legalNameSection_*,
-// formField-* wrappers, listbox buttons with a popup menu, the multiselect
-// search prompt (searchBox / promptOption) and file-upload-input-ref.
-import React, { useState } from "react";
+// a React wizard whose fields carry data-automation-id names. It follows the
+// markup live tenants served in October 2026 (saved, cleaned, in
+// test/fixtures/workday-real/): formField-* wrappers around inputs named
+// "name--legalName--firstName", listbox buttons with a popup list, search-and-pick
+// boxes ("selectinput"), sections grouped by their heading ("Work-Experience-section")
+// with Add buttons that are submit buttons, and file-upload-input-ref.
+import React, { useState, useRef, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
 import { exposeState } from "./common.js";
@@ -32,20 +34,26 @@ function Text({ id, aid, inputAid, label, required, type = "text" }) {
   );
 }
 
+// A listbox button, as on live Workday: the button names its list with
+// aria-controls; the list opens in a popup and closes on a choice or Escape.
 function ListButton({ id, aid, buttonAid, label, options, required }) {
   const [v, setV] = useState(S[id] || "");
   const [open, setOpen] = useState(false);
   S[id] = v;
+  const listId = id + "-list";
   return (
     <Field id={id} aid={aid} label={label} required={required}>
-      <button type="button" id={id} aria-haspopup="listbox" aria-expanded={open ? "true" : "false"} data-automation-id={buttonAid}
-        onClick={() => setOpen((o) => !o)}>{v || "Select One"}</button>
+      <button type="button" id={id} aria-haspopup="listbox" aria-expanded={open ? "true" : "false"} aria-controls={open ? listId : undefined}
+        data-automation-id={buttonAid} aria-label={`${label} ${v || "Select One"}${required ? " Required" : ""}`}
+        onClick={() => setOpen((o) => !o)} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>{v || "Select One"}</button>
+      {/* Live Workday keeps an unnamed text input beside each listbox button. */}
+      <input type="text" tabIndex={-1} style={{ width: 2, minWidth: 0, border: 0, padding: 0 }} />
       {open ? createPortal(
         <div data-automation-id="popUpDialog" style={{ position: "fixed", top: 40, left: 40, background: "#fff", border: "1px solid #999" }}>
-          <ul role="listbox" aria-label={label}>
-            {options.map((o) => (
-              <li key={o} role="option" aria-selected={v === o ? "true" : "false"} onClick={() => { setV(o); setOpen(false); }}>
-                <div data-automation-id="promptOption">{o}</div>
+          <ul role="listbox" id={listId} aria-label={label} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>
+            {["Select One", ...options].map((o) => (
+              <li key={o} role="option" aria-selected={(v || "Select One") === o ? "true" : "false"} onClick={() => { setV(o === "Select One" ? "" : o); setOpen(false); }}>
+                <div>{o}</div>
               </li>
             ))}
           </ul>
@@ -54,27 +62,87 @@ function ListButton({ id, aid, buttonAid, label, options, required }) {
   );
 }
 
-function Prompt({ id, aid, label, options, required, multi }) {
+// Workday's search-and-pick box, as served by live tenants in 2026: closed, the
+// input is a "selectinput" with no automation id; open, it is "searchBox" and its
+// list sits in a popup outside the form. Enter searches after a short wait; a
+// search with exactly one match picks it at once. A choice can be a category with
+// its own list. Picks are pills in the box. A scripted Escape doesn't close the
+// list; a click outside it does. `options` is a list of strings, or of
+// [category, [choices]] pairs; `browse` lists the top level before any search
+// ("No Items." otherwise, like School and Skills).
+function Prompt({ id, aid, label, options, required, multi, browse = false }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState(null);   // the list on screen: [{ text, children }]
   const [chosen, setChosen] = useState(S[id] || []);
   S[id] = chosen;
-  const hits = options.filter((o) => o.toLowerCase().includes(q.toLowerCase()));
+  const boxRef = useRef(null), popRef = useRef(null);
+  const tree = options.map((o) => (Array.isArray(o) ? { text: o[0], children: o[1].map((c) => ({ text: c })) } : { text: o }));
+  const leaves = tree.flatMap((n) => n.children || [n]);
+  const top = browse ? tree : [];
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (!boxRef.current.contains(e.target) && !(popRef.current && popRef.current.contains(e.target))) setOpen(false); };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+  // In a multi-select, clicking a ticked choice unticks it, as on live Workday.
+  const pick = (text, toggle = false) => {
+    const next = multi ? (chosen.includes(text) ? (toggle ? chosen.filter((c) => c !== text) : chosen) : [...chosen, text]) : [text];
+    setChosen(next);
+    S[id] = next;
+    setQ("");
+    setOpen(false);
+  };
+  const search = () => {
+    const term = q.trim().toLowerCase();
+    setOpen(true);
+    setShown(shown || top);
+    // Results come back from the server a moment later.
+    setTimeout(() => {
+      const hits = term ? leaves.filter((l) => l.text.toLowerCase().includes(term)) : top;
+      if (term && hits.length === 1) { pick(hits[0].text); return; }
+      setShown(hits);
+    }, 350);
+  };
+  const list = shown || top;
   return (
     <Field id={id} aid={aid} label={label} required={required}>
-      <div data-automation-id="multiselectInputContainer">
-        {chosen.map((c) => <div key={c} data-automation-id="selectedItem">{c}</div>)}
-        <input id={id} data-automation-id="searchBox" placeholder="Search" value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setOpen(true); } if (e.key === "Escape") setOpen(false); }} />
+      <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
+        <div data-automation-id="multiselectInputContainer" ref={boxRef}>
+          <div>
+            <input id={id} data-automation-id={open ? "searchBox" : undefined} data-uxi-widget-type="selectinput" placeholder="Search"
+              autoComplete="off" aria-required={required ? "true" : "false"} value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onClick={() => { if (!open) { setOpen(true); setShown(top); } }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }} />
+            <div data-automation-id="promptAriaInstruction" aria-hidden="true">{open ? "Expanded" : `${chosen.length} item${chosen.length === 1 ? "" : "s"} selected`}</div>
+          </div>
+          {chosen.length ? (
+            <ul role="listbox" data-automation-id="selectedItemList" aria-label="items selected">
+              {chosen.map((c) => (
+                <li key={c} role="presentation"><div role="option" data-automation-id="selectedItem" aria-label={c + ", press delete to clear value."}>
+                  <p data-automation-id="promptOption" data-automation-label={c}>{c}</p></div></li>
+              ))}
+            </ul>) : null}
+          <span data-automation-id="promptIcon" aria-hidden="true" />
+        </div>
       </div>
       {open ? createPortal(
-        <div data-automation-id="activeListContainer" role="listbox">
-          {hits.map((o) => (
-            <div key={o} role="option" data-automation-id="promptLeafNode" onClick={() => { setChosen(multi ? (chosen.includes(o) ? chosen : [...chosen, o]) : [o]); setQ(""); setOpen(false); }}>
-              <div data-automation-id="promptOption">{o}</div>
-            </div>
-          ))}
+        <div data-automation-id="responsiveMonikerPrompt" ref={popRef} style={{ position: "fixed", top: 60, left: 360, background: "#fff", border: "1px solid #999" }}>
+          <div data-automation-id="activeListContainer" role="listbox" aria-label="Options Expanded">
+            {(list.length ? list : [{ text: "No Items." }]).map((n, k) => (
+              // aria-selected marks the highlighted row (the first), not a ticked one.
+              <div key={n.text} role="option" data-automation-id="menuItem" aria-label={n.text + (chosen.includes(n.text) ? " checked" : " not checked")}
+                aria-selected={k === 0 ? "true" : "false"}>
+                {/* The click is taken inside the row, not on the row itself. */}
+                <div data-automation-id="promptLeafNode" data-automation-checked={chosen.includes(n.text) ? "Checked" : "Not Checked"}
+                  onClick={() => { if (n.text === "No Items.") return; if (n.children) setShown(n.children); else pick(n.text, true); }}>
+                  <div data-automation-id="promptOption" data-automation-label={n.text}>{n.text}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>, document.body) : null}
     </Field>
   );
@@ -124,6 +192,23 @@ function Agreement() {
 
 const YN = ["Yes", "No"];
 
+// A section as live Workday groups it: role=group labelled by its heading's id.
+function Section({ name, title = name, note, children }) {
+  const hid = title.replace(/\s+/g, "-") + "-section";
+  return (
+    <div role="group" aria-labelledby={hid}>
+      <h4 id={hid}>{title}</h4>
+      {note ? <div>{note}</div> : null}
+      {children}
+    </div>
+  );
+}
+
+// Workday's Add and Add Another: plain <button>s, so submit buttons.
+function AddButton({ onClick, label = "Add" }) {
+  return <button data-automation-id="add-button" onClick={onClick}>{label}</button>;
+}
+
 // ?empty: the sections start with no rows, only a heading and an Add button
 // (Workday when you apply without its resume parser), and carry no section ids.
 const EMPTY = new URLSearchParams(location.search).has("empty");
@@ -136,6 +221,7 @@ if (!EMPTY) Object.assign(S, {
   "workExperience-1--startDate-dateSectionMonth-input": "07", "workExperience-1--startDate-dateSectionYear-input": "2025",
   "workExperience-1--endDate-dateSectionMonth-input": "01", "workExperience-1--endDate-dateSectionYear-input": "2026",
   "education-1--schoolName": "Example State University", "education-1--gradeAverage": "4",
+  "skills--skills": ["Java (Programming Language)"],
 });
 
 function Area({ id, aid, label, maxLength }) {
@@ -161,15 +247,29 @@ function Check({ id, aid, label }) {
   );
 }
 
-/** Workday's date widget: separate month and year spinbuttons under one label. */
+/** Workday's date widget: separate month and year spinbuttons under one label.
+ * As on live Workday, digits arrive as key presses; the number is kept in
+ * aria-valuenow and shown in a display beside the box, and the input itself stays empty. */
 function DateParts({ id, aid, label, month = true, day = false }) {
   const part = (p, name, size) => {
     const pid = `${id}-dateSection${p}-input`;
     const [v, setV] = useState(S[pid] || "");
-    const [committed, setCommitted] = useState(S[pid] || "");
-    S[pid] = committed;
-    return <input id={pid} role="spinbutton" aria-label={name} data-automation-id={`dateSection${p}-input`} size={size} value={v}
-      onChange={(e) => setV(e.target.value.replace(/\D/g, "").slice(0, size))} onBlur={(e) => setCommitted(e.target.value)} />;
+    S[pid] = v;
+    const typed = useRef("");
+    const onKeyDown = (e) => {
+      if (!/^\d$/.test(e.key)) return;
+      e.preventDefault();
+      typed.current = (typed.current + e.key).slice(-size);
+      setV(typed.current.padStart(size, "0"));
+    };
+    return (
+      <div id={`${id}-dateSection${p}`}>
+        <div aria-hidden="true" data-automation-id={`dateSection${p}-display`}>{v || (p === "Year" ? "YYYY" : p === "Month" ? "MM" : "DD")}</div>
+        <input id={pid} role="spinbutton" aria-label={name} data-automation-id={`dateSection${p}-input`} size={size} value=""
+          aria-valuenow={v ? String(parseInt(v, 10)) : undefined} aria-valuetext={v ? String(parseInt(v, 10)) : undefined}
+          onChange={() => {}} onKeyDown={onKeyDown} onFocus={() => { typed.current = ""; }} />
+      </div>
+    );
   };
   return (
     <div data-automation-id={"formField-" + aid}>
@@ -179,7 +279,9 @@ function DateParts({ id, aid, label, month = true, day = false }) {
   );
 }
 
-const SKILL_LIST = ["Angular", "Express.js", "Java", "JavaScript", "Node.js", "Python", "React.js", "SQL", "TypeScript", "Kotlin", "Go"];
+// Skill names as Workday's skills list words them; the resume says "Java", "React.js", "Node.js".
+const SKILL_LIST = ["Angular", "Express.js", "Java (Programming Language)", "JavaScript", "Node JS", "Python (Programming Language)",
+  "React (JavaScript Library)", "SQL", "TypeScript", "Kotlin", "Go (Programming Language)", "C++ Programming Language"];
 
 function Skills() {
   return (
@@ -195,8 +297,7 @@ function Languages() {
   S.__langs = n;
   const LEVELS = ["Beginner", "Intermediate", "Advanced", "Fluent"];
   return (
-    <div {...(EMPTY ? {} : { "data-automation-id": "languageSection", role: "group", "aria-labelledby": "language-heading" })}>
-      <h3 id="language-heading">Languages</h3>
+    <Section name="Languages">
       {Array.from({ length: n }, (_, i) => i + 1).map((k) => {
         const p = `language-${k}--`;
         return (
@@ -210,8 +311,8 @@ function Languages() {
           </div>
         );
       })}
-      <button type="button" data-automation-id="Add" onClick={() => setN(n + 1)}>Add</button>
-    </div>
+      <AddButton onClick={() => setN(n + 1)} label={n ? "Add Another" : "Add"} />
+    </Section>
   );
 }
 
@@ -219,15 +320,14 @@ function Websites() {
   const [n, setN] = useState(S.__sites ?? 0);
   S.__sites = n;
   return (
-    <div>
-      <h3>Websites</h3>
+    <Section name="Websites" title="LinkedIn" note="Add any relevant websites.">
       {Array.from({ length: n }, (_, i) => i + 1).map((k) => (
         <div key={k} data-automation-id={`webAddress-${k}`}>
           <Text id={`webAddress-${k}--url`} aid="url" label="URL" required />
         </div>
       ))}
-      <button type="button" data-automation-id="Add" onClick={() => setN(n + 1)}>Add</button>
-    </div>
+      <AddButton onClick={() => setN(n + 1)} label={n ? "Add Another" : "Add"} />
+    </Section>
   );
 }
 
@@ -249,7 +349,7 @@ function Projects() {
           </div>
         );
       })}
-      <button type="button" data-automation-id="Add" onClick={() => setN(n + 1)}>Add</button>
+      <AddButton onClick={() => setN(n + 1)} />
     </div>
   );
 }
@@ -258,15 +358,14 @@ function Certifications() {
   const [n, setN] = useState(S.__certs ?? 0);
   S.__certs = n;
   return (
-    <div>
-      <h3>Certifications</h3>
+    <Section name="Certifications">
       {Array.from({ length: n }, (_, i) => i + 1).map((k) => (
         <div key={k} data-automation-id={`certification-${k}`}>
           <Text id={`certification-${k}--certification`} aid="certification" label="Certification" />
         </div>
       ))}
-      <button type="button" data-automation-id="Add" onClick={() => setN(n + 1)}>Add</button>
-    </div>
+      <AddButton onClick={() => setN(n + 1)} />
+    </Section>
   );
 }
 
@@ -278,13 +377,12 @@ function WorkHistory() {
   const nums = (k) => Array.from({ length: k }, (_, i) => i + 1);
   return (
     <>
-      <div {...(EMPTY ? {} : { "data-automation-id": "workExperienceSection", role: "group", "aria-labelledby": "workExperience-heading" })}>
-        <h3 id="workExperience-heading">Work Experience</h3>
+      <Section name="Work Experience">
         {nums(jobs).map((n) => {
           const p = `workExperience-${n}--`;
           return (
-            <div key={n} data-automation-id={`workExperience-${n}`}>
-              <h4>Work Experience {n}</h4>
+            <div key={n} role="group" aria-labelledby={`Work-Experience-${n}-panel`}>
+              <h5 id={`Work-Experience-${n}-panel`}>Work Experience {n}</h5>
               <Text id={p + "jobTitle"} aid="jobTitle" label="Job Title" required />
               <Text id={p + "companyName"} aid="companyName" label="Company" required />
               <Text id={p + "location"} aid="location" label="Location" />
@@ -295,17 +393,16 @@ function WorkHistory() {
             </div>
           );
         })}
-        <button type="button" data-automation-id="Add" aria-label={EMPTY ? undefined : "Add Work Experience"} onClick={() => setJobs(jobs + 1)}>{EMPTY ? "Add" : "Add Another"}</button>
-      </div>
-      <div {...(EMPTY ? {} : { "data-automation-id": "educationSection", role: "group", "aria-labelledby": "education-heading" })}>
-        <h3 id="education-heading">Education</h3>
+        <AddButton onClick={() => setJobs(jobs + 1)} label={jobs ? "Add Another" : "Add"} />
+      </Section>
+      <Section name="Education">
         {nums(schools).map((n) => {
           const p = `education-${n}--`;
           return (
-            <div key={n} data-automation-id={`education-${n}`}>
-              <h4>Education {n}</h4>
+            <div key={n} role="group" aria-labelledby={`Education-${n}-panel`}>
+              <h5 id={`Education-${n}-panel`}>Education {n}</h5>
               <Text id={p + "schoolName"} aid="schoolName" label="School or University" required />
-              <ListButton id={p + "degree"} aid="degree" label="Degree" options={["High School Diploma", "Bachelor's Degree", "Master's Degree", "Doctorate"]} />
+              <ListButton id={p + "degree"} aid="degree" label="Degree" options={["Not Completed", "High School", "AA", "AS", "Bachelor's", "MA", "MS", "MBA", "PhD"]} required />
               <Prompt id={p + "fieldOfStudy"} aid="fieldOfStudy" label="Field of Study" options={["Computer Engineering", "Computer Science", "Mathematics"]} />
               <Text id={p + "gradeAverage"} aid="gradeAverage" label="Overall Result (GPA)" />
               <DateParts id={p + "firstYearAttended"} aid="firstYearAttended" label="From" month={false} />
@@ -313,8 +410,8 @@ function WorkHistory() {
             </div>
           );
         })}
-        <button type="button" data-automation-id="Add" aria-label={EMPTY ? undefined : "Add Education"} onClick={() => setSchools(schools + 1)}>{EMPTY ? "Add" : "Add Another"}</button>
-      </div>
+        <AddButton onClick={() => setSchools(schools + 1)} label={schools ? "Add Another" : "Add"} />
+      </Section>
     </>
   );
 }
@@ -322,19 +419,24 @@ function WorkHistory() {
 function Step({ n }) {
   if (n === 0) return (
     <>
-      <Prompt id="source--source" aid="source" label="How Did You Hear About Us?" options={["Company Website", "Employee Referral", "Indeed", "LinkedIn"]} required />
+      <Prompt id="source--source" aid="source" label="How Did You Hear About Us?" browse required
+        options={[["Advertising", ["Indeed", "Handshake"]], ["Referral", ["Employee Referral"]], ["Social Network", ["Facebook", "LinkedIn", "Twitter"]], ["Website", ["Company Website"]]]} />
       <Radio id="previousWorker" label="Have you previously worked for Mock Co?" options={YN} />
-      <ListButton id="country--country" aid="country" buttonAid="countryDropdown" label="Country" options={["Canada", "India", "United Kingdom", "United States of America"]} required />
-      <Text id="name--legalName--firstName" aid="legalName--firstName" inputAid="legalNameSection_firstName" label="First Name" required />
-      <Text id="name--legalName--middleName" aid="legalName--middleName" inputAid="legalNameSection_middleName" label="Middle Name" />
-      <Text id="name--legalName--lastName" aid="legalName--lastName" inputAid="legalNameSection_lastName" label="Last Name" required />
-      <Text id="address--addressLine1" aid="addressLine1" inputAid="addressSection_addressLine1" label="Address Line 1" required />
-      <Text id="address--city" aid="city" inputAid="addressSection_city" label="City" required />
-      <Text id="address--postalCode" aid="postalCode" inputAid="addressSection_postalCode" label="Postal Code" required />
-      <Text id="emailAddress--emailAddress" aid="email" inputAid="email" label="Email Address" required type="email" />
-      <ListButton id="phoneNumber--phoneType" aid="phoneType" buttonAid="phone-device-type" label="Phone Device Type" options={["Mobile", "Home"]} required />
-      <Prompt id="phoneNumber--countryPhoneCode" aid="countryPhoneCode" label="Country Phone Code" options={["United States of America (+1)", "India (+91)"]} required />
-      <Text id="phoneNumber--phoneNumber" aid="phoneNumber" inputAid="phone-number" label="Phone Number" required type="tel" />
+      <ListButton id="country--country" aid="country" label="Country" options={["Canada", "India", "United Kingdom", "United States of America"]} required />
+      <Text id="name--legalName--firstName" aid="legalName--firstName" label="First Name" required />
+      <Text id="name--legalName--middleName" aid="legalName--middleName" label="Middle Name" />
+      <Text id="name--legalName--lastName" aid="legalName--lastName" label="Last Name" required />
+      <Text id="address--addressLine1" aid="addressLine1" label="Address Line 1" required />
+      <Text id="address--addressLine2" aid="addressLine2" label="Address Line 2" />
+      <Text id="address--city" aid="city" label="City" required />
+      <ListButton id="address--countryRegion" aid="countryRegion" label="State" options={["Massachusetts", "New York", "Texas"]} required />
+      <Text id="address--postalCode" aid="postalCode" label="Postal Code" required />
+      <Text id="emailAddress--emailAddress" aid="email" label="Email Address" required type="email" />
+      <ListButton id="phoneNumber--phoneType" aid="phoneType" label="Phone Device Type" options={["Fax", "Mobile", "Pager", "Telephone"]} required />
+      <Prompt id="phoneNumber--countryPhoneCode" aid="countryPhoneCode" label="Country Phone Code" required
+        options={["India (+91)", "United States Minor Outlying Islands (+1)", "United States of America (+1)"]} />
+      <Text id="phoneNumber--phoneNumber" aid="phoneNumber" label="Phone Number" required type="tel" />
+      <Text id="phoneNumber--extension" aid="extension" label="Phone Extension" />
     </>
   );
   if (n === 1) return (

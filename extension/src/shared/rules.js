@@ -10,8 +10,9 @@
 
   const PROFILE_FIELDS = [
     ["firstName", "First name"], ["lastName", "Last name"], ["preferredName", "Preferred first name (empty = first name)"],
-    ["email", "Email"], ["phone", "Phone"],
+    ["email", "Email"], ["phone", "Phone"], ["phoneType", "Phone type (Mobile, Home or Work)"],
     ["linkedin", "LinkedIn URL"], ["github", "GitHub URL"], ["portfolio", "Portfolio / website URL"],
+    ["address", "Street address (e.g. 123 Main St)"],
     ["location", "City, State (e.g. Boston, MA)"], ["country", "Country"], ["postalCode", "ZIP / postal code"],
     ["company", "Current or most recent company"], ["currentTitle", "Current or most recent job title"],
     ["school", "School"], ["degree", "Degree (e.g. Bachelor of Science)"], ["major", "Major / field of study"],
@@ -50,7 +51,7 @@
     ...STANDARD_ANSWERS.map(([k]) => [k, ""]),
     ...EEO_ANSWERS.map(([k]) => [k, DECLINE]),
   ]);
-  const PROFILE_DEFAULTS = { country: "United States", languages: "English" };
+  const PROFILE_DEFAULTS = { country: "United States", languages: "English", phoneType: "Mobile" };
   const DEFAULT_PROFILE = Object.fromEntries(PROFILE_FIELDS.map(([k]) => [k, PROFILE_DEFAULTS[k] || ""]));
   const DEFAULT_SETTINGS = {
     autoRun: false,            // fill as soon as an application form appears
@@ -60,6 +61,7 @@
     draftBackend: "chatgpt",   // one of DRAFT_BACKENDS
     helper: true,              // offer drafting through the local helper
     aiFill: true,              // answer the remaining questions with the helper after filling
+    fitSkills: true,           // add only the resume skills that fit the posting
   };
   // openai-api and claude-api bill the user's own key, within the budget set in Onward.
   const DRAFT_BACKENDS = ["chatgpt", "claude-code", "openai-api", "claude-api", "manual"];
@@ -114,8 +116,8 @@
     "consent", "\\bi (agree|acknowledge|certify|confirm|attest|understand|have read)",
     "\\backnowledge", "terms (and|&) conditions", "privacy (policy|notice)", "background check", "drug (test|screen)",
     "criminal", "convicted", "felony", "\\bpronouns?\\b", "\\bitar\\b", "export control", "\\bu s person\\b",
-    "security clearance", "\\bclearance\\b", "demographic", "self identif", "phone (device )?type", "device type",
-    "country (phone )?code", "phone code", "\\bextension\\b", "address line", "street address", "^address",
+    "security clearance", "\\bclearance\\b", "demographic", "self identif",
+    "\\bextension\\b", "address line (2|two)", "^address 2$", "\\bapt\\b", "apartment", "\\bsuite\\b", "\\bcounty\\b",
     "\\bmiddle name", "twitter", "facebook", "instagram", "\\bx com\\b",
   ].join("|"));
 
@@ -245,6 +247,12 @@
 
   function profileKey(s, kind) {
     const textual = TEXT_KINDS.has(kind);
+    // Before "phone" and "country": Workday's Phone Device Type and Country Phone Code.
+    if (/phone (device )?type|device type|type of phone/.test(s)) return { cat: "profile", key: "phoneType" };
+    if (/(phone|dialing|calling) (country )?code|country code/.test(s)) return { cat: "profile", key: "country" };
+    // A street line, or the whole address when the form has one box for it.
+    if (/address line (1|one)$|^address line$|^address 1$|street address|^street$/.test(s)) return textual ? { cat: "profile", key: "address" } : null;
+    if (/^(home |mailing |residential |permanent |full )?address$/.test(s)) return textual ? { cat: "profile", key: "address", transform: "full" } : null;
     if (/preferred (first )?name|nick ?name/.test(s)) return textual ? { cat: "profile", key: "preferredName" } : null;
     if (textual) {
       if (/\bfirst name\b|given name|\bfname\b|first_name|firstname/.test(s)) return { cat: "profile", key: "firstName" };
@@ -305,6 +313,11 @@
         v = US_STATES[st.toUpperCase()] || st;
       }
       if (cls.transform === "year") v = (v.match(/\b(19|20)\d{2}\b/) || [""])[0];
+      // One box for the whole address: "123 Main St, Boston, MA 02115".
+      if (cls.transform === "full" && v) {
+        v = [v, String(profile.location || "").trim()].filter(Boolean).join(", ");
+        if (profile.postalCode) v += " " + String(profile.postalCode).trim();
+      }
       return v;
     }
     if (cls.cat === "std") {
@@ -552,9 +565,28 @@
     const v = normQ(value);
     if (cls.key === "country") out.push(...(COUNTRY_ALIASES[v] || []));
     if (cls.key === "degree") {
-      if (/^(bachelor|b ?s\b|b ?a\b|b ?e\b|b ?tech|bsc)/.test(v)) out.push("Bachelor's Degree", "Bachelor's", "Bachelors", "Bachelor");
-      if (/^(master|m ?s\b|m ?a\b|m ?eng|msc|m ?tech)/.test(v)) out.push("Master's Degree", "Master's", "Masters", "Master");
-      if (/^(ph ?d|doctor)/.test(v)) out.push("Doctorate", "Ph.D.", "PhD");
+      // Workday sites list degrees by abbreviation too: "Bachelor's", "MS", "M.S.", "MBA".
+      const sci = /scien|^[bm] ?sc?\b/.test(v), arts = /\barts?\b|^[bm] ?a\b/.test(v);
+      const eng = /engineering|^[bm] ?e\b|^[bm] ?eng\b|^[bm] ?tech\b/.test(v);
+      if (/^(bachelor|b ?s\b|b ?a\b|b ?e\b|b ?tech|bsc|b ?eng)/.test(v)) {
+        out.push("Bachelor's Degree", "Bachelor's", "Bachelors", "Bachelor");
+        if (sci) out.push("Bachelor of Science", "BS", "B.S.", "BSc", "B.Sc.");
+        if (arts) out.push("Bachelor of Arts", "BA", "B.A.");
+        if (eng) out.push("Bachelor of Engineering", "BE", "B.E.", "BEng", "B.Tech", "BTech");
+      }
+      if (/^(mba\b|master of business)/.test(v)) out.push("MBA", "Master of Business Administration");
+      else if (/^(master|m ?s\b|m ?a\b|m ?eng|msc|m ?tech)/.test(v)) {
+        out.push("Master's Degree", "Master's", "Masters", "Master");
+        if (sci) out.push("Master of Science", "MS", "M.S.", "MSc", "M.Sc.");
+        if (arts) out.push("Master of Arts", "MA", "M.A.");
+        if (eng) out.push("Master of Engineering", "MEng", "M.Eng.", "M.Tech", "MTech");
+      }
+      if (/^(ph ?d|doctor)/.test(v)) out.push("Doctorate", "Ph.D.", "PhD", "Doctor of Philosophy");
+    }
+    if (cls.key === "phoneType") {
+      if (/mobile|cell/.test(v)) out.push("Mobile", "Cell", "Mobile Phone", "Cell Phone", "Personal Cell");
+      else if (/home|landline|telephone/.test(v)) out.push("Home", "Landline", "Telephone", "Home Phone");
+      else if (/work|office|business/.test(v)) out.push("Work", "Business", "Office", "Work Phone");
     }
     if (cls.key === "location" && !cls.transform) {
       // "Boston, MA" is listed as "Boston, Massachusetts, United States".
@@ -569,10 +601,222 @@
     return [...new Set(out.filter(Boolean))];
   }
 
+  /* ------------------------------------------------------------------ skills */
+
+  // Sites name skills their own way: "Java (Programming Language)", "C++ Programming
+  // Language", "Amazon Web Services (AWS)", "RAG Pipeline". Names in one group are one skill.
+  const SKILL_GROUPS = [
+    ["AWS", "Amazon Web Services"], ["GCP", "Google Cloud Platform", "Google Cloud"], ["Azure", "Microsoft Azure"],
+    ["JavaScript", "JS"], ["TypeScript", "TS"], ["Kubernetes", "K8s"], ["Machine Learning", "ML"], ["Deep Learning", "DL"],
+    ["Natural Language Processing", "NLP"], ["Computer Vision", "CV"], ["Artificial Intelligence", "AI"],
+    ["Generative AI", "GenAI", "Gen AI"], ["Large Language Models", "LLMs", "LLM"],
+    ["Object-Oriented Programming", "OOP"], ["Object-Oriented Design", "OOD"],
+    ["Data Structures & Algorithms", "Data Structures and Algorithms", "DSA"],
+    ["CI/CD", "CICD", "Continuous Integration and Continuous Delivery", "Continuous Integration/Continuous Deployment", "Continuous Integration"],
+    ["REST APIs", "RESTful APIs", "REST", "RESTful", "RESTful Web Services"], ["PostgreSQL", "Postgres"], ["MongoDB", "Mongo"],
+    ["TensorFlow", "TF"], ["Scikit-learn", "sklearn"], ["Hugging Face", "HuggingFace"],
+    ["RAG", "Retrieval-Augmented Generation", "RAG pipelines"], ["HTML", "HTML5"], ["CSS", "CSS3"],
+    ["Node.js", "Node", "NodeJS"], ["React", "React.js", "ReactJS"], ["Vue.js", "Vue", "VueJS"], ["Next.js", "NextJS"],
+    ["Express.js", "Express", "ExpressJS"], ["Angular", "AngularJS"], ["Go", "Golang"], ["C#", "C Sharp"], [".NET", "dotnet"],
+    ["Microservices", "Microservices Architecture"], ["Unit Testing", "Unit Tests"], ["SQL", "Structured Query Language"],
+    ["Git", "Git Version Control"], ["Docker", "Docker Containers"], ["LangChain"], ["LangGraph"],
+  ];
+
+  /** A skill name reduced to what identifies it. */
+  function skillKey(s) {
+    let t = String(s || "").toLowerCase()
+      .replace(/c\+\+/g, " cpp ").replace(/c#/g, " csharp ").replace(/\.net\b/g, " dotnet ").replace(/\.js\b/g, "js")
+      .replace(/&/g, " and ");
+    // What the site adds to say what kind of thing it is.
+    t = t.replace(/\(([^)]*)\)/g, (m, inner) => (/language|software|platform|framework|library|tool|database|service|system|technology/.test(inner) ? " " : m))
+      .replace(/\b(programming|scripting|markup|query) language\b/g, " ").replace(/\b(framework|library|software)\s*$/g, " ");
+    t = t.replace(/[^a-z0-9]+/g, " ").trim();
+    t = t.split(" ").filter((w) => w && w !== "and")
+      .map((w) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w)).join(" ");
+    return t.replace(/\b([a-z0-9]+) js\b/g, "$1js");
+  }
+
+  const SKILL_GROUP_OF = new Map();
+  SKILL_GROUPS.forEach((g, i) => g.forEach((n) => SKILL_GROUP_OF.set(skillKey(n), i)));
+
+  /** Every key a skill name stands for: itself, an abbreviation it gives in brackets, and its group. */
+  function skillForms(s) {
+    const out = new Set([skillKey(s)]);
+    const inBrackets = String(s || "").match(/\(([^)]+)\)/);
+    if (inBrackets) { out.add(skillKey(inBrackets[1])); out.add(skillKey(String(s).replace(/\([^)]*\)/g, " "))); }
+    for (const k of [...out]) {
+      if (SKILL_GROUP_OF.has(k)) SKILL_GROUPS[SKILL_GROUP_OF.get(k)].forEach((n) => out.add(skillKey(n)));
+      if (/js$/.test(k) && k.length > 4) out.add(k.slice(0, -2));
+    }
+    out.delete("");
+    return out;
+  }
+
+  function sameSkill(a, b) {
+    const fa = skillForms(a);
+    for (const k of skillForms(b)) if (fa.has(k)) return true;
+    return false;
+  }
+
+  /** "HTML5/CSS3" is two skills; "CI/CD" and "TCP/IP" are one. */
+  function splitSkills(list) {
+    const out = [];
+    for (const s of list || []) {
+      const parts = String(s).split(/\s*\/\s*/);
+      if (parts.length > 1 && !SKILL_GROUP_OF.has(skillKey(s)) && parts.every((p) => p.length >= 2 && SKILL_GROUP_OF.has(skillKey(p)))) out.push(...parts);
+      else out.push(s);
+    }
+    return [...new Set(out)];
+  }
+
+  /** What to type into a site's skill search: the name, then its singular or other names. At most three. */
+  function skillSearchTerms(s) {
+    const name = String(s || "").trim();
+    const terms = [name];
+    const singular = name.replace(/\b([A-Za-z]{4,})s\b/g, (m, w) => (/ss$/i.test(m) ? m : w));
+    terms.push(singular);
+    const g = SKILL_GROUP_OF.get(skillKey(name));
+    if (g != null) terms.push(...SKILL_GROUPS[g]);
+    const words = name.split(/\s+/);
+    if (words.length > 1 && words[0].length >= 2) terms.push(words[0]);
+    const seen = new Set();
+    return terms.filter((t) => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase())).slice(0, 3);
+  }
+
+  // What kind of work a skill belongs to, and the posting words that say a job is that kind.
+  // A skill can sit in several areas (Python is backend, data and ML).
+  const SKILL_AREAS = {
+    frontend: {
+      skills: ["HTML", "CSS", "JavaScript", "TypeScript", "React", "Vue.js", "Angular", "Next.js", "Svelte", "Redux", "jQuery",
+        "Tailwind CSS", "Sass", "Bootstrap", "Webpack", "Vite", "Figma", "Responsive Design", "Web Accessibility", "DOM", "Jest"],
+      words: ["front end", "frontend", "web", "user interface", "ui", "ux", "responsive", "browser", "single page", "full stack", "fullstack"],
+    },
+    backend: {
+      skills: ["Node.js", "Express.js", "REST APIs", "GraphQL", "gRPC", "Django", "Flask", "FastAPI", "Spring Boot", "Spring", "Java",
+        "Python", "Go", "C#", ".NET", "Ruby", "Ruby on Rails", "PHP", "Kotlin", "Scala", "Microservices", "SQL", "PostgreSQL", "MySQL",
+        "MongoDB", "Redis", "Kafka", "RabbitMQ", "DynamoDB", "Elasticsearch", "Hibernate", "Distributed Systems", "TypeScript"],
+      words: ["backend", "back end", "server side", "api", "microservice", "distributed system", "database", "full stack", "fullstack", "scalable"],
+    },
+    data: {
+      skills: ["SQL", "Python", "R", "Pandas", "NumPy", "Apache Spark", "Spark", "PySpark", "Hadoop", "Airflow", "dbt", "Snowflake",
+        "BigQuery", "Databricks", "Redshift", "Tableau", "Power BI", "Excel", "ETL", "Data Analysis", "Data Visualization", "Statistics",
+        "Kafka", "PostgreSQL", "MySQL", "Data Modeling", "Data Warehousing", "Jupyter", "Matplotlib"],
+      words: ["data engineer", "data pipeline", "etl", "analytic", "warehouse", "data science", "data scientist", "dashboard", "reporting", "big data"],
+    },
+    ml: {
+      skills: ["Machine Learning", "Deep Learning", "PyTorch", "TensorFlow", "Keras", "Scikit-learn", "Natural Language Processing",
+        "Computer Vision", "Large Language Models", "Generative AI", "Hugging Face", "RAG", "LangChain", "LangGraph", "Fine-tuning",
+        "Prompt Engineering", "MLOps", "Transformers", "OpenCV", "Python", "Pandas", "NumPy", "Artificial Intelligence",
+        "Reinforcement Learning", "Neural Networks", "Vector Databases", "XGBoost", "Statistics", "Jupyter", "CUDA"],
+      words: ["machine learning", "deep learning", "neural", "llm", "ml", "model training", "inference", "generative", "nlp", "computer vision"],
+    },
+    cloud: {
+      skills: ["AWS", "GCP", "Azure", "Docker", "Kubernetes", "Terraform", "CI/CD", "Jenkins", "GitHub Actions", "Linux", "Bash",
+        "Shell Scripting", "Ansible", "Prometheus", "Grafana", "Nginx", "Helm", "Serverless", "AWS Lambda", "CloudFormation"],
+      words: ["cloud", "devops", "infrastructure", "deploy", "deployment", "sre", "site reliability", "container", "observability", "pipeline"],
+    },
+    mobile: {
+      skills: ["Swift", "SwiftUI", "Kotlin", "Android", "iOS", "React Native", "Flutter", "Dart", "Objective-C", "Java", "Xcode"],
+      words: ["mobile", "android", "ios", "app store"],
+    },
+    systems: {
+      skills: ["C", "C++", "Rust", "Go", "Assembly", "Embedded Systems", "Operating Systems", "Multithreading", "Concurrency",
+        "Networking", "TCP/IP", "RTOS", "Linux", "Bash", "Verilog", "FPGA", "Computer Architecture", "Python"],
+      words: ["embedded", "firmware", "low level", "kernel", "real time", "operating system", "hardware", "systems programming", "driver"],
+    },
+    testing: {
+      skills: ["Selenium", "Playwright", "Cypress", "Jest", "PyTest", "JUnit", "Unit Testing", "Test Automation", "Postman", "Integration Testing"],
+      words: ["qa", "quality assurance", "test automation", "testing", "sdet"],
+    },
+  };
+  // The areas any general software job draws on.
+  const GENERAL_AREAS = ["frontend", "backend", "cloud", "systems", "testing"];
+  // Fine for any software job.
+  const GENERAL_SKILLS = ["Git", "GitHub", "Data Structures & Algorithms", "Object-Oriented Programming", "Object-Oriented Design",
+    "Unit Testing", "Agile", "Scrum", "Jira", "Debugging", "System Design", "Software Engineering", "Software Development",
+    "Problem Solving", "Version Control", "Code Review", "Linux", "Communication", "Teamwork"];
+
+  const AREA_OF = new Map();   // skill key -> area names
+  for (const [area, a] of Object.entries(SKILL_AREAS)) {
+    for (const n of a.skills) for (const k of skillForms(n)) AREA_OF.set(k, [...new Set([...(AREA_OF.get(k) || []), area])]);
+  }
+  const GENERAL_KEYS = new Set(GENERAL_SKILLS.flatMap((n) => [...skillForms(n)]));
+
+  function areasOf(skill) {
+    const out = new Set();
+    for (const k of skillForms(skill)) for (const a of AREA_OF.get(k) || []) out.add(a);
+    return out;
+  }
+
+  /** A posting read once, for asking which skills it names. */
+  function postingIndex(text) {
+    const raw = String(text || "");
+    return { raw, keys: " " + skillKey(raw) + " " };
+  }
+
+  /**
+   * Whether the posting names the skill, under any of its names. One- and two-letter
+   * names ("Go", "C", "AI") have to appear as written, so "go" and "a" in prose don't count.
+   */
+  function postingNames(index, skill) {
+    const names = new Set([String(skill || "").trim()]);
+    const inBrackets = String(skill || "").match(/\(([^)]+)\)/);
+    if (inBrackets) names.add(inBrackets[1].trim());
+    const g = SKILL_GROUP_OF.get(skillKey(skill));
+    if (g != null) SKILL_GROUPS[g].forEach((n) => names.add(n));
+    for (const k of skillForms(skill)) {
+      if (k.length > 2 && index.keys.includes(" " + k + " ")) return true;
+    }
+    for (const n of names) {
+      if (skillKey(n).length > 2 || !n || /^cv$/i.test(n)) continue;   // a CV is also a resume
+      const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp(`(?<![\\w.&+#-])${esc}(?![\\w&+#-])`).test(index.raw)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The resume skills worth adding to this job's skills box: those the posting names, then
+   * neighbours in the kind of work it's about (TypeScript for a React job), then the ones any
+   * software job takes (Git). The rest are left out: fine-tuning has no place on an HTML/CSS job.
+   * `keywords` are the ones Onward scores the job by (its checklist read from the stored
+   * description); a skill they name counts as named, alongside the posting's own text.
+   * Without a posting or keywords, or when they say too little to tell, every skill is kept.
+   */
+  function skillsForPosting(skills, posting, title, { keywords = [] } = {}) {
+    const list = Array.isArray(skills) ? skills.filter(Boolean) : [];
+    const kw = (Array.isArray(keywords) ? keywords : []).map((k) => (Array.isArray(k) ? k[0] : k))
+      .filter((k) => typeof k === "string" && k);
+    const hasPosting = String(posting || "").trim().length >= 200;
+    if (!hasPosting && !kw.length) return { keep: list, left: [], known: false };
+    const text = (hasPosting ? String(posting) : "") + "\n" + String(title || "") + "\n" + kw.join(", ");
+    const index = postingIndex(text);
+    // A skill shared by several areas (Python, SQL, Java) says nothing about which one the
+    // job is, so only an area's own skills and words count towards it.
+    const score = {};
+    for (const [area, a] of Object.entries(SKILL_AREAS)) {
+      let n = a.skills.filter((s) => areasOf(s).size === 1 && postingNames(index, s)).length;
+      n += a.words.filter((w) => index.keys.includes(" " + skillKey(w) + " ")).length;
+      score[area] = n;
+    }
+    const named = list.filter((s) => postingNames(index, s));
+    let areas = Object.keys(score).filter((a) => score[a] >= 2);
+    if (!areas.length) {
+      // A general software posting ("Java, Python, C++ or JavaScript") takes general software
+      // skills; the specialist ones (ML, data, mobile) only when it touches on them.
+      const touched = Object.keys(score).filter((a) => score[a] >= 1);
+      if (!touched.length && !named.length) return { keep: list, left: [], known: false };
+      areas = [...new Set([...GENERAL_AREAS, ...touched])];
+    }
+    const near = list.filter((s) => !named.includes(s)
+      && ([...skillForms(s)].some((k) => GENERAL_KEYS.has(k)) || [...areasOf(s)].some((a) => areas.includes(a))));
+    return { keep: [...named, ...near], left: list.filter((s) => !named.includes(s) && !near.includes(s)), known: true, areas };
+  }
+
   root.JR = root.JR || {};
   root.JR.rules = {
     PROFILE_FIELDS, STANDARD_ANSWERS, EEO_ANSWERS, DECLINE, DEFAULT_ANSWERS, DEFAULT_PROFILE, DEFAULT_SETTINGS, DRAFT_BACKENDS, withDefaults,
     US_STATES, CHOICE_KINDS, TEXT_KINDS, clean, normQ, classify, answerFor, pickOption, asText, alternatives, DECLINE_RE, historyField,
-    companyKey, sameCompany, companyNames, namesIn, mentions, savedAnswerUse, languageList, relevantEntries,
+    companyKey, sameCompany, companyNames, namesIn, mentions, savedAnswerUse, languageList, relevantEntries, skillKey, sameSkill, splitSkills, skillSearchTerms, skillsForPosting,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

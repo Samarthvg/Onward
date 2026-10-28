@@ -90,7 +90,10 @@
       }
       const textual = R.TEXT_KINDS.has(q.kind) || q.kind === "textarea";
       if (textual && cls.cat === "eeo") return Object.assign(base, { status: "needs", why: "answer this yourself" });
-      const values = textual ? [asText(cls, v)] : alternatives(cls, v);
+      // A search box is searched by the answer's own words, then matched against its other names
+      // ("United States" finds "United States of America (+1)").
+      const values = q.kind === "prompt" ? [...new Set([asText(cls, v), ...alternatives(cls, v)])]
+        : textual ? [asText(cls, v)] : alternatives(cls, v);
       if (!values[0]) return Object.assign(base, { status: "needs", why: "answer this yourself" });
       if (q.kind === "checkbox" && q.multi && cls.key === "languages") {
         // Check all that apply: tick every language that's listed.
@@ -189,7 +192,9 @@
         const own = (re) => qs.some((q) => !q.history && re.test(q.label + " " + q.attrs));
         const p = store.profile;
         const websites = [p.portfolio, p.github, own(/linked ?in/i) ? "" : p.linkedin].filter(Boolean);
-        const r = await H.fillExtras(qs, { skills: hist ? hist.skills || [] : [], languages: p.languages, websites,
+        const skills = hist ? hist.skills || [] : [];
+        const fit = skills.length && store.settings.fitSkills ? await fitSkills(skills) : { keep: skills, left: [] };
+        const r = await H.fillExtras(qs, { skills: fit.keep, skillsLeft: fit.left, languages: p.languages, websites,
           certifications: hist ? hist.certifications || [] : [], projects: hist ? hist.projects || [] : [],
           recollect, allowAdd: workday, ours: filledByUs, progress: (status) => JR.panel.update({ status }) });
         qs = r.qs;
@@ -450,12 +455,25 @@
     if (Object.keys(writes).length) await api.storage.local.set(writes);
   }
 
+  /**
+   * The resume skills that fit this job: judged by the keywords Onward scores it by when the
+   * app knows the job, and by the posting's own text (from the page or the ATS) either way.
+   */
+  async function fitSkills(skills) {
+    let keywords = [];
+    if (store.settings.helper) {
+      const r = await api.runtime.sendMessage({ type: "jr:jobKeywords", url: location.href }).catch(() => null);
+      if (r && !r.error && r.found && Array.isArray(r.keywords)) keywords = r.keywords;
+    }
+    return R.skillsForPosting(skills, await JR.sites.postingText(document), JR.sites.jobInfo(document).title, { keywords });
+  }
+
   /** The saved jobs and projects that relate to this posting, for the AI; the rest aren't sent. */
   async function jobEntries() {
     try {
       const { history } = await api.storage.local.get("history");
       const info = JR.sites.jobInfo(document);
-      return R.relevantEntries(history, JR.sites.jobDescription(document), info.title);
+      return R.relevantEntries(history, await JR.sites.postingText(document), info.title);
     } catch (e) {
       return "";
     }

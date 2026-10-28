@@ -156,6 +156,27 @@ def job_by_url(page_url: str) -> dict | None:
     return {"company": row[0], "title": row[1], "description": row[2] or "", "url": row[3], "key": row[4]} if row else None
 
 
+def job_keywords(page_url: str) -> dict:
+    """The keywords (reqparse.keywords: [name, weight, "title"|"req"|"pref"]) of the
+    job whose form is at page_url; found False when Onward doesn't know the job or
+    hasn't read its description."""
+    job = job_by_url(page_url) if page_url else None
+    if not job:
+        return {"found": False, "keywords": []}
+    conn = db()
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
+        row = conn.execute("SELECT kw FROM jobs WHERE key = ?", (job["key"],)).fetchone() if "kw" in cols else None
+    finally:
+        conn.close()
+    try:
+        kw = json.loads(row[0]) if row and row[0] else []
+    except ValueError:
+        kw = []
+    kw = [k for k in kw if isinstance(k, list) and k and isinstance(k[0], str)]
+    return {"found": bool(kw), "key": job["key"], "title": job["title"], "keywords": kw}
+
+
 # --------------------------------------------------------------------------
 # Settings and companies
 
@@ -843,6 +864,12 @@ class Handler(BaseHTTPRequestHandler):
                 job = job_by_url((q.get("url") or [""])[0][:2000])
                 key = job["key"] if job else ""
             return self._json(200, {"key": key, "next": next_job(key)})
+
+        if path == "/api/job/keywords":
+            # The posting's checklist the match score uses, so autofill adds the skills this job asks for.
+            if not self._origin_ok(allow_extension=True):
+                return self._err(HTTPStatus.FORBIDDEN, "Only the Onward extension can ask for this")
+            return self._json(200, job_keywords((q.get("url") or [""])[0][:2000]))
 
         if path in ("/api/prepared", "/api/queue/next"):
             if not self._origin_ok(allow_extension=True):

@@ -4,7 +4,7 @@
 (function (root) {
   "use strict";
   const JR = (root.JR = root.JR || {});
-  const { sleep, waitFor, visible, textOf, typeInto, clickSeq, key, keyChar, fire, nativeSetter, focusOut } = JR.dom;
+  const { sleep, waitFor, visible, textOf, typeInto, clickSeq, key, keyChar, fire, nativeSetter, focusIn, focusOut } = JR.dom;
   const { pickOption, normQ } = JR.rules;
 
   const PLACEHOLDER = /^(select|choose|please select|select one|select an option|--+|none selected)\b/i;
@@ -19,10 +19,33 @@
 
   /* --------------------------------------------------------------- simple */
 
-  function getText(q) { return q.el.value || ""; }
+  function getText(q) {
+    if (q.el.value || q.el.getAttribute("role") !== "spinbutton") return q.el.value || "";
+    // Workday's date spinbuttons keep the number in aria-valuenow and show it beside the box.
+    const now = q.el.getAttribute("aria-valuenow") || q.el.getAttribute("aria-valuetext") || "";
+    if (/^\d+$/.test(now) && now !== "0") return now;
+    const shown = q.el.parentElement && q.el.parentElement.querySelector("[data-automation-id$='-display']");
+    const t = shown ? textOf(shown) : "";
+    return /^\d+$/.test(t) ? t : "";
+  }
+
+  /* Workday's month, day and year boxes are spinbuttons driven by key presses.
+   * Live Workday shows what's typed in a display beside the box and keeps the
+   * number in aria-valuenow, so the input itself can read empty afterwards. */
+  async function setSpin(q, v) {
+    const el = q.el;
+    const took = () => parseInt(getText(q), 10) === parseInt(v, 10);
+    focusIn(el);
+    for (const ch of String(v)) keyChar(el, ch);
+    // A box that ignores key presses takes the value the usual way.
+    if (!(await waitFor(took, 300))) typeInto(el, String(v), { blur: false });
+    focusOut(el);
+    return (await waitFor(took, 800)) ? { ok: true, chosen: v } : { ok: false, why: "the page rejected the value" };
+  }
 
   async function setText(q, values) {
     const v = values[0];
+    if (q.el.getAttribute("role") === "spinbutton") return setSpin(q, v);
     const max = q.el.maxLength > 0 ? q.el.maxLength : 0;
     if (max && v.length > max) return { ok: false, why: `saved answer is longer than the ${max}-character limit` };
     return typeInto(q.el, v) ? { ok: true, chosen: v } : { ok: false, why: "the page rejected the value" };
@@ -99,14 +122,19 @@
     if (ctl) { const l = doc.getElementById(ctl); if (l && visible(l)) return l; }
     if (q.el.id) { const l = doc.getElementById("react-select-" + q.el.id + "-listbox"); if (l) return l; }
     const scope = q.container || q.el.parentElement;
-    const inner = scope && [...scope.querySelectorAll("[role='listbox'], [class*='menu']")].find((l) => visible(l) && l.querySelector("[role='option']"));
+    const inner = scope && [...scope.querySelectorAll("[role='listbox'], [class*='menu']")].find((l) => visible(l) && !isPills(l) && l.querySelector("[role='option']"));
     if (inner) return inner;
     return null;
   }
 
+  /** Workday shows a search box's picks as a listbox of pills; that is an answer, not a menu. */
+  function isPills(l) {
+    return l.matches("[data-automation-id='selectedItemList']") || !!l.closest("[data-automation-id='multiselectInputContainer']");
+  }
+
   /** The newest visible listbox anywhere: Workday renders its menus in a popup at the end of the body. */
   function popupListbox(doc) {
-    const all = [...doc.querySelectorAll("[role='listbox']")].filter((l) => visible(l) && l.querySelector("[role='option']"));
+    const all = [...doc.querySelectorAll("[role='listbox']")].filter((l) => visible(l) && !isPills(l) && l.querySelector("[role='option']"));
     return all[all.length - 1] || null;
   }
 
@@ -202,29 +230,153 @@
     return { ok: true, chosen: getListButton(q) || r.chosen };
   }
 
+  /* Workday's search-and-pick box ("prompt"): an input in a multiselectInputContainer
+   * whose choices open in a popup list (activeListContainer) outside the form.
+   * Enter searches; a search with exactly one match is picked at once, with no
+   * list shown. Picks show as selectedItem pills inside the box. A choice can be
+   * a category that opens a list of its own ("Social Network" > "LinkedIn"). */
+  const NOT_A_CHOICE = /^(no items|no results|no matches|loading|searching)\b/i;
+
+  function promptBox(q) {
+    return q.box || q.el.closest("[data-automation-id='multiselectInputContainer'], [data-automation-id='multiSelectContainer']") || q.el.parentElement;
+  }
+
+  function promptChips(q) {
+    return [...promptBox(q).querySelectorAll("[data-automation-id='selectedItem']")].map(textOf).filter(Boolean);
+  }
+
   function getPrompt(q) {
-    const box = q.box || q.el.parentElement;
-    return [...box.querySelectorAll("[data-automation-id='selectedItem'], [data-automation-id='promptSelectionLabel']")].map(textOf).join(", ");
+    const chips = promptChips(q);
+    if (chips.length) return chips.join(", ");
+    return [...promptBox(q).querySelectorAll("[data-automation-id='promptSelectionLabel']")].map(textOf).filter(Boolean).join(", ");
+  }
+
+  function promptList(doc) {
+    const all = [...doc.querySelectorAll("[data-automation-id='activeListContainer']")].filter(visible);
+    return all[all.length - 1] || null;
+  }
+
+  /** The open popup's choices, without placeholders ("No Items.") or another field's picked pills. */
+  function promptResults(doc) {
+    const list = promptList(doc);
+    if (!list) return [];
+    const nodes = [...list.querySelectorAll("[role='option']")];
+    const items = (nodes.length ? nodes : [...list.querySelectorAll("[data-automation-id='promptOption']")])
+      .filter((o) => visible(o) && !o.closest("[data-automation-id='selectedItemList']"));
+    return items.map((el) => {
+      const opt = el.matches("[data-automation-id='promptOption']") ? el : el.querySelector("[data-automation-id='promptOption']");
+      return { el, text: textOf(opt || el) };
+    }).filter((o) => o.text && !NOT_A_CHOICE.test(o.text));
+  }
+
+  /** Closes an open popup. Workday ignores a scripted Escape, so click outside it, or press the mobile dialog's close button. */
+  async function closePrompt(q) {
+    const doc = q.el.ownerDocument;
+    if (!promptList(doc)) return;
+    key(q.el, "Escape");
+    await sleep(60);
+    if (!promptList(doc)) return;
+    const dialog = [...doc.querySelectorAll("[data-automation-id='popUpDialog'], [role='dialog']")].find((d) => visible(d) && d.contains(promptList(doc)));
+    const x = dialog && [...dialog.querySelectorAll("button")].find((b) => visible(b) && /^(close|done|cancel)$/i.test(b.getAttribute("aria-label") || textOf(b)));
+    clickSeq(x || doc.body);
+    focusOut(q.el);
+    await waitFor(() => !promptList(doc), 800);
+  }
+
+  /** A choice already ticked in a multi-select list; clicking it again would untick it. Workday
+   * marks the tick on the leaf ("Checked") and in the label ("Java checked"); its aria-selected
+   * only marks the highlighted row. */
+  function isTicked(el) {
+    const leaf = el.matches("[data-automation-checked]") ? el : el.querySelector("[data-automation-checked]");
+    if (leaf) return leaf.getAttribute("data-automation-checked") === "Checked";
+    const label = el.getAttribute("aria-label") || "";
+    return / checked$/i.test(label) && !/not checked$/i.test(label);
+  }
+
+  /** Searches for `term` and picks the choice matching one of `values`, or the first that `match(texts)`
+   * points to. With exact, only an exact match counts. */
+  async function pickPrompt(q, values, term, { exact = false, wait = 5000, match = null } = {}) {
+    const doc = q.el.ownerDocument;
+    const before = promptChips(q);
+    const matchIn = (texts) => {
+      if (match) return match(texts);
+      const k = texts.findIndex((t) => values.some((v) => normQ(v) === normQ(t)));
+      if (k >= 0 || exact) return k;
+      const i = pickAny(values, texts);
+      if (i >= 0) return i;
+      // "Computer Science (General)" is Computer Science.
+      const bare = (t) => normQ(String(t).replace(/\s*\([^)]*\)\s*/g, " "));
+      return texts.findIndex((t) => values.some((v) => bare(v) === bare(t)));
+    };
+    const added = () => promptChips(q).filter((c) => !before.includes(c));
+    clickSeq(q.el);
+    typeInto(q.el, term, { blur: false });
+    key(q.el, "Enter");
+    const end = Date.now() + wait;
+    let seen = [], opened = 0, sig = "", since = 0;
+    while (Date.now() < end) {
+      await sleep(150);
+      const got = added();
+      if (got.length) {
+        // Workday picks a search's only match by itself.
+        if (matchIn(got) >= 0) { await closePrompt(q); return { ok: true, chosen: got.join(", ") }; }
+        break;
+      }
+      const res = promptResults(doc);
+      if (!res.length) continue;
+      seen = res.map((o) => o.text);
+      const i = matchIn(seen);
+      if (i < 0) {
+        // Results may still be loading; once they hold still without a match, stop looking.
+        const now = seen.join("|");
+        if (now !== sig) { sig = now; since = Date.now(); } else if (Date.now() - since > 1200) break;
+        continue;
+      }
+      if (isTicked(res[i].el)) { await closePrompt(q); return { ok: true, chosen: res[i].text, already: true }; }
+      const row = res[i].el;
+      const moved = () => added().length || isTicked(row)
+        || (promptList(doc) && promptResults(doc).map((o) => o.text).join("|") !== seen.join("|")) ? true : null;
+      // Workday listens on a part inside the row: the tick box, the leaf, or the label.
+      // Click the innermost first, then outward, stopping at the first that takes.
+      const targets = [row.querySelector("input[type='checkbox']"), row.querySelector("[data-automation-id='promptOption']"),
+        row.querySelector("[data-automation-id='promptLeafNode']"), row].filter((t, k, all) => t && all.indexOf(t) === k);
+      let changed = null;
+      for (const t of targets) {
+        if (!t.isConnected || moved()) { changed = moved(); break; }   // a slow tick from the last click: don't click it off
+        t.scrollIntoView({ block: "nearest" });
+        clickSeq(t);
+        changed = await waitFor(moved, t === row ? 2500 : 1200);
+        if (changed) break;
+      }
+      if (!changed && row.isConnected) {
+        // Last resort, the keyboard: Workday's list takes Enter on the highlighted row.
+        row.focus && row.focus();
+        key(row, "Enter");
+        changed = await waitFor(moved, 900);
+      }
+      if (added().length || (res[i].el.isConnected && isTicked(res[i].el))) {
+        // A multi-select may show the pill a moment after the tick.
+        await waitFor(() => added().length, 1000);
+        await closePrompt(q);
+        return { ok: true, chosen: added().join(", ") || res[i].text };
+      }
+      // A category opened its own list: look for the answer in there.
+      if (!changed || ++opened > 3) break;
+    }
+    await closePrompt(q);
+    if (typeof q.el.value === "string" && q.el.value) typeInto(q.el, "", { blur: false });
+    return { ok: false, why: seen.length ? "no option matches your saved answer" : "the search found nothing", options: seen.slice(0, 30) };
   }
 
   async function setPrompt(q, values) {
-    const doc = q.el.ownerDocument;
     const term = searchTerm(values[0]);
     if (!term) return { ok: false, why: "no saved answer" };
-    typeInto(q.el, term, { blur: false });
-    key(q.el, "Enter");
-    const opts = await waitFor(() => {
-      const o = [...doc.querySelectorAll("[data-automation-id='promptOption'], [data-automation-id='promptLeafNode'] [role='option']")].filter(visible);
-      return o.length ? o : null;
-    }, 4000);
-    if (!opts) { key(q.el, "Escape"); return { ok: false, why: "no option matches your saved answer" }; }
-    const i = pickAny(values, opts.map(textOf));
-    if (i < 0) { key(q.el, "Escape"); return { ok: false, why: "no option matches your saved answer", options: opts.map(textOf).slice(0, 30) }; }
-    const chosen = textOf(opts[i]);
-    clickSeq(opts[i]);
-    await sleep(200);
-    key(q.el, "Escape");
-    return { ok: true, chosen };
+    const have = promptChips(q);
+    if (have.length && pickAny(values, have) >= 0) return { ok: true, chosen: have.join(", ") };
+    const r = await pickPrompt(q, values, term);
+    if (r.ok || !/\(/.test(term)) return r;
+    // "United States of America (+1)" is found by its name alone.
+    return pickPrompt(q, values, term.replace(/\s*\(.*$/, ""));
   }
 
   /* ------------------------------------------------------------------ file */
@@ -306,5 +458,5 @@
     try { return await k[1](q, values, cls, ctx); } catch (e) { return { ok: false, why: "couldn't fill: " + e.message }; }
   }
 
-  JR.widgets = { get, set, options, normQ };
+  JR.widgets = { get, set, options, normQ, pickPrompt, promptChips, closePrompt };
 })(globalThis);

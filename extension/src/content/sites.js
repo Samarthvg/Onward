@@ -73,6 +73,9 @@
       if (SKIP_TYPES.has(t)) return false;
       if (t === "file") return true;   // visually hidden behind an "Attach" button
       if (el.getAttribute("aria-hidden") === "true") return false;
+      // Workday keeps a hidden text input beside each listbox button; the button is the question.
+      const prev = el.previousElementSibling;
+      if (t === "text" && !el.id && !el.name && prev && prev.matches("button[aria-haspopup='listbox']")) return false;
       if (t === "radio" || t === "checkbox") return visible(el) || visible(el.closest("label")) || visible(el.parentElement);
     }
     return visible(el);
@@ -86,7 +89,9 @@
     const t = (el.type || "text").toLowerCase();
     if (t === "file" || t === "radio" || t === "checkbox") return t;
     if (el.closest(".select__control") || /(^| )select__input( |$)/.test(el.className)) return "rselect";
-    if (el.getAttribute("data-automation-id") === "searchBox") return "prompt";
+    // Workday's search-and-pick box: a "selectinput" that only becomes "searchBox" while its list is open.
+    if (el.getAttribute("data-automation-id") === "searchBox" || el.getAttribute("data-uxi-widget-type") === "selectinput"
+        || el.closest("[data-automation-id='multiselectInputContainer']")) return "prompt";
     if (el.getAttribute("role") === "combobox") return "combo";
     if (t === "date") return "date";
     return ["email", "tel", "url", "number", "search"].includes(t) ? t : "text";
@@ -250,5 +255,36 @@
     return el ? el.innerText.slice(0, 20000) : "";
   }
 
-  JR.sites = { SITES, detect, formRoot, collect, jobInfo, jobDescription };
+  /**
+   * The posting's text, also on pages that don't show it: Workday's application steps
+   * leave the description behind, so it's read from Workday's own job API for this URL
+   * (/{site}/job/{location}/{title_id}/apply -> /wday/cxs/{tenant}/{site}/job/...).
+   */
+  const postingCache = new Map();
+  async function postingText(doc) {
+    const onPage = jobDescription(doc);
+    if (onPage.trim().length >= 200) return onPage;
+    const loc = doc.location || {};
+    if (!/\.myworkdayjobs\.com$/i.test(loc.hostname || "")) return onPage;
+    const parts = String(loc.pathname || "").split("/").filter(Boolean);
+    const j = parts.indexOf("job");
+    if (j < 1) return onPage;
+    const stop = parts.indexOf("apply", j);
+    const url = `/wday/cxs/${loc.hostname.split(".")[0]}/${parts[j - 1]}/${parts.slice(j, stop > j ? stop : undefined).join("/")}`;
+    if (!postingCache.has(url)) {
+      postingCache.set(url, fetch(url, { headers: { accept: "application/json" }, credentials: "include" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const html = d && d.jobPostingInfo && d.jobPostingInfo.jobDescription;
+          if (!html) return "";
+          // A parsed document isn't laid out, so its text runs "Functions:Develop" together without a break per tag.
+          const spaced = String(html).replace(/<(br|\/p|\/li|\/div|\/h\d|\/ul|\/ol)\b[^>]*>/gi, "$&\n").replace(/></g, "> <");
+          return (new DOMParser().parseFromString(spaced, "text/html").body.textContent || "").slice(0, 20000);
+        })
+        .catch(() => ""));
+    }
+    return (await postingCache.get(url)) || onPage;
+  }
+
+  JR.sites = { SITES, detect, formRoot, collect, jobInfo, jobDescription, postingText };
 })(globalThis);

@@ -2,7 +2,7 @@
   "profile": {
     "firstName": "Testy", "lastName": "McTestface", "preferredName": "", "email": "testy.mctestface@example.com", "phone": "555-0100",
     "linkedin": "https://www.linkedin.com/in/testy-mctestface-example", "github": "https://github.com/testy-example",
-    "portfolio": "https://testy.example.com", "location": "Boston, MA", "country": "United States", "postalCode": "02115",
+    "portfolio": "https://testy.example.com", "address": "1 Test Street", "location": "Boston, MA", "country": "United States", "postalCode": "02115",
     "company": "Example Test Corp", "currentTitle": "Software Engineer Intern", "school": "Northeastern University",
     "degree": "Bachelor of Science", "major": "Computer Science", "gradDate": "May 2026", "languages": "English (Fluent), Spanish (Intermediate)"
   },

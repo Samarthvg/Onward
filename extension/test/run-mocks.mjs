@@ -165,12 +165,17 @@ await test("workday: fills each step as the user moves on, never presses Next", 
   await page.goto("https://mockco.wd5.myworkdayjobs.com/en-US/External/job/Boston-MA/Software-Engineer_JR1001/apply/applyManually");
   await runFill(page);
   expectState("workday step 1", await page.evaluate(() => window.__mockState()), {
+    // Found by search through its category (Social Network > LinkedIn), picked by Workday itself.
     "source--source": ["LinkedIn"], previousWorker: "", "country--country": "United States of America",
     "name--legalName--firstName": "Testy", "name--legalName--middleName": "", "name--legalName--lastName": "McTestface",
-    "address--addressLine1": "", "address--city": "Boston", "address--postalCode": "02115",
-    "emailAddress--emailAddress": "testy.mctestface@example.com", "phoneNumber--phoneType": "",
-    "phoneNumber--countryPhoneCode": [], "phoneNumber--phoneNumber": "555-0100",
+    "address--addressLine1": "1 Test Street", "address--addressLine2": "", "address--city": "Boston",
+    "address--countryRegion": "Massachusetts", "address--postalCode": "02115",
+    "emailAddress--emailAddress": "testy.mctestface@example.com", "phoneNumber--phoneType": "Mobile",
+    // Searched by the country's name; the United States, not its outlying islands.
+    "phoneNumber--countryPhoneCode": ["United States of America (+1)"], "phoneNumber--phoneNumber": "555-0100",
+    "phoneNumber--extension": "",
   });
+  expect("workday: no search list left open", (await page.locator("[data-automation-id='activeListContainer']").count()) === 0);
   expect("workday: no navigation by the extension", (await page.evaluate(() => window.__navClicks)) === 0);
 
   const next = async () => { await page.click("[data-automation-id='bottom-navigation-next-button']"); await sleep(900); };
@@ -202,13 +207,15 @@ await test("workday: fills each step as the user moves on, never presses Next", 
     [w(3, "roleDescription")]: "Maintain the billing service in Python.",
     // The parser's row keeps its values, garbled description included, until the user asks.
     [w(1, "jobTitle")]: "Full Stack Developer Intern", [w(1, "roleDescription")]: ".js",
-    "education-1--schoolName": "Example State University", "education-1--degree": "Master's Degree",
+    "education-1--schoolName": "Example State University", "education-1--degree": "MS",
     "education-1--fieldOfStudy": ["Computer Science"], "education-1--gradeAverage": "4",
     "education-1--firstYearAttended-dateSectionYear-input": "2024", "education-1--lastYearAttended-dateSectionYear-input": "2026",
-    "education-2--schoolName": "Example Institute of Technology", "education-2--degree": "Bachelor's Degree",
+    "education-2--schoolName": "Example Institute of Technology", "education-2--degree": "Bachelor's",
     "education-2--fieldOfStudy": ["Computer Engineering"], "education-2--gradeAverage": "3.5",
   });
   expect("workday: Add pressed, never Next", (await page.evaluate(() => window.__navClicks)) === 1);
+  // The parser's "Java (Programming Language)" counts as Java: kept, not clicked off.
+  expect("workday: a skill already listed is kept", (st["skills--skills"] || []).includes("Java (Programming Language)"), JSON.stringify(st["skills--skills"]));
   const sec = panel.locator(".sec");
   expect("workday: both sections offer Replace", (await sec.count()) === 2, await panel.innerText());
   await sec.filter({ hasText: "Work Experience" }).locator("button", { hasText: "Replace with my resume" }).click();
@@ -260,10 +267,12 @@ await test("workday: empty sections get rows from the resume, plus skills and la
     [w(1, "companyName")]: "Example Labs", [w(1, "jobTitle")]: "Full Stack Developer Intern",
     [w(1, "startDate-dateSectionMonth-input")]: "07", [w(1, "endDate-dateSectionYear-input")]: "2026",
     [w(2, "companyName")]: "Example Solutions Pvt Ltd", [w(3, "currentlyWorkHere")]: true,
-    "education-1--schoolName": "Example State University", "education-1--degree": "Master's Degree",
+    "education-1--schoolName": "Example State University", "education-1--degree": "MS",
     "education-2--schoolName": "Example Institute of Technology",
     // Every resume skill the site lists, one search at a time.
-    "skills--skills": ["Python", "Java", "TypeScript", "JavaScript", "SQL", "Node.js", "Express.js", "React.js", "Angular"],
+    // Under the site's own names: "Java (Programming Language)" for Java, "Node JS" for Node.js.
+    "skills--skills": ["Python (Programming Language)", "Java (Programming Language)", "TypeScript", "JavaScript", "SQL", "Node JS",
+      "Express.js", "React (JavaScript Library)", "Angular"],
     "language-1--language": "English", "language-1--native": true, "language-1--reading": "Fluent", "language-1--writing": "Fluent",
     "language-2--language": "Spanish", "language-2--native": false, "language-2--speaking": "Intermediate",
     // Websites from the profile (LinkedIn has its own field); no certifications in the resume, so no rows.
@@ -275,8 +284,40 @@ await test("workday: empty sections get rows from the resume, plus skills and la
     "project-1--description": "Trained an LSTM on NASA C-MAPSS data to predict remaining useful life.", "project-1--projectUrl": "",
   });
   expect("empty workday: missing skill reported", /Skills not in this site's list[\s\S]*Vue\.js/.test(text), text);
+  const missingLine = (text.match(/Skills not in this site's list\s*\n([^\n]*)/) || [])[1] || "";
+  expect("empty workday: found skills not reported missing", !/\b(Java|Node\.js|React\.js|Python)\b/.test(missingLine), missingLine);
   expect("empty workday: only the user's own Next", (await page.evaluate(() => window.__navClicks)) === 1);
   expect("empty workday: nothing submitted", (await page.evaluate(() => window.__submitted)) === 0);
+});
+
+await test("workday: only skills that fit the posting, from Workday's job API and Onward's keywords", async (page) => {
+  // Onward read the full description when it found the job; its checklist names Angular too.
+  let askedApp = "";
+  await env.ctx.route(/^http:\/\/127\.0\.0\.1:8765\/api\/job\/keywords/, (r) => {
+    askedApp = r.request().url();
+    r.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ found: true, key: "k1", title: "Backend Engineer", keywords: [["Java", 1.5, "title"], ["Angular", 0.5, "pref"]] }) });
+  });
+  // The application steps don't show the description; the extension asks Workday's job API for it.
+  let asked = "";
+  await page.route(/^https:\/\/mockco\.wd5\.myworkdayjobs\.com\/wday\/cxs\//, (r) => {
+    asked = r.request().url();
+    r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ jobPostingInfo: { title: "Backend Engineer",
+      jobDescription: "<p>We are hiring a <b>Backend Engineer</b> for our payments platform.</p><ul><li>Design REST APIs and microservices in Java, Python or Node.js</li>"
+        + "<li>Own PostgreSQL schemas and SQL queries</li><li>Work on distributed systems that scale</li></ul><p>We offer health insurance, a 401k and paid leave.</p>" } }) });
+  });
+  await page.goto("https://mockco.wd5.myworkdayjobs.com/en-US/External/job/Boston-MA/Backend-Engineer_JR2002/apply/applyManually?empty=1");
+  await page.locator("#onward-autofill").waitFor({ state: "attached" });
+  await page.click("[data-automation-id='bottom-navigation-next-button']");
+  await sleep(900);
+  const text = await runFill(page, 120000);
+  const st = await page.evaluate(() => window.__mockState());
+  expect("fit skills: asked the job API for this posting", asked.endsWith("/wday/cxs/mockco/External/job/Boston-MA/Backend-Engineer_JR2002"), asked);
+  expectState("fit skills", st, { "skills--skills": ["Python (Programming Language)", "Java (Programming Language)", "SQL", "Node JS", "Angular", "TypeScript", "Express.js"] });
+  expect("fit skills: asked Onward about this form's job", decodeURIComponent(askedApp).includes("Backend-Engineer_JR2002/apply"), askedApp);
+  expect("fit skills: the rest are named in the panel", /Left out as unrelated to this job: JavaScript, React\.js, Vue\.js\./.test(text), text);
+  expect("fit skills: nothing submitted", (await page.evaluate(() => window.__submitted)) === 0);
+  await env.ctx.unroute(/^http:\/\/127\.0\.0\.1:8765\/api\/job\/keywords/);
 });
 
 await test("panel offers the next job in the list, in the same tab", async (page) => {

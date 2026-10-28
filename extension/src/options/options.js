@@ -63,14 +63,22 @@ async function load() {
 /* -------------------------------------------------------------- profile */
 
 const INPUT_TYPES = { email: "email", phone: "tel", linkedin: "url", github: "url", portfolio: "url" };
+const PROFILE_CHOICES = { phoneType: ["Mobile", "Home", "Work"] };
 
 function renderProfile() {
   const box = $("profileFields");
   box.replaceChildren();
   for (const [key, label] of R.PROFILE_FIELDS) {
     const id = "p-" + key;
-    const input = el("input", { id, type: INPUT_TYPES[key] || "text", value: state.profile[key] || "", autocomplete: "off" });
-    input.addEventListener("input", () => { state.profile[key] = input.value.trim(); save("profile"); });
+    let input;
+    if (PROFILE_CHOICES[key]) {
+      input = el("select", { id }, ...PROFILE_CHOICES[key].map((o) => el("option", { value: o, text: o })));
+      input.value = state.profile[key] || PROFILE_CHOICES[key][0];
+      input.addEventListener("change", () => { state.profile[key] = input.value; save("profile"); });
+    } else {
+      input = el("input", { id, type: INPUT_TYPES[key] || "text", value: state.profile[key] || "", autocomplete: "off" });
+      input.addEventListener("input", () => { state.profile[key] = input.value.trim(); save("profile"); });
+    }
     box.append(el("label", { for: id, text: label }), input, el("span"));
   }
 }
@@ -129,7 +137,7 @@ function renderEeo() {
 /* ------------------------------------------------------------- settings */
 
 function renderSettings() {
-  for (const k of ["autoRun", "fillSteps", "remember", "fillRemembered", "helper", "aiFill"]) {
+  for (const k of ["autoRun", "fillSteps", "fitSkills", "remember", "fillRemembered", "helper", "aiFill"]) {
     const box = $("set-" + k);
     box.checked = !!state.settings[k];
     box.onchange = () => { state.settings[k] = box.checked; save("settings"); };

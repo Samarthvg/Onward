@@ -90,10 +90,120 @@ is("What are your salary expectations?", "text", { cat: "never" });
 is("Pronouns", "text", { cat: "never" });
 is("Signature", "text", { cat: "never" });
 is("Middle Name", "text", { cat: "never" }, "legalNameSection_middleName");
-is("Address Line 1", "text", { cat: "never" });
 is("Phone Extension", "text", { cat: "never" });
-is("Country Phone Code", "prompt", { cat: "never" });
-is("Phone Device Type", "listbutton", { cat: "never" });
+is("Address Line 2", "text", { cat: "never" });
+is("Apt / Suite", "text", { cat: "never" });
+
+// Workday's required My Information fields (real wording, Amentum and RSM)
+is("Address Line 1", "text", { cat: "profile", key: "address", transform: undefined }, "address--addressLine1 addressLine1");
+is("Street Address", "text", { cat: "profile", key: "address" });
+is("Address", "text", { cat: "profile", key: "address", transform: "full" });
+is("Email Address", "email", { cat: "profile", key: "email" });
+is("Current Address", "text", { cat: "profile", key: "location" });
+is("Country Phone Code", "prompt", { cat: "profile", key: "country" }, "phoneNumber--countryPhoneCode");
+is("Country / Territory Phone Code", "prompt", { cat: "profile", key: "country" });
+is("Phone Device Type", "listbutton", { cat: "profile", key: "phoneType" }, "phoneNumber--phoneType phoneType");
+is("Phone Number", "text", { cat: "profile", key: "phone" }, "phoneNumber--phoneNumber phoneNumber");
+is("State", "listbutton", { cat: "profile", key: "location", transform: "state" }, "address--countryRegion countryRegion");
+is("Postal Code", "text", { cat: "profile", key: "postalCode" });
+is("How Did You Hear About Us?", "prompt", { cat: "std", key: "hearAbout" }, "source--source");
+check("full address from the profile", () => assert.equal(
+  R.answerFor({ cat: "profile", key: "address", transform: "full" }, { address: "1 Test St", location: "Boston, MA", postalCode: "02115" }),
+  "1 Test St, Boston, MA 02115"));
+check("phone type defaults to Mobile", () => assert.equal(R.DEFAULT_PROFILE.phoneType, "Mobile"));
+check("phone type picks Workday's Mobile", () => {
+  const alts = R.alternatives({ key: "phoneType" }, "Mobile");
+  assert.equal(["Fax", "Mobile", "Pager", "Telephone"][alts.map((a) => R.pickOption(a, ["Fax", "Mobile", "Pager", "Telephone"])).find((i) => i >= 0)], "Mobile");
+});
+check("phone code picks the country's entry", () => {
+  const opts = ["United States Minor Outlying Islands (+1)", "United States of America (+1)", "India (+91)"];
+  const alts = R.alternatives({ key: "country" }, "United States");
+  const i = alts.map((a) => R.pickOption(a, opts)).find((x) => x >= 0);
+  assert.equal(opts[i], "United States of America (+1)");
+});
+// Degree lists seen on real Workday sites.
+const pickDegree = (degree, opts) => {
+  for (const a of R.alternatives({ key: "degree" }, degree)) { const i = R.pickOption(a, opts); if (i >= 0) return opts[i]; }
+  return null;
+};
+const RSM_DEGREES = ["Not Completed", "GED", "High School", "AA", "AS", "Bachelor's", "MA", "MS", "MBA", "PhD", "JD", "LLM"];
+check("degree: master of science is MS", () => assert.equal(pickDegree("Master of Science in Computer Engineering", RSM_DEGREES), "MS"));
+check("degree: bachelor of engineering is Bachelor's", () => assert.equal(pickDegree("Bachelor of Engineering", RSM_DEGREES), "Bachelor's"));
+check("degree: M.S. spelled with dots", () => assert.equal(pickDegree("Master of Science", ["B.S.", "M.S.", "Ph.D."]), "M.S."));
+check("degree: arts is not science", () => assert.equal(pickDegree("Master of Arts", RSM_DEGREES), "MA"));
+check("degree: MBA", () => assert.equal(pickDegree("MBA", RSM_DEGREES), "MBA"));
+
+// Skills as Workday's skills list names them (seen on a live tenant, October 2026).
+for (const [mine, site] of [["Java", "Java (Programming Language)"], ["C++", "C++ Programming Language"], ["RAG pipelines", "RAG Pipeline"],
+  ["AWS", "Amazon Web Services (AWS)"], ["GCP", "Google Cloud Platform (GCP)"], ["Data Structures & Algorithms", "Data Structures and Algorithms"],
+  ["Node.js", "Node JS"], ["Node.js", "NodeJS"], ["React.js", "React (JavaScript Library)"], ["REST APIs", "RESTful API"],
+  ["Scikit-learn", "Scikit-Learn"], ["PostgreSQL", "PostgreSQL (Database)"], ["CI/CD", "Continuous Integration"], ["C", "C Programming Language"]]) {
+  check(`skill: ${mine} is ${site}`, () => assert.ok(R.sameSkill(mine, site)));
+}
+for (const [mine, site] of [["Java", "JavaScript"], ["C", "C++"], ["SQL", "MySQL"], ["Git", "GitHub"], ["Go", "Google"], ["React.js", "React Native"]]) {
+  check(`skill: ${mine} is not ${site}`, () => assert.ok(!R.sameSkill(mine, site)));
+}
+check("skills: HTML5/CSS3 is two, CI/CD one", () => assert.deepEqual(R.splitSkills(["HTML5/CSS3", "CI/CD", "Java"]), ["HTML5", "CSS3", "CI/CD", "Java"]));
+check("skills: searched by other names too", () => {
+  assert.deepEqual(R.skillSearchTerms("RAG pipelines"), ["RAG pipelines", "RAG pipeline", "RAG"]);
+  assert.deepEqual(R.skillSearchTerms("AWS"), ["AWS", "Amazon Web Services"]);
+});
+
+// Skills that fit the posting
+const MY_SKILLS = ["Python", "JavaScript", "TypeScript", "React", "HTML", "CSS", "Node.js", "SQL", "PyTorch", "Fine-tuning",
+  "LangChain", "Docker", "AWS", "Git", "C++", "Go", "Tableau"];
+const pad = (s) => s + " We are an equal opportunity employer and value a diverse team. Benefits include health insurance, a 401k and paid leave.";
+const FRONTEND = pad("We are hiring a Frontend Engineer to build our customer web app. You will write HTML, CSS and JavaScript, build responsive user interfaces in the browser, and work with designers.");
+const ML = pad("Join our machine learning team to train and fine-tune large language models. Experience with PyTorch, Hugging Face and deep learning is required; Python is a must. You will run inference at scale.");
+const BACKEND = pad("Backend engineer for our payments API. You'll design microservices in Java and Go, own PostgreSQL schemas and REST APIs, and run them on AWS with Docker. Distributed systems experience is a plus.");
+check("fit skills: HTML/CSS job takes web skills, not fine-tuning", () => {
+  const r = R.skillsForPosting(MY_SKILLS, FRONTEND, "Frontend Engineer");
+  for (const s of ["HTML", "CSS", "JavaScript", "TypeScript", "React", "Git"]) assert.ok(r.keep.includes(s), s);
+  for (const s of ["PyTorch", "Fine-tuning", "LangChain", "Tableau", "C++", "Go"]) assert.ok(r.left.includes(s), s);
+  assert.deepEqual(r.keep.slice(0, 3), ["JavaScript", "HTML", "CSS"], "the posting's own skills come first");
+});
+check("fit skills: ML job takes ML skills, not CSS", () => {
+  const r = R.skillsForPosting(MY_SKILLS, ML, "Machine Learning Engineer");
+  for (const s of ["Python", "PyTorch", "Fine-tuning", "LangChain", "Git"]) assert.ok(r.keep.includes(s), s);
+  for (const s of ["HTML", "CSS", "React", "Tableau"]) assert.ok(r.left.includes(s), s);
+});
+check("fit skills: backend job", () => {
+  const r = R.skillsForPosting(MY_SKILLS, BACKEND, "Software Engineer, Backend");
+  for (const s of ["Go", "Docker", "AWS", "SQL", "Node.js", "Python", "Git"]) assert.ok(r.keep.includes(s), s);
+  for (const s of ["HTML", "CSS", "Fine-tuning", "PyTorch"]) assert.ok(r.left.includes(s), s);
+});
+const GENERAL = pad("Develop, test and maintain software applications under the guidance of senior engineers. Participate in code reviews. Basic understanding of programming languages such as Java, Python, C++, or JavaScript. Familiarity with data structures, algorithms, and object-oriented programming. Knowledge of version control systems (e.g., Git).");
+check("fit skills: general software job takes general software skills, not ML", () => {
+  const r = R.skillsForPosting(MY_SKILLS, GENERAL, "Software Engineer Junior");
+  for (const s of ["Python", "JavaScript", "C++", "Git", "React", "Node.js", "SQL", "Docker", "Go"]) assert.ok(r.keep.includes(s), s);
+  for (const s of ["PyTorch", "Fine-tuning", "LangChain", "Tableau"]) assert.ok(r.left.includes(s), s);
+});
+check("fit skills: Onward's keywords alone are enough", () => {
+  const kw = [["HTML/CSS", 1.0, "req"], ["React", 1.0, "req"], ["Figma", 0.5, "pref"]];
+  const r = R.skillsForPosting(MY_SKILLS, "", "UI Engineer", { keywords: kw });
+  assert.equal(r.known, true);
+  for (const s of ["HTML", "CSS", "React", "JavaScript", "TypeScript", "Git"]) assert.ok(r.keep.includes(s), s);
+  for (const s of ["Fine-tuning", "PyTorch", "Tableau"]) assert.ok(r.left.includes(s), s);
+});
+check("fit skills: Onward's keywords add to what the posting's text names", () => {
+  // The page shows a short teaser; the app read the full description, which asks for Tableau.
+  const r = R.skillsForPosting(MY_SKILLS, GENERAL, "Software Engineer Junior", { keywords: [["Tableau", 0.5, "pref"]] });
+  assert.ok(r.keep.includes("Tableau"));
+  assert.ok(r.left.includes("Fine-tuning"));
+});
+check("fit skills: short names only as written", () => {
+  const r = R.skillsForPosting(["Go", "C", "R"], pad("Please go ahead and send a CV. You will have a role in a team of about 8 people doing customer support. R&D is next door."), "Support Associate");
+  assert.deepEqual(r.keep, ["Go", "C", "R"], "nothing to go on, so all are kept");
+  assert.equal(r.known, false);
+});
+check("fit skills: no posting keeps everything", () => {
+  assert.deepEqual(R.skillsForPosting(MY_SKILLS, "", "Engineer").keep, MY_SKILLS);
+  assert.deepEqual(R.skillsForPosting(MY_SKILLS, "Short.", "Engineer").left, []);
+});
+check("fit skills: site names and abbreviations count as named", () => {
+  const r = R.skillsForPosting(["Amazon Web Services", "Kubernetes", "C#"], pad("Our cloud platform team runs AWS and K8s. Services are written in C# on .NET with CI/CD pipelines."), "Cloud Engineer");
+  assert.deepEqual(r.keep, ["Amazon Web Services", "Kubernetes", "C#"]);
+});
 
 // Files
 is("Resume/CV", "file", { cat: "file", key: "resume" });

@@ -210,10 +210,9 @@
       if (q.el.checked !== want) q.el.click();
       return { ok: q.el.checked === want, chosen: want ? "checked" : "unchecked" };
     }
+    if (q.el.getAttribute("role") === "spinbutton") return W.set(q, values, { key: "history" }, {});
     if (q.kind === "text" || q.kind === "textarea" || q.kind === "number" || q.kind === "date") {
-      // Workday's month and year boxes are spinbuttons that also listen for keys.
       const ok = typeInto(q.el, values[0]);
-      if (q.el.getAttribute("role") === "spinbutton") keyChar(q.el, values[0].slice(-1));
       return ok ? { ok: true, chosen: values[0] } : { ok: false, why: "the page rejected the value" };
     }
     return W.set(q, values, { key: "history" }, {});
@@ -221,33 +220,43 @@
 
   /* ------------------------------------------------------------ add rows */
 
+  // A section's group: Workday labels it by its heading's id, "Work-Experience-section".
+  const SECTION_SEL = {
+    work: "[data-automation-id='workExperienceSection'], [aria-labelledby*='workExperience' i], [aria-labelledby*='work-experience' i], [role='group'][aria-label*='Work Experience' i]",
+    edu: "[data-automation-id='educationSection'], [aria-labelledby*='education' i], [role='group'][aria-label*='Education' i]",
+    lang: "[data-automation-id='languageSection'], [data-automation-id='languagesSection'], [aria-labelledby*='language' i], [role='group'][aria-label*='Language' i]",
+    web: "[data-automation-id='websiteSection'], [data-automation-id='websitesSection'], [aria-labelledby*='website' i], [role='group'][aria-label*='Website' i]",
+    cert: "[data-automation-id='certificationSection'], [data-automation-id='certificationsSection'], [aria-labelledby*='certification' i], [role='group'][aria-label*='Certification' i]",
+    proj: "[data-automation-id='projectSection'], [data-automation-id='projectsSection'], [aria-labelledby*='project' i], [role='group'][aria-label*='Project' i]",
+  };
+  // Other names a section goes by. Some Workday sites call their websites section "LinkedIn".
+  const SECTION_ALIASES = { web: ["website", "links", "linkedin"] };
+
+  /** Workday's own Add and Add Another buttons, which (like any button without a type) are submit buttons. */
+  function isAdd(b) {
+    if (!visible(b) || b.disabled) return false;
+    if (b.closest("[data-automation-id='pageFooter']") || /next|footer/i.test(b.getAttribute("data-automation-id") || "")) return false;
+    const t = (textOf(b) + " " + (b.getAttribute("aria-label") || "") + " " + (b.getAttribute("data-automation-id") || "")).trim();
+    if (/next|submit|continue|save|delete|remove|upload|select files/i.test(t)) return false;
+    if (b.type === "submit" && b.getAttribute("data-automation-id") !== "add-button" && !/^add( another)?$/i.test(textOf(b))) return false;
+    return /^add\b|\badd( another)?$|add-button|^\+/i.test(t);
+  }
+
   function addButton(type, doc) {
-    const sel = {
-      work: "[data-automation-id='workExperienceSection'], [aria-labelledby*='workExperience' i], [role='group'][aria-label*='Work Experience' i]",
-      edu: "[data-automation-id='educationSection'], [aria-labelledby*='education' i], [role='group'][aria-label*='Education' i]",
-      lang: "[data-automation-id='languageSection'], [data-automation-id='languagesSection'], [aria-labelledby*='language' i], [role='group'][aria-label*='Language' i]",
-      web: "[data-automation-id='websiteSection'], [data-automation-id='websitesSection'], [aria-labelledby*='website' i], [role='group'][aria-label*='Website' i]",
-      cert: "[data-automation-id='certificationSection'], [data-automation-id='certificationsSection'], [aria-labelledby*='certification' i], [role='group'][aria-label*='Certification' i]",
-      proj: "[data-automation-id='projectSection'], [data-automation-id='projectsSection'], [aria-labelledby*='project' i], [role='group'][aria-label*='Project' i]",
-    }[type];
+    const sel = SECTION_SEL[type];
     const name = SECTION_NAME[type].toLowerCase();
-    const addIn = (s) => {
-      for (const b of s.querySelectorAll("button, [role='button']")) {
-        const t = (textOf(b) + " " + (b.getAttribute("aria-label") || "") + " " + (b.getAttribute("data-automation-id") || "")).trim();
-        if (!visible(b) || b.disabled || b.type === "submit") continue;
-        if (/next|submit|continue|save|delete|remove|upload|select files/i.test(t)) continue;
-        if (/^add\b|\badd( another)?$|add-button|^\+/i.test(t)) return b;
-      }
-      return null;
-    };
+    const names = [name, ...(SECTION_ALIASES[type] || [])];
+    const addIn = (s) => [...s.querySelectorAll("button, [role='button']")].find(isAdd) || null;
     for (const s of doc.querySelectorAll(sel)) { const b = addIn(s); if (b) return b; }
     // Otherwise climb from the heading that names the section, stopping before a
     // wrapper that also holds another section's heading.
     const isHeading = (h, n) => textOf(h).toLowerCase().replace(/\s*\(.*$/, "").trim() === n;
-    const others = Object.values(SECTION_NAME).map((x) => x.toLowerCase()).filter((x) => x !== name)
-      .concat(["social network urls", "resume/cv", "resume", "my information"]);
+    const others = Object.entries(SECTION_NAME).filter(([k]) => k !== type).map(([, x]) => x.toLowerCase())
+      .concat(["social network urls", "resume/cv", "resume", "my information", "attachments"].filter((x) => !names.includes(x)));
     for (const h of doc.querySelectorAll("h2, h3, h4, h5, [role='heading'], legend")) {
-      if (!isHeading(h, name)) continue;
+      if (!names.some((n) => isHeading(h, n))) continue;
+      // A "LinkedIn" heading only counts as a websites section when the section says it takes websites.
+      if (type === "web" && isHeading(h, "linkedin") && !/website/i.test(textOf(h.parentElement))) continue;
       for (let n = h.parentElement, i = 0; n && i < 6; n = n.parentElement, i++) {
         const foreign = [...n.querySelectorAll("h2, h3, h4, h5, [role='heading'], legend")].some((x) => x !== h && others.some((o) => isHeading(x, o)));
         if (foreign) break;
@@ -377,40 +386,28 @@
       && (LIST.test(normQ(q.label)) || (q.kind === "prompt" && /(^|[\s-])skills?([\s-]|$)/i.test(q.attrs)))) || null;
   }
 
-  function promptOptions(doc) {
-    return [...doc.querySelectorAll("[data-automation-id='promptOption'], [data-automation-id='promptLeafNode'] [role='option']")]
-      .filter((o) => visible(o) && !/^no (items|results|matches)/i.test(textOf(o)));
-  }
-
-  function chips(q) {
-    const box = q.box || q.el.parentElement;
-    return [...box.querySelectorAll("[data-automation-id='selectedItem'], [data-automation-id='promptSelectionLabel']")].map((c) => normQ(textOf(c)));
-  }
-
-  /** Adds skills one at a time: search, pick the exact match, check the chip appeared. */
+  /** Adds skills one at a time: search, pick the site's name for it ("Java (Programming Language)" for Java),
+   * or take Workday's own pick of the only match, and check the pill appeared. */
   async function addSkills(q, skills, progress) {
-    const doc = q.el.ownerDocument;
+    const R = JR.rules;
     const added = [], missing = [];
-    for (const [i, skill] of skills.entries()) {
-      if (chips(q).includes(normQ(skill))) { added.push(skill); continue; }
-      progress(`Adding skills ${i + 1}/${skills.length}…`);
-      typeInto(q.el, "", { blur: false });
-      typeInto(q.el, skill, { blur: false });
-      keyChar(q.el, skill.slice(-1));
-      JR.dom.key(q.el, "Enter");
-      const opts = await waitFor(() => { const o = promptOptions(doc); return o.length ? o : null; }, 3000);
-      const texts = (opts || []).map(textOf);
-      let k = texts.findIndex((t) => normQ(t) === normQ(skill));
-      if (k < 0) k = JR.rules.pickOption(skill, texts);
-      if (k < 0) { missing.push(skill); JR.dom.key(q.el, "Escape"); continue; }
-      const before = chips(q).length;
-      clickSeq(opts[k]);
-      const ok = await waitFor(() => chips(q).length > before, 2000);
+    const have = (skill) => W.promptChips(q).some((c) => R.sameSkill(skill, c));
+    const list = R.splitSkills(skills);
+    for (const [i, skill] of list.entries()) {
+      if (have(skill)) { added.push(skill); continue; }
+      progress(`Adding skills ${i + 1}/${list.length}…`);
+      const match = (texts) => texts.findIndex((t) => R.sameSkill(skill, t));
+      let ok = false;
+      // The resume's name first, then its singular ("RAG pipeline") or other names ("Amazon Web Services").
+      for (const term of R.skillSearchTerms(skill)) {
+        const r = await W.pickPrompt(q, [skill], term, { wait: 3000, match });
+        // Only a pill in the box counts: what the list showed is not proof.
+        if (await waitFor(() => have(skill), r.ok ? 1500 : 0)) { ok = true; break; }
+      }
       (ok ? added : missing).push(skill);
-      await sleep(150);
+      await sleep(100);
     }
-    typeInto(q.el, "", { blur: false });
-    JR.dom.key(q.el, "Escape");
+    await W.closePrompt(q);
     return { added, missing };
   }
 
@@ -445,10 +442,16 @@
    * Skills from the master resume and languages from the profile.
    * Languages rows are added with the section's Add button on Workday.
    */
-  async function fillExtras(qs, { skills, languages, websites, certifications, projects, recollect, allowAdd, ours, progress }) {
+  async function fillExtras(qs, { skills, skillsLeft = [], languages, websites, certifications, projects, recollect, allowAdd, ours, progress }) {
     const items = [];
     const sq = skillsQuestion(qs);
-    if (sq && !(skills && skills.length) && !W.get(sq)) {
+    // Resume skills that don't fit this posting, named so they can be added by hand.
+    const leftOut = skillsLeft.length ? `left out as unrelated to this job: ${skillsLeft.join(", ")}` : "";
+    if (sq && !(skills && skills.length) && skillsLeft.length) {
+      sq.history = { type: "skills", field: "skills" };
+      items.push({ q: sq, label: sq.label || "Skills", kind: sq.kind, history: "skills", status: "needs",
+        why: `none of your resume's skills fit this posting; ${leftOut}` });
+    } else if (sq && !(skills && skills.length) && !W.get(sq)) {
       sq.history = { type: "skills", field: "skills" };
       items.push({ q: sq, label: sq.label || "Skills", kind: sq.kind, history: "skills", status: "needs",
         why: "start the Onward app so your resume's skills can be added here" });
@@ -460,7 +463,7 @@
         const { added, missing } = await addSkills(sq, skills.slice(0, 50), progress);
         if (added.length) ours.set(sq.el, { value: W.get(sq), source: "resume" });
         items.push(Object.assign(base, added.length
-          ? { status: "filled", value: added.join(", "), source: "resume" }
+          ? { status: "filled", value: added.join(", "), source: "resume", why: leftOut }
           : { status: "needs", why: "none of your resume's skills were in this site's list" }));
         if (added.length && missing.length) {
           items.push({ q: sq, label: "Skills not in this site's list", kind: sq.kind, history: "skills", status: "needs",
@@ -472,7 +475,7 @@
         if (max && text.length > max) text = text.slice(0, max).replace(/,[^,]*$/, "");
         if (typeInto(sq.el, text)) {
           ours.set(sq.el, { value: text, source: "resume" });
-          items.push(Object.assign(base, { status: "filled", value: text, source: "resume" }));
+          items.push(Object.assign(base, { status: "filled", value: text, source: "resume", why: leftOut }));
         }
       }
     }

@@ -206,7 +206,10 @@ def main():
         expect_state("workday 1", state(), {
             "source--source": ["LinkedIn"], "country--country": "United States of America", "name--legalName--firstName": "Testy",
             "name--legalName--lastName": "McTestface", "address--city": "Boston", "phoneNumber--phoneNumber": "555-0100",
-            "address--addressLine1": "", "phoneNumber--phoneType": ""})
+            "address--addressLine1": "1 Test Street", "address--countryRegion": "Massachusetts",
+            "phoneNumber--phoneType": "Mobile", "phoneNumber--countryPhoneCode": ["United States of America (+1)"]})
+        check("workday: no search list left open",
+              not driver.execute_script("return document.querySelector(\"[data-automation-id='activeListContainer']\")"))
         check("workday: no navigation by the extension", driver.execute_script("return window.__navClicks") == 0)
         driver.find_element(By.CSS_SELECTOR, "[data-automation-id='bottom-navigation-next-button']").click()
         time.sleep(1.2)
