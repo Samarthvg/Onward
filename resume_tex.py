@@ -27,15 +27,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
+import skillset
 import texengine
 
 ROOT = Path(__file__).resolve().parent
-SKILL_BOUNDARY = "(?<![A-Za-z0-9+#])(?:{})(?![A-Za-z0-9+#])"
-_TAXONOMY = json.loads((ROOT / "skills.json").read_text(encoding="utf-8"))
-SKILLS = [
-    (s["n"], re.compile(SKILL_BOUNDARY.format(s["re"]), 0 if s.get("cs") else re.I))
-    for s in _TAXONOMY
-]
+_TAXONOMY = skillset.TAXONOMY
+SKILLS = skillset.SKILLS
 SKILL_NAMES = {name.lower(): name for name, _ in SKILLS}
 IMPLIES = {s["n"]: set(s.get("implies", [])) for s in _TAXONOMY}
 # Skills that name a field of work (DevOps, Frontend, Machine Learning), not
@@ -43,8 +40,7 @@ IMPLIES = {s["n"]: set(s.get("implies", [])) for s in _TAXONOMY}
 AREAS = {s["n"] for s in _TAXONOMY if s.get("area")}
 
 
-def find_skills(text: str) -> set[str]:
-    return {name for name, rx in SKILLS if rx.search(text)} if text else set()
+find_skills = skillset.find
 
 
 def with_implied(skills: set[str]) -> set[str]:

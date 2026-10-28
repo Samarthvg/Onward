@@ -43,6 +43,7 @@ import feed
 import filters
 import oslock
 import reqparse
+import skillset
 # Title and location rules live in filters.py with the user's roles.
 from filters import ENTRY_HINT, REMOTE
 
@@ -339,11 +340,7 @@ def norm_key(company: str, title: str, location: str) -> str:
     return f"{n(company)}|{n(title)}|{n(location)}"
 
 
-SKILL_BOUNDARY = "(?<![A-Za-z0-9+#])(?:{})(?![A-Za-z0-9+#])"
-SKILLS = [
-    (s["n"], re.compile(SKILL_BOUNDARY.format(s["re"]), 0 if s.get("cs") else re.I))
-    for s in json.loads(SKILLS_PATH.read_text(encoding="utf-8"))
-]
+SKILLS = skillset.SKILLS
 TAIL_CUT = re.compile(
     r"\b(benefits|perks|equal (?:employment )?opportunity|compensation|pay range|"
     r"salary range|base salary|pay transparency|what we offer)\b", re.I)
@@ -352,8 +349,7 @@ PREFERRED = re.compile(
     r"desired qualifications|extra credit)\b", re.I)
 
 
-def find_skills(text: str) -> set[str]:
-    return {name for name, rx in SKILLS if rx.search(text)} if text else set()
+find_skills = skillset.find
 
 
 def split_sections(description: str) -> tuple[str, str]:

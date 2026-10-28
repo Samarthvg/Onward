@@ -46,16 +46,17 @@ class FakeWeb:
 
 
 class SourceTestCase(unittest.TestCase):
-    """Fresh caches per test, and a wide dashboard window so saved fixtures
-    stay inside it however old they get."""
+    """Fresh caches per test, and wide dashboard and fetch windows so saved
+    fixtures stay inside them however old they get."""
 
     def setUp(self) -> None:
         radar.DETAILS.clear()
         radar.NEW_DETAILS.clear()
         radar._ONCE.clear()
-        patcher = mock.patch.object(radar, "DASHBOARD_DAYS", 100000)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for name in ("DASHBOARD_DAYS", "FETCH_DAYS"):
+            patcher = mock.patch.object(radar, name, 100000)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def web(self, routes: dict, text: dict | None = None) -> FakeWeb:
         fake = FakeWeb(routes)

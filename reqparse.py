@@ -208,7 +208,8 @@ def keywords(description: str, title: str, find_skills, term_rx: dict[str, re.Pa
     lower = {w.rstrip(".-") for w in re.findall(r"(?<![A-Za-z])[a-z][a-z0-9.+#-]*", _norm(description or ""))}
     for text, section in units(description, find_skills):
         found = set(find_skills(text))
-        found |= {t for t, rx in term_rx.items() if rx.search(text)}
+        # Learned terms are matched as written, so a line without the text can't match.
+        found |= {t for t, rx in term_rx.items() if t in text and rx.search(text)}
         if section in TOOL_SECTIONS:
             # A word the posting also writes in lowercase ("Dashboards" /
             # "dashboards") is an ordinary word, not a product.
