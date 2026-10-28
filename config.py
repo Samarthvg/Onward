@@ -35,13 +35,14 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
+import appinfo
 import filters
 import pricing
 import voice
 
 CODE_DIR = Path(__file__).resolve().parent
 SETTINGS_FILE = "settings.json"
-VERSION = 6
+VERSION = 7
 
 
 HOME_ENV = ("ONWARD_HOME", "JOBRADAR_HOME")     # the second is the name before the rename
@@ -362,8 +363,9 @@ SCHEMA = Obj({
         "timeout": Int(25, 5, 120),
         "simplify_feed": Bool(True),            # SimplifyJobs New-Grad listings
         # A shared job feed (feed.py) read instead of searching every board
-        # here; empty means search them all from this computer.
-        "feed_url": Str("", 500, pattern=r"(https://\S+|http://(127\.0\.0\.1|localhost)(:\d+)?(/\S*)?|file:\S+)?"),
+        # here: this project's own by default; empty means search them all
+        # from this computer.
+        "feed_url": Str(appinfo.FEED_URL, 500, pattern=r"(https://\S+|http://(127\.0\.0\.1|localhost)(:\d+)?(/\S*)?|file:\S+)?"),
         "interval_minutes": Int(30, 10, 1440),  # how often the app fetches
     }),
     "companies": Obj({
@@ -538,7 +540,17 @@ def _v6(data: dict, home: Path) -> dict:
     return data
 
 
-MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3, 4: _v4, 5: _v5, 6: _v6}
+def _v7(data: dict, home: Path) -> dict:
+    """The shared feed was off unless set by hand, so every install searched
+    some 2,300 boards itself every half hour, for minutes each time. It's on
+    by default now; an address the user set is kept."""
+    r = data.get("radar")
+    if isinstance(r, dict) and not r.get("feed_url"):
+        r["feed_url"] = appinfo.FEED_URL
+    return data
+
+
+MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3, 4: _v4, 5: _v5, 6: _v6, 7: _v7}
 
 
 def migrate(data: dict, home: Path) -> tuple[dict, bool]:

@@ -47,6 +47,9 @@ import skillset
 # Title and location rules live in filters.py with the user's roles.
 from filters import ENTRY_HINT, REMOTE
 
+# How far a dashboard rebuild is: (phase, done, total), for the app's loading screen.
+Progress = Callable[[str, int, int], None]
+
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "jobs.db"
 DASHBOARD_PATH = ROOT / "dashboard.html"
@@ -1994,14 +1997,16 @@ TERM_STOP = {
 }
 
 
-def corpus_stats(conn: sqlite3.Connection) -> dict:
+def corpus_stats(conn: sqlite3.Connection, progress: Progress | None = None) -> dict:
     rows = conn.execute("SELECT skills, description, company FROM jobs WHERE description != ''").fetchall()
     n = len(rows) or 1
     skill_df: dict[str, int] = {}
     term_df: dict[str, int] = {}
     term_lower: dict[str, int] = {}
     tech_df: dict[str, int] = {}
-    for skills, desc, company in rows:
+    for i, (skills, desc, company) in enumerate(rows):
+        if progress and i % 50 == 0:
+            progress("Reading postings", i, len(rows))
         s = json.loads(skills or "{}")
         for k in set(s.get("t", []) + s.get("r", []) + s.get("p", [])):
             skill_df[k] = skill_df.get(k, 0) + 1
@@ -2063,7 +2068,7 @@ def closed_postings(conn: sqlite3.Connection, now: float) -> dict[str, list[floa
 
 
 def load_for_dashboard(conn: sqlite3.Connection, now: float, prev_run: float | None,
-                       h1b: "H1BIndex", stats: dict | None = None) -> list[dict]:
+                       h1b: "H1BIndex", stats: dict | None = None, progress: Progress | None = None) -> list[dict]:
     rows = conn.execute(
         f"""SELECT {", ".join(DASHBOARD_COLS)}, length(description) > 200, description
            FROM jobs
@@ -2074,7 +2079,9 @@ def load_for_dashboard(conn: sqlite3.Connection, now: float, prev_run: float | N
     term_rx = term_patterns(stats["term_w"]) if stats else {}
     closed = closed_postings(conn, now)
     out = []
-    for r in rows:
+    for i, r in enumerate(rows):
+        if progress and i % 25 == 0:
+            progress("Scoring postings", i, len(rows))
         d = dict(zip(DASHBOARD_COLS + ["has_jd", "_desc"], r))
         posted = d["posted_at"] or d["first_seen"]
         if now - posted > shown_days(d["title"]) * 86400:
@@ -2392,11 +2399,14 @@ def needs_visa_data(s: dict) -> bool:
     return any(r["visa"]["status"] != "authorized" for r in s["roles"])
 
 
-def build_dashboard(conn: sqlite3.Connection, h1b: "H1BIndex", run: dict) -> list[dict]:
+def build_dashboard(conn: sqlite3.Connection, h1b: "H1BIndex", run: dict, progress: Progress | None = None) -> list[dict]:
     """Scores, tags and renders the stored jobs. run: started, generated,
-    previous_run, first_run, boards, failed, missing, new."""
-    stats = corpus_stats(conn)
-    rows = load_for_dashboard(conn, run["started"], run["previous_run"], h1b, stats)
+    previous_run, first_run, boards, failed, missing, new. `progress` hears
+    how far it is (the app's loading screen)."""
+    stats = corpus_stats(conn, progress)
+    rows = load_for_dashboard(conn, run["started"], run["previous_run"], h1b, stats, progress)
+    if progress:
+        progress("Building the page", len(rows), len(rows))
     save_scoring(conn, rows, stats, run["generated"])
     render(rows, {
         **{k: run[k] for k in ("generated", "previous_run", "first_run", "boards", "failed", "missing", "new")},
@@ -2409,7 +2419,7 @@ def build_dashboard(conn: sqlite3.Connection, h1b: "H1BIndex", run: dict) -> lis
     return rows
 
 
-def rerender(store_: config.Store | None = None) -> int:
+def rerender(store_: config.Store | None = None, progress: Progress | None = None) -> int:
     """Rebuilds dashboard.html from stored jobs without fetching, so changed
     settings (roles, visa, scoring) show at once. Returns jobs shown."""
     configure(store_ or config.store())
@@ -2434,7 +2444,8 @@ def rerender(store_: config.Store | None = None) -> int:
         with conn:
             rows = build_dashboard(conn, h1b, {
                 "started": last[1], "generated": last[2], "previous_run": prev, "first_run": first_run,
-                "boards": last[3], "failed": last[4], "missing": 0, "new": last[5] if prev is not None else 0})
+                "boards": last[3], "failed": last[4], "missing": 0, "new": last[5] if prev is not None else 0},
+                progress)
         return len(rows)
     finally:
         conn.close()

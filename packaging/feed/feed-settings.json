@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "roles": [
     {
       "id": "feed",
@@ -10,7 +10,7 @@
     }
   ],
   "active_role": "feed",
-  "radar": {"workers": 48, "simplify_feed": true},
+  "radar": {"workers": 48, "simplify_feed": true, "feed_url": ""},
   "queue": {"enabled": false},
   "setup": {"done": true}
 }

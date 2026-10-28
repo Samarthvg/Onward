@@ -28,7 +28,7 @@ def extension_files():
         yield str(f), str(Path("extension") / rel.parent)
 
 
-datas = [(str(ROOT / name), ".") for name in ("dashboard_template.html", "companies.json", "skills.json")]
+datas = [(str(ROOT / name), ".") for name in ("dashboard_template.html", "loading.html", "companies.json", "skills.json")]
 datas += list(extension_files())
 
 hidden = {"win32": ["pystray._win32"], "darwin": ["pystray._darwin"],

@@ -17,6 +17,10 @@ BUNDLE_ID = "io.github.onward"    # macOS bundle and LaunchAgent label
 # "owner/repo" on GitHub. Releases there are what the update check reads and
 # what the installers are uploaded to. Empty turns the update check off.
 GITHUB_REPO = "Samarthvg/Onward"
+# The shared job feed this project publishes (packaging/feed): what a new
+# install reads instead of searching every board itself. Empty in Settings
+# turns it off.
+FEED_URL = "https://pub-d7a66c5c1e2649d48b42f1d1c986b7e6.r2.dev"
 # The subject name on the Windows code-signing certificate (e.g. "Jane Doe").
 # When set, a downloaded update installs only if Windows says it is signed
 # by exactly this publisher.

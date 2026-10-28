@@ -384,7 +384,7 @@ class AutostartTests(unittest.TestCase):
 
     def test_appimage_starts_the_appimage_not_its_mount(self):
         with mock.patch.dict(os.environ, {"APPIMAGE": "/home/me/onward.AppImage"}):
-            self.assertEqual(autostart.launch_command(), ["/home/me/onward.AppImage"])
+            self.assertEqual(autostart.launch_command(), ["/home/me/onward.AppImage", "--login"])
 
     @unittest.skipUnless(sys.platform == "win32", "Windows registry")
     def test_windows_run_key(self):
@@ -399,7 +399,8 @@ class AutostartTests(unittest.TestCase):
 
     def test_source_install_starts_app_py_without_a_console(self):
         cmd = autostart.launch_command()
-        self.assertTrue(cmd[-1].endswith("app.py"))
+        self.assertTrue(cmd[-2].endswith("app.py"))
+        self.assertEqual(cmd[-1], "--login", "started at login: stays in the tray")
         if sys.platform == "win32" and Path(sys.executable).with_name("pythonw.exe").exists():
             self.assertTrue(cmd[0].lower().endswith("pythonw.exe"))
 

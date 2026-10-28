@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import appinfo
 import config
 import filters
 import match
@@ -341,6 +342,15 @@ class ShowVsFetchWindowTests(Tmp):
         self.assertEqual(self.store().load()["radar"]["dashboard_days"], 90)
         self.write({"version": 4, "radar": {"dashboard_days": 3}})
         self.assertEqual(self.store().load()["radar"]["dashboard_days"], 3)
+
+    def test_the_shared_feed_is_on_unless_another_was_chosen(self):
+        self.assertEqual(self.store().load()["radar"]["feed_url"], appinfo.FEED_URL, "a new install")
+        self.write({"version": 6, "radar": {"feed_url": ""}})
+        self.assertEqual(self.store().load()["radar"]["feed_url"], appinfo.FEED_URL, "never set: on now")
+        self.write({"version": 6, "radar": {"feed_url": "https://feed.example.com"}})
+        self.assertEqual(self.store().load()["radar"]["feed_url"], "https://feed.example.com")
+        self.write({"version": 7, "radar": {"feed_url": ""}})
+        self.assertEqual(self.store().load()["radar"]["feed_url"], "", "turned off after the change: stays off")
 
     def test_radar_uses_fetch_days_for_fetching(self):
         self.write({"version": config.VERSION, "radar": {"dashboard_days": 45, "fetch_days": 5}})

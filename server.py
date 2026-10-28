@@ -49,6 +49,7 @@ HOST, PORT = appinfo.HOST, appinfo.PORT
 ORIGINS = {f"http://{HOST}:{PORT}", f"http://localhost:{PORT}"}
 STORE = config.store()
 DASHBOARD = STORE.path_for("dashboard")
+LOADING_PAGE = (radar.ROOT / "loading.html").read_text(encoding="utf-8")     # while the dashboard is rebuilt
 RESUME_DIR = STORE.path_for("resume_dir")
 MASTER = RESUME_DIR / "master.tex"
 OUT_DIR = RESUME_DIR / "tailored"
@@ -158,7 +159,11 @@ def job_by_url(page_url: str) -> dict | None:
 # --------------------------------------------------------------------------
 # Settings and companies
 
-RENDER = {"pending": False, "finished": 0.0, "error": "", "jobs": None}
+# "stale": the page on disk is missing or from an older version, so the
+# loading page is served until the rebuild finishes; phase/done/total say how
+# far it is.
+RENDER = {"pending": False, "finished": 0.0, "error": "", "jobs": None,
+          "stale": False, "phase": "", "done": 0, "total": 0}
 RENDER_WAKE = threading.Event()
 
 
@@ -170,12 +175,16 @@ def schedule_render() -> None:
     RENDER_WAKE.set()
 
 
+def _render_progress(phase: str, done: int, total: int) -> None:
+    RENDER.update(phase=phase, done=done, total=total)
+
+
 def _render_loop() -> None:
     while True:
         RENDER_WAKE.wait()
         RENDER_WAKE.clear()
         try:
-            RENDER.update(jobs=radar.rerender(STORE), error="")
+            RENDER.update(jobs=radar.rerender(STORE, _render_progress), error="", stale=False)
         except Exception as e:
             log(f"re-render failed:\n{traceback.format_exc()}")
             RENDER["error"] = f"{type(e).__name__}: {e}"
@@ -733,7 +742,13 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(url.query)
         path = url.path
 
+        if path == "/api/render":
+            # For the loading page: whether the dashboard is ready, and how far its rebuild is.
+            return self._json(200, {"ready": not RENDER["stale"], "error": RENDER["error"],
+                                    **{k: RENDER[k] for k in ("phase", "done", "total")}})
         if path in ("/", "/index.html", "/dashboard.html"):
+            if RENDER["stale"]:
+                return self._send(200, LOADING_PAGE.encode("utf-8"), "text/html; charset=utf-8")
             if not DASHBOARD.exists():
                 return self._err(HTTPStatus.NOT_FOUND, "Run radar.py once to build the dashboard")
             return self._send(200, DASHBOARD.read_bytes(), "text/html; charset=utf-8")
@@ -1337,8 +1352,10 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(202, {"id": submit_draft(params)})
 
 
-def prepare() -> None:
-    """Folders, settings and a first dashboard page, before serving."""
+def prepare(render_now: bool = True) -> None:
+    """Folders, settings and a first dashboard page, before serving. With
+    render_now False (the app), a page that needs rebuilding is rebuilt in
+    the background once serving starts, and the loading page shows until then."""
     if not STORE.path.exists():
         # A new install: its settings are written before anything else
         # creates files here, so it isn't taken for an older install that
@@ -1350,7 +1367,11 @@ def prepare() -> None:
     for w in STORE.warnings:
         log(f"settings: {w}")
     if not radar.page_current(DASHBOARD):        # missing, or built by an older version
-        radar.rerender(STORE)
+        if render_now:
+            radar.rerender(STORE)
+        else:
+            RENDER.update(stale=True, phase="Starting", done=0, total=0)
+            schedule_render()
 
 
 def bind() -> ThreadingHTTPServer:

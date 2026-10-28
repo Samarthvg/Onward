@@ -175,8 +175,8 @@ What leaves your computer:
 - Tectonic's download, if you chose it.
 - Whatever you send to the AI provider you chose: your resume, your details and the posting.
 - Phone notifications, if you set up an ntfy topic.
-- Downloads of a shared job feed, if you set one in Settings. Only downloads: the feed learns nothing about
-  your roles, resume or applications.
+- Downloads of the shared job feed (on by default; see below). Only downloads: the feed learns nothing
+  about your roles, resume or applications.
 
 Nothing is sent to Onward itself.
 
@@ -187,9 +187,11 @@ does it once: one search publishes its postings as static files, and every copy 
 instead of searching. Scoring, roles, tailoring and the apply queue stay on each computer. `feed.py` has
 the details.
 
-**Reading a feed.** Put its address in Settings, under Search (advanced settings), or in `settings.json` as
-`radar.feed_url`. A new copy downloads the whole snapshot once (a few MB per thousand postings); after
-that each run downloads only what changed. Companies you added yourself are still searched from your
+**Reading a feed.** Onward reads this project's feed by default, so a search takes seconds instead of
+minutes of reading boards. To use another feed, or none (search every board from your computer), change
+or clear its address in Settings, under Search (advanced settings), or `radar.feed_url` in `settings.json`.
+A new copy downloads the whole snapshot once (a few MB per thousand postings); after that each run
+downloads only what changed. Companies you added yourself are still searched from your
 computer. If the feed can't be read, a file doesn't match its checksum, or the feed hasn't updated for
 3 hours, Onward searches every board itself that run, as it does without a feed.
 

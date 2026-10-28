@@ -3623,7 +3623,8 @@ function radarCard() {
       el("div", { class: "field" }, el("label", { class: "toggle" }, simplify, "Read the SimplifyJobs New-Grad list"),
         el("p", { class: "note", text: "Catches companies no board here covers." })),
       field("Shared job feed address", feedUrl, "A shared search's results, read instead of searching every board " +
-        "from this computer. Companies you added are still searched from here. If the feed can't be read or stops " +
+        "from this computer: this project's feed to start with. Clear it to search every board from here. " +
+        "Companies you added are still searched from here. If the feed can't be read or stops " +
         "updating, Onward searches every board itself until it's back.", { wide: true })),
     saveBar("Save search settings", () => postSettings({ radar: { dashboard_days: +days.value, program_days: +programDays.value, stale_after_days: +stale.value,
       purge_after_days: +purge.value, workers: +workers.value, timeout: +timeout.value, simplify_feed: simplify.checked, feed_url: feedUrl.value.trim() } }, "the search settings"),

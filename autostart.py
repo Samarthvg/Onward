@@ -30,16 +30,21 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
+# The login item's flag: started at login, the app stays in the tray rather
+# than opening its window.
+LOGIN_FLAG = "--login"
+
+
 def launch_command() -> list[str]:
     """How the login item starts this install of the app."""
     if os.environ.get("APPIMAGE"):              # the AppImage file, not its temporary mount
-        return [os.environ["APPIMAGE"]]
+        return [os.environ["APPIMAGE"], LOGIN_FLAG]
     if getattr(sys, "frozen", False):
-        return [sys.executable]
+        return [sys.executable, LOGIN_FLAG]
     exe = Path(sys.executable)
     if sys.platform == "win32" and exe.with_name("pythonw.exe").exists():
         exe = exe.with_name("pythonw.exe")      # no console window at login
-    return [str(exe), str(Path(__file__).resolve().parent / "app.py")]
+    return [str(exe), str(Path(__file__).resolve().parent / "app.py"), LOGIN_FLAG]
 
 
 def _win_quote(cmd: list[str]) -> str:

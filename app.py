@@ -15,6 +15,7 @@ are to job boards (radar.py) and, once a day, to GitHub for updates.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -106,6 +107,19 @@ def show_dashboard(url: str, home: Path, spawn=subprocess.Popen) -> str:
     return "window"
 
 
+LOADING_HTML = (Path(__file__).resolve().parent / "loading.html").read_text(encoding="utf-8")
+HELPER_PATIENCE = 60            # seconds the window waits for the helper before saying it didn't start
+
+
+def helper_answers(url: str, timeout: float = 0.5) -> bool:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/api/render", timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def run_window(url: str, home: Path) -> int:
     """The window process. Only one at a time: a second one raises the first."""
     import oslock
@@ -121,7 +135,11 @@ def run_window(url: str, home: Path) -> int:
         return 0
     import appinfo
     webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
-    win = webview.create_window(appinfo.NAME, url, width=1440, height=900, min_size=(420, 600))
+    # Opened as the app starts: the loading screen until the helper answers.
+    waiting = not helper_answers(url)
+    started = time.time()
+    win = webview.create_window(appinfo.NAME, None if waiting else url, html=LOADING_HTML if waiting else None,
+                                width=1440, height=900, min_size=(420, 600))
     signal = home / "window.show"
     closed = threading.Event()
     win.events.closed += lambda: closed.set()
@@ -134,11 +152,20 @@ def run_window(url: str, home: Path) -> int:
     def watch() -> None:
         # pywebview runs this on a thread that isn't a daemon: it must end
         # when the window closes, or the process stays behind.
+        nonlocal waiting
         while not closed.wait(0.4):
             if with_tray and tray.acquire():
                 tray.release()
                 win.destroy()
                 return
+            if waiting:
+                if helper_answers(url):
+                    waiting = False
+                    win.load_url(url)       # the dashboard, or its own progress while it's rebuilt
+                elif time.time() - started > HELPER_PATIENCE:
+                    waiting = False
+                    win.evaluate_js("onwardProgress(" + json.dumps({"error": (
+                        f"Onward's helper didn't start. Another program may be using port {appinfo.PORT}.")}) + ")")
             if signal.exists():
                 try:
                     signal.unlink()
@@ -172,7 +199,7 @@ def wait_for_port(host: str, port: int, seconds: float) -> None:
 
 
 class App:
-    def __init__(self, headless: bool) -> None:
+    def __init__(self, headless: bool, at_login: bool = False) -> None:
         import appinfo
         import autostart
         import config
@@ -181,6 +208,7 @@ class App:
         self.appinfo, self.autostart_mod = appinfo, autostart
         self.store = config.store()
         self.headless = headless
+        self.at_login = at_login        # started by the login item: stays in the tray
         self.lock = oslock.FileLock(self.store.home / "app.lock")
         self.icon = None
         self.quit_event = threading.Event()
@@ -197,13 +225,19 @@ class App:
             # Already running (the user opened it again): show the dashboard instead.
             self.open_dashboard()
             return 0
+        # Opened by the user: the window first, so something shows at once. It
+        # shows the loading screen until the helper below starts answering.
+        shown = False
+        if not self.headless and not self.at_login and has_window_support():
+            self.open_dashboard()
+            shown = True
         import autostart
         removed = autostart.remove_legacy_tasks(self.store.home)
         import server                       # after the old helper is gone: it reads the same data folder
         self.server = server
         server.log(f"app {self.appinfo.VERSION} starting" + (f"; removed old scheduled tasks: {', '.join(removed)}"
                                                              if removed else ""))
-        server.prepare()
+        server.prepare(render_now=False)     # a page that needs rebuilding is rebuilt once serving starts
         if removed:
             wait_for_port(server.HOST, server.PORT, 15)
             every = self.store.section("radar")["interval_minutes"]
@@ -213,6 +247,8 @@ class App:
         self.first_launch()
         if removed and not self.login.enabled():
             self.login.enable()             # the old helper task started at logon; keep that
+        elif self.login.enabled() and autostart.LOGIN_FLAG not in (self.login.command() or ""):
+            self.login.enable()             # a login item from before --login: start quietly from now on
         try:
             httpd = server.bind()
         except OSError as e:
@@ -227,8 +263,8 @@ class App:
         server.start_background()
         server.APP_STATE["autostart"] = self.login.enabled()
         threading.Thread(target=self._background, name="app-status", daemon=True).start()
-        if httpd and not self.store.section("setup")["done"]:
-            self.open_dashboard()           # a new install opens on its setup steps
+        if httpd and not shown and (not self.store.section("setup")["done"] or not (self.at_login or self.headless)):
+            self.open_dashboard()           # a new install opens on its setup steps; the browser once it serves
         try:
             if self.headless or not self.run_tray():
                 self.quit_event.wait()
@@ -463,7 +499,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_window(appinfo.DASHBOARD_URL, config.store().home)
     hide_child_consoles()
     fix_path()
-    return App(headless="--headless" in argv).run()
+    return App(headless="--headless" in argv, at_login="--login" in argv).run()
 
 
 if __name__ == "__main__":
