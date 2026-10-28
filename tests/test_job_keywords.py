@@ -1,7 +1,7 @@
 """GET /api/job/keywords: the checklist the match score uses for the job whose
 form the extension is filling, so autofill adds the skills that job asks for.
 
-Run:  python -m unittest test_job_keywords
+Run:  python -m unittest tests.test_job_keywords
 """
 
 import json

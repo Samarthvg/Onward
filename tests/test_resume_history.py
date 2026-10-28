@@ -3,7 +3,7 @@ application forms: the tabular entry headers ("Company - Location & Dates",
 "Role | \\textit{tech}", "\\textit{Degree in Field} & GPA") and each job's
 bullets, plus the /api/resume/entries endpoint that serves them.
 
-Run:  python -m unittest test_resume_history
+Run:  python -m unittest tests.test_resume_history
 """
 
 import json

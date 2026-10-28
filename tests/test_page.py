@@ -1,7 +1,7 @@
 """The dashboard page is rebuilt when it was made from another template, so
 an update never serves the old version's page until the next search.
 
-Run: python -m unittest test_page
+Run: python -m unittest tests.test_page
 """
 
 import shutil

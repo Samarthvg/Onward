@@ -1,6 +1,6 @@
 """Settings store (config.py): defaults, validation, migrations, data folder.
 
-Run:  python -m unittest test_settings
+Run:  python -m unittest tests.test_settings
 """
 
 import json

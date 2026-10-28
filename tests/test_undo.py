@@ -3,7 +3,7 @@
 Each change answers with an undo id; undoing puts back exactly what was
 there before, once.
 
-Run:  python -m unittest test_undo
+Run:  python -m unittest tests.test_undo
 """
 
 import json
@@ -18,9 +18,9 @@ from unittest import mock
 
 import ai
 import server
-import test_ai
+from tests import test_ai
 import undo
-from test_prep import Base
+from tests.test_prep import Base
 
 KEY = test_ai.KEY
 

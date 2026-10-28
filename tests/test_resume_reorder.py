@@ -2,7 +2,7 @@
 experience keeps its date order; the result still compiles to one page.
 Also: an applicant's instruction reaches the prompt of every backend.
 
-Run:  python -m unittest test_resume_reorder
+Run:  python -m unittest tests.test_resume_reorder
 """
 
 import json

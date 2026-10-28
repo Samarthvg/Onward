@@ -80,7 +80,7 @@ jobs:
       - name: Python packages
         run: python -m pip install -r packaging/requirements.txt
       - name: Tests
-        run: python -m unittest test_app test_settings
+        run: python -m unittest tests.test_app tests.test_settings
 
       - name: Windows signing certificate
         if: runner.os == 'Windows' && env.HAS_WINDOWS_CERT == 'true'

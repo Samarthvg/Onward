@@ -1,6 +1,6 @@
 """The fast skill finder answers exactly as running every pattern would.
 
-Run: python -m unittest test_skillset
+Run: python -m unittest tests.test_skillset
 """
 
 import unittest

@@ -6,7 +6,7 @@ tailored PDFs compiled with LaTeX, drafted answers, the skip-tailoring rule,
 the daily cap, notifications, and the helper endpoints the extension and
 dashboard use.
 
-Run:  python -m unittest test_prep
+Run:  python -m unittest tests.test_prep
 """
 
 import base64

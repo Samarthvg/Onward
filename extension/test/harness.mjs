@@ -30,7 +30,7 @@ export function fixtureHistory() {
   if (!historyJson) {
     const repo = resolve(here, "..", "..");
     historyJson = execFileSync("python", ["-c",
-      "import json, resume_tex as rt; print(json.dumps(rt.history(rt.parse(open('fixtures/history_master.tex', encoding='utf-8').read()))))"],
+      "import json, resume_tex as rt; print(json.dumps(rt.history(rt.parse(open('tests/fixtures/history_master.tex', encoding='utf-8').read()))))"],
       { cwd: repo, encoding: "utf8" });
   }
   return historyJson;

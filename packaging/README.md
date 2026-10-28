@@ -49,7 +49,8 @@ install folder). Linux needs `appimagetool` on PATH.
    build can be published as one without reaching anyone.
 3. `GITHUB_REPO` in `appinfo.py` names the repository (`Samarthvg/Onward`). Empty, the update check is off.
 
-Before tagging, check the changes with `python preview.py` (see the main README) and run the tests.
+Before tagging, check that the **Tests** workflow passed for the commit, or run the tests yourself
+([docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md#tests)).
 
 The release also carries the Autofill extension (`packaging/extension.py`, run first by the workflow):
 

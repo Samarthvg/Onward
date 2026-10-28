@@ -2,7 +2,7 @@
 
 Every model client here is a fake: no test makes a paid call or needs a key.
 
-Run:  python -m unittest test_ai
+Run:  python -m unittest tests.test_ai
 """
 
 import http.client

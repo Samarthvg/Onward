@@ -1,7 +1,7 @@
 """Tests for discover.py: harvesting boards from public lists, checking
 them once, and handing tracked ones to radar.py on a schedule.
 
-Run:  python -m unittest test_discover
+Run:  python -m unittest tests.test_discover
 """
 
 import json

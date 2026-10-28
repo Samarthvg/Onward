@@ -1,7 +1,7 @@
 """The applicant's own entries that the extension picked for a job reach
 the drafting and answering prompts, and nothing is added without them.
 
-Run:  python -m unittest test_entries_prompt
+Run:  python -m unittest tests.test_entries_prompt
 """
 
 import unittest

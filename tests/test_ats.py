@@ -1,7 +1,7 @@
 """Add a company (ats.py): ATS detection from URLs and pages, the live board
 check, and the helper's settings and company endpoints.
 
-Run:  python -m unittest test_ats
+Run:  python -m unittest tests.test_ats
 """
 
 import json

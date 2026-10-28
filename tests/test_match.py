@@ -2,7 +2,7 @@
 in dashboard_template.html). Runs the dashboard's own scoring code in Node on
 the same fixtures and compares every number.
 
-Run:  python -m unittest test_match
+Run:  python -m unittest tests.test_match
 """
 
 import json
@@ -17,7 +17,7 @@ import prep
 import radar
 import reqparse
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 NOW_MS = datetime(2026, 10, 20, 12, 0).timestamp() * 1000
 
 RESUMES = {

@@ -4,7 +4,7 @@ While a page that needs rebuilding (after an update) is rebuilt, the helper
 serves the loading page and reports the rebuild's progress; the window shows
 the same page as a splash until the helper answers.
 
-Run: python -m unittest test_startup
+Run: python -m unittest tests.test_startup
 """
 
 import json

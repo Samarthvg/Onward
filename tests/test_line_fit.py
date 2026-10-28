@@ -2,7 +2,7 @@
 are caught by measuring the compiled page, then fixed (lists drop what they
 added, bullets are rewritten once) or put back to the master's wording.
 
-Run: python -m unittest test_line_fit
+Run: python -m unittest tests.test_line_fit
 """
 
 import shutil

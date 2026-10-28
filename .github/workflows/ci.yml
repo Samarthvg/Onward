@@ -1,0 +1,39 @@
+# The tests, on every push and pull request: the app's on Windows (what
+# most people install) and Linux, and the extension's rule tests.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Python packages
+        run: python -m pip install -r packaging/requirements.txt boto3==1.43.6
+      - name: Tests
+        run: python -m unittest
+
+  extension:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - name: Rule tests
+        working-directory: extension/test
+        run: node unit.mjs

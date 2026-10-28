@@ -1,6 +1,6 @@
 """Tests for the job sources and the HTTP layer under them.
 
-Run:  python -m unittest test_sources
+Run:  python -m unittest tests.test_sources
 Parser tests read real responses saved in fixtures/ (trimmed to a few
 records). HTTP tests run against a local server, so retry and robots.txt
 handling is exercised over real sockets.

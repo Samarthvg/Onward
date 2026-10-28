@@ -1,6 +1,6 @@
 """Roles (filters.py) and how radar.py uses them.
 
-Run:  python -m unittest test_roles
+Run:  python -m unittest tests.test_roles
 """
 
 import json

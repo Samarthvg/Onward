@@ -2,7 +2,7 @@
 from in the dashboard, skipping jobs already applied to or dismissed, and
 falls back to the Apply queue.
 
-Run:  python -m unittest test_apply_next
+Run:  python -m unittest tests.test_apply_next
 """
 
 import json

@@ -2,7 +2,7 @@
 keep nothing, with the database and the feed in buckets (folders here, and
 R2's API through botocore's stubber), and readers following along.
 
-Run: python -m unittest test_feed_run
+Run: python -m unittest tests.test_feed_run
 """
 
 import io
@@ -21,10 +21,10 @@ import config
 import feed
 import radar
 
-sys.path.insert(0, str(Path(__file__).parent / "packaging" / "feed"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "packaging" / "feed"))
 import run_feed  # noqa: E402
 
-from test_feed import posting  # noqa: E402
+from tests.test_feed import posting  # noqa: E402
 
 
 class FakeSearch:

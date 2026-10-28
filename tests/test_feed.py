@@ -3,7 +3,7 @@ clients catching up from the snapshot or the change files, never applying a
 file that doesn't check out. Then radar.py reading a feed instead of
 searching, and searching by itself when the feed can't be used.
 
-Run: python -m unittest test_feed
+Run: python -m unittest tests.test_feed
 """
 
 import gzip

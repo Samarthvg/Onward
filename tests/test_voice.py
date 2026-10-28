@@ -1,7 +1,7 @@
 """Checks that the drafted-answer voice check flags machine-written text and
 leaves plain student-style text alone.
 
-Run:  python -m unittest test_voice
+Run:  python -m unittest tests.test_voice
 """
 
 import unittest

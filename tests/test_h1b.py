@@ -2,7 +2,7 @@
 CSV export, keeping the newest two years with data, refreshing them, and
 falling back to what's saved (or the old bulk files) when it can't be read.
 
-Run: python -m unittest test_h1b
+Run: python -m unittest tests.test_h1b
 """
 
 import io

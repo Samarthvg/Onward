@@ -1,6 +1,6 @@
 """Regression tests for requirement parsing and skill detection.
 
-Run:  python -m unittest test_extraction
+Run:  python -m unittest tests.test_extraction
 Every case here is a real heading or phrase from a stored posting that was
 once misread.
 """

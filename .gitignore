@@ -33,9 +33,10 @@ dist/
 __pycache__/
 *.pyc
 
-# Local environment and secrets
+# Local environment and secrets (API keys where there's no keychain)
 .env
 .env.*
+secrets/
 
 # Local assistant/tooling config
 CLAUDE.md
