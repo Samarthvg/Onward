@@ -251,18 +251,14 @@
   .dlg-head h2 { font-size: 16px; margin: 0; flex: 1; }
   .dlg-body { padding: 14px 16px 18px; display: grid; gap: 14px; }
   .dlg-body p { margin: 0; color: var(--muted); font-size: 13px; }
-  .kit { display: grid; grid-template-columns: max-content 1fr auto; gap: 6px 10px; align-items: center; }
+  .kit { display: grid; grid-template-columns: minmax(120px, 2fr) minmax(0, 3fr) auto; gap: 6px 10px; align-items: center; }
+  .kit input, .kit select { width: 100%; min-width: 0; }
   .kit label { font-size: 13px; color: var(--muted); }
   .kit button { font-size: 12px; padding: 4px 9px; }
-  .bookmarklet {
-    display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px;
-    background: var(--accent); color: var(--accent-ink); font-weight: 600; text-decoration: none; cursor: grab;
-  }
-  .autofill { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .kit-sec { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 14px; }
   .steps { margin: 0; padding-left: 20px; display: grid; gap: 10px; font-size: 13px; color: var(--muted); }
   .steps b { color: var(--text); }
   kbd { font: 12px ui-monospace, Consolas, monospace; padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-2); color: var(--text); }
-  .sample { display: grid; gap: 8px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); border: 0; cursor: pointer; }
   .chip.off { background: var(--chip); color: var(--muted); text-decoration: line-through; }
@@ -662,47 +658,24 @@
     <button type="button" class="ghost" id="closeKit" aria-label="Close">Close</button>
   </div>
   <div class="dlg-body">
-    <p>Your details for application forms. Saved only in this browser. Nothing is sent anywhere.</p>
+    <p>What the Onward Autofill extension puts into application forms. It's kept on this computer, by the app.</p>
+    <p class="note" id="kitExt" aria-live="polite"></p>
     <div><button type="button" id="fromResume">Fill from resume</button></div>
     <div class="kit" id="kitFields"></div>
-    <div id="aboutBox" style="display:grid;gap:6px">
+    <div class="kit-sec">
+      <p class="section-h">Standard questions</p>
+      <div class="kit" id="kitStd"></div>
+    </div>
+    <div class="kit-sec">
+      <p class="section-h">Voluntary self-identification</p>
+      <p class="note">Asked on most US applications and never used to decide on you. "Decline to answer" is always fine.</p>
+      <div class="kit" id="kitEeo"></div>
+    </div>
+    <div class="kit-sec" id="aboutBox">
       <p class="section-h">About me, for drafted answers</p>
-      <p>Written answers ("Why this company?") can only mention things you tell them. Write a few lines in your own words: what you're into, why certain areas excite you, products you use, anything true you'd say in an interview. Drafts use this and never invent beyond it.</p>
+      <p>Written answers ("Why this company?") can only mention things you tell them. Write a few lines in your own words: what you're into, why certain areas excite you, products you use, anything true about you that a resume doesn't say. Drafts use only what's here and in your resume.</p>
       <textarea id="aboutText" class="jd" rows="6" placeholder="e.g. Music is something I love dearly; I play guitar and make beats on weekends. I got into ML because..."></textarea>
       <div class="row"><button type="button" id="saveAbout">Save</button><span class="note" id="aboutNote"></span></div>
-    </div>
-    <div class="autofill">
-      <p class="section-h">Onward Autofill extension</p>
-      <p>If you've installed the extension (see <code>extension/README.md</code>), it replaces the bookmark below: it also attaches your resume, picks dropdown answers and remembers answers you type. Open its options and press <b>Import from dashboard</b> while this page is open, or copy your details here and paste them there.</p>
-      <div class="row"><button type="button" id="copyForExtension">Copy for extension</button></div>
-    </div>
-    <div class="autofill">
-      <p class="section-h">One-click autofill on application forms</p>
-      <p>This works as a special bookmark. Instead of opening a page, clicking it fills in the form you're looking at with the details above. It never submits anything.</p>
-      <ol class="steps">
-        <li>Show your bookmarks toolbar: press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> (Firefox, Chrome and Edge).</li>
-        <li>Drag this green button onto the toolbar:
-          <div class="row" style="margin-top:6px">
-            <a class="bookmarklet" id="bookmarklet" href="#" title="Drag me to your bookmarks toolbar">Fill application</a>
-            <button type="button" id="copyBookmarklet">Copy bookmark</button>
-          </div>
-          <span class="note">Dragging doesn't work? Click <b>Copy bookmark</b>, right-click the bookmarks toolbar, choose <b>Add Bookmark…</b>, name it "Fill application", paste into the URL field, and save.</span>
-        </li>
-        <li>On a job's application form (the <b>Apply ↗</b> button opens one), click the bookmark. Then attach your resume, answer the remaining questions, review, and submit yourself.</li>
-      </ol>
-      <p class="note">Works on Greenhouse and Ashby forms and on Workday. Workday asks you to sign in first, and each company's Workday site needs its own account; make it yourself, then click the bookmark on each step (My Information, My Experience). It never clicks Next or answers sponsorship, work authorization, or demographic questions.</p>
-      <div class="sample">
-        <p class="section-h">Try it here first</p>
-        <form id="sampleForm" class="kit" onsubmit="return false">
-          <label for="s-first">First name</label><input id="s-first" type="text"><span></span>
-          <label for="s-last">Last name</label><input id="s-last" type="text"><span></span>
-          <label for="s-email">Email</label><input id="s-email" type="email"><span></span>
-          <label for="s-phone">Phone</label><input id="s-phone" type="tel"><span></span>
-          <label for="s-li">LinkedIn profile</label><input id="s-li" type="url"><span></span>
-        </form>
-        <div class="row"><button type="button" id="trySample">Fill this sample form</button><button type="button" class="ghost" id="clearSample">Clear</button></div>
-      </div>
-      <p class="note">Changed your details? Make the bookmark again; it carries the details from when it was made.</p>
     </div>
   </div>
 </dialog>
@@ -743,121 +716,7 @@
 <input type="file" id="resumeFile" accept=".pdf,.tex,.txt,.md" hidden>
 <div class="toast" id="toast" role="region" aria-label="Message" hidden><span id="toastMsg"></span><button type="button" id="toastUndo" aria-keyshortcuts="Control+Z" hidden>Undo</button><button type="button" class="x" id="toastClose" aria-label="Dismiss message">Close</button></div>
 
-<script type="text/plain" id="fillerSrc">
-function (P, root) {
-  root = root || document;
-  var full = [P.firstName, P.lastName].filter(Boolean).join(" ");
-  var rules = [
-    [/preferred.?name|nick.?name|pronoun|authori[sz]|sponsor|visa|requir|willing|relocat|salary|compensation|why |describe|how did you hear|referr|gender|race|veteran|disabilit/, null],
-    [/first.?name|given.?name|fname/, P.firstName],
-    [/last.?name|family.?name|surname|lname/, P.lastName],
-    [/linked.?in/, P.linkedin],
-    [/git.?hub/, P.github],
-    [/portfolio|personal.?(web)?site|website|blog|other.?(link|url|website)/, P.portfolio],
-    [/e-?mail/, P.email],
-    [/phone|mobile|telephone/, P.phone],
-    [/current.?(company|employer)|company|\borg\b|organization|employer/, P.company],
-    [/school|university|college|institution/, P.school],
-    [/degree/, P.degree],
-    [/discipline|major|field.?of.?study/, P.major],
-    [/graduat/, P.gradDate],
-    [/full.?name|legal.?name|\bname\b/, full],
-    [/city|location|where.*(located|based)|current.?address/, P.location]
-  ];
-  /* Workday names its fields with data-automation-id, either on the input
-     (legalNameSection_firstName) or, in newer tenants, on a formField-
-     wrapper around an input like id="name--legalName--firstName". Those
-     names are exact, so they are checked before any label. */
-  var SITE = {};
-  var sites = [P.portfolio, P.github].filter(Boolean);
-  var workday = [
-    [rules[0][0], null],
-    [/preferred|middle|local|extension|phonecode|addressline|postal|county|twitter|facebook|workexperience|jobtitle|company|location|description|gpa|gradeaverage|fieldofstudy/, null],
-    [/firstname|givenname/, P.firstName],
-    [/lastname|familyname/, P.lastName],
-    [/email/, P.email],
-    [/phone-?number/, P.phone],
-    [/city/, (P.location || "").split(",")[0].trim()],
-    [/linkedin/, P.linkedin],
-    [/github/, P.github],
-    [/website|webaddress/, SITE],
-    [/school/, P.school]
-  ];
-  function workdayKey(el) {
-    var own = el.getAttribute("data-automation-id");
-    var wrap = el.closest('[data-automation-id^="formField-"]');
-    if (wrap && wrap.querySelectorAll("input, textarea, select").length > 1) wrap = null;
-    if (!own && !wrap) return "";
-    return [own, wrap && wrap.getAttribute("data-automation-id"), el.id, el.name].filter(Boolean).join(" ").toLowerCase();
-  }
-  function labelOf(el) {
-    var t = [el.name, el.id, el.placeholder, el.getAttribute("aria-label"), el.getAttribute("autocomplete")];
-    var direct = false;
-    if (el.id) { var l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) { t.push(l.textContent); direct = true; } }
-    var cl = el.closest("label"); if (cl) { t.push(cl.textContent); direct = true; }
-    var lb = el.getAttribute("aria-labelledby");
-    if (lb) lb.split(/\s+/).forEach(function (i) { var n = document.getElementById(i); if (n) { t.push(n.textContent); direct = true; } });
-    var prev = el.previousElementSibling;
-    if (!direct && prev && !prev.querySelector("input, textarea, select") && prev.textContent.trim().length < 80) {
-      t.push(prev.textContent); direct = true;
-    }
-    if (!direct) {
-      /* Fall back to a nearby label only from a wrapper that holds this one
-         field; a wider container's first label belongs to some other field. */
-      var p = el.parentElement;
-      for (var i = 0; i < 4 && p; i++, p = p.parentElement) {
-        if (p.querySelectorAll("input, textarea, select").length > 1) break;
-        var q = p.querySelector("label, legend, .application-label, [class*=label]");
-        if (q && !q.contains(el)) { t.push(q.textContent); break; }
-      }
-    }
-    return t.filter(Boolean).join(" ").toLowerCase();
-  }
-  function setValue(el, v) {
-    var proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    /* React (Workday, Ashby) keeps its own copy of the value; the native
-       setter plus an input event is what makes it notice. Workday commits
-       and validates a field when focus leaves it, so move focus through. */
-    try { el.focus({ preventScroll: true }); } catch (e) {}
-    Object.getOwnPropertyDescriptor(proto, "value").set.call(el, v);
-    ["input", "change"].forEach(function (e) { el.dispatchEvent(new Event(e, { bubbles: true })); });
-    /* A window without OS focus fires no focus events, so stand in for them. */
-    var left = false, mark = function () { left = true; };
-    el.addEventListener("focusout", mark);
-    if (el.ownerDocument.activeElement === el) el.blur();
-    el.removeEventListener("focusout", mark);
-    if (!left) ["blur", "focusout"].forEach(function (e) { el.dispatchEvent(new Event(e, { bubbles: true })); });
-  }
-  var filled = 0;
-  root.querySelectorAll("input").forEach(function (el) {
-    var type = (el.type || "text").toLowerCase();
-    if (["text", "email", "tel", "url", "search"].indexOf(type) < 0) return;
-    if (el.disabled || el.readOnly || el.value || el.offsetParent === null) return;
-    if (el.getAttribute("role") === "combobox") return;
-    var label = labelOf(el), key = workdayKey(el);
-    for (var w = 0; key && w < workday.length; w++) {
-      if (!w && rules[0][0].test(label)) return;
-      if (workday[w][0].test(key)) {
-        var v = workday[w][1] === SITE ? sites.shift() : workday[w][1];
-        if (v) { setValue(el, v); filled++; }
-        return;
-      }
-    }
-    for (var r = 0; r < rules.length; r++) {
-      if (rules[r][0].test(label)) {
-        if (rules[r][1]) { setValue(el, rules[r][1]); filled++; }
-        return;
-      }
-    }
-  });
-  var box = document.createElement("div");
-  box.textContent = "Filled " + filled + " field" + (filled === 1 ? "" : "s") + ". Attach your resume, answer the rest, review, then submit.";
-  box.style.cssText = "position:fixed;z-index:2147483647;left:50%;top:16px;transform:translateX(-50%);background:#1d1d1b;color:#fff;padding:10px 16px;border-radius:8px;font:14px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.25)"; // taste-skill-ignore: it floats
-  document.body.appendChild(box);
-  setTimeout(function () { box.remove(); }, 6000);
-}
-</script>
-
+<script src="/rules.js"></script>
 <script>
 const DATA = /*__DATA__*/null;
 // The user's roles (settings.json); a dashboard from before them has one.
@@ -878,7 +737,7 @@ const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf
 // The Apply kit and the marks are also kept by the helper (/api/state), so
 // the app's window, every browser and the extension see the same. Each
 // carries when it last changed ("<key>@", ms); the later copy wins.
-const SYNCED = ["profile", "marks"];
+const SYNCED = ["profile", "answers", "marks"];
 const syncTimers = {};
 const store = {
   get(k, d) { try { const v = localStorage.getItem("jr:" + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -917,6 +776,7 @@ const state = {
   opened: {},                           // url -> true once Apply was clicked this session
   resume: store.get("resume", null),    // {name, text, skills[], off[], added[], at}
   profile: store.get("profile", {}),
+  answers: store.get("answers", {}),    // standard and self-identification answers (rules.js)
   // Simple view unless the user turned on Advanced (settings.json ui.advanced;
   // kept here too so the page opens in the right view before the helper answers).
   advanced: store.get("advanced", null),
@@ -2146,15 +2006,10 @@ function addSkill() {
 
 // ---------------------------------------------------------------- apply kit
 
-const KIT = [
-  ["firstName", "First name", "text"], ["lastName", "Last name", "text"],
-  ["email", "Email", "email"], ["phone", "Phone", "tel"],
-  ["linkedin", "LinkedIn URL", "url"], ["github", "GitHub URL", "url"], ["portfolio", "Portfolio URL", "url"],
-  ["location", "City, State", "text"], ["company", "Current company", "text"],
-  ["school", "School", "text"], ["degree", "Degree", "text"], ["major", "Major", "text"],
-  ["gradDate", "Graduation (e.g. May 2026)", "text"],
-  ["workAuth", "Work authorization answer", "text"], ["sponsorship", "Sponsorship answer", "text"],
-];
+// The fields the extension fills, from its rules (served as /rules.js).
+const RULES = globalThis.JR && globalThis.JR.rules;
+const KIT_TYPES = { email: "email", phone: "tel", linkedin: "url", github: "url", portfolio: "url" };
+const KIT = RULES ? RULES.PROFILE_FIELDS.map(([k, label]) => [k, label, KIT_TYPES[k] || "text"]) : [];
 
 function renderKit() {
   const P = state.profile;
@@ -2162,17 +2017,58 @@ function renderKit() {
   box.replaceChildren();
   for (const [key, label, type] of KIT) {
     const id = "kit-" + key;
-    const input = el("input", { id, type, value: P[key] || "", autocomplete: "off",
-      placeholder: key === "sponsorship" ? "e.g. Yes, I will require H-1B sponsorship" : key === "workAuth" ? "e.g. F-1 OPT, eligible for STEM extension" : null });
-    input.addEventListener("input", () => { P[key] = input.value.trim(); store.set("profile", P); updateBookmarklet(); syncScoring(); });
+    // What the extension fills when this is empty (Country: United States).
+    const fallback = RULES.DEFAULT_PROFILE[key] || "";
+    const input = key === "phoneType"
+      ? el("select", { id }, ...["Mobile", "Home", "Work"].map((o) => el("option", { value: o, text: o })))
+      : el("input", { id, type, value: P[key] || "", autocomplete: "off", placeholder: fallback || null });
+    if (key === "phoneType") input.value = P[key] || fallback || "Mobile";
+    input.addEventListener(key === "phoneType" ? "change" : "input", () => { P[key] = input.value.trim(); store.set("profile", P); });
     box.append(el("label", { for: id, text: label }), input,
       el("button", { type: "button", text: "Copy", onclick: async () => {
         try { await navigator.clipboard.writeText(input.value); toast(label + " copied"); }
         catch { input.select(); toast("Press Ctrl+C to copy"); }
       } }));
   }
-  updateBookmarklet();
+  renderAnswers();
   loadAbout();
+  showExtension();
+}
+
+// Yes/no and list answers are picked, the rest typed. Self-identification
+// answers default to declining.
+function renderAnswers() {
+  if (!RULES) return;
+  const A = state.answers;
+  const row = (box, [key, label, options], decline) => {
+    const id = "kit-" + key;
+    const cur = A[key] != null ? A[key] : decline ? RULES.DECLINE : "";
+    // A self-identification answer in the form's own words (set in the extension before 0.3) stays a choice.
+    const own = decline && cur && cur !== RULES.DECLINE && !options.includes(cur) ? [[cur, cur]] : [];
+    const input = options
+      ? el("select", { id }, ...(decline ? [[RULES.DECLINE, "Decline to answer"], ...options.map((o) => [o, o]), ...own, ["", "Leave it for me"]]
+        : options.map((o) => [o, o === "" ? "Ask me each time" : o === "yes" ? "Yes" : "No"])).map(([v, t]) => el("option", { value: v, text: t })))
+      : el("input", { id, type: "text", autocomplete: "off" });
+    input.value = cur;
+    input.addEventListener(options ? "change" : "input", () => { A[key] = input.value.trim(); store.set("answers", A); });
+    box.append(el("label", { for: id, text: label }), input, el("span"));
+  };
+  $("kitStd").replaceChildren();
+  for (const q of RULES.STANDARD_ANSWERS) row($("kitStd"), q, false);
+  $("kitEeo").replaceChildren();
+  for (const q of RULES.EEO_ANSWERS) row($("kitEeo"), q, true);
+}
+
+// Whether the extension has reached the app (it reads the kit from here).
+async function showExtension() {
+  const n = $("kitExt");
+  if (!HELPER) { n.textContent = ""; return; }
+  try {
+    const x = (await api("/api/app")).extension || {};
+    n.textContent = x.seen
+      ? `The extension is connected (last seen ${fmt(x.seen)}) and fills forms with these.`
+      : "The extension hasn't connected yet. Install it under Settings, App, then open a job's application form.";
+  } catch { n.textContent = ""; }
 }
 
 // "About me" lives with the helper (resume/about_me.txt), not in the browser,
@@ -2200,29 +2096,6 @@ $("saveAbout").addEventListener("click", async () => {
   } catch (e) { $("aboutNote").textContent = e.message; }
 });
 
-function updateBookmarklet() {
-  const src = $("fillerSrc").textContent.trim();
-  $("bookmarklet").href = "javascript:" + encodeURIComponent("(" + src + ")(" + JSON.stringify(state.profile) + ");void 0");
-}
-
-$("bookmarklet").addEventListener("click", (e) => { e.preventDefault(); toast("Drag this onto your bookmarks toolbar (Ctrl+Shift+B shows it), or use Copy bookmark."); });
-$("copyBookmarklet").addEventListener("click", async () => {
-  updateBookmarklet();
-  try { await navigator.clipboard.writeText($("bookmarklet").href); toast("Copied. Right-click the bookmarks toolbar, Add Bookmark, paste into URL."); }
-  catch { toast("Couldn't copy automatically. Drag the green button instead."); }
-});
-$("copyForExtension").addEventListener("click", async () => {
-  const text = JSON.stringify({ jobradar: "profile", version: 1, profile: state.profile });
-  try { await navigator.clipboard.writeText(text); toast("Copied. In the extension's options, choose Paste an export instead."); }
-  catch { toast("Couldn't copy automatically. Use Import from dashboard in the extension instead."); }
-});
-$("trySample").addEventListener("click", () => {
-  if (!state.profile.firstName && !state.profile.email) { toast("Fill in your details above first."); return; }
-  // Same code the bookmark runs, limited to the sample form.
-  const run = new Function("P", "root", "return (" + $("fillerSrc").textContent.trim() + ")(P, root);");
-  run(state.profile, $("sampleForm"));
-});
-$("clearSample").addEventListener("click", () => { for (const i of $("sampleForm").querySelectorAll("input")) i.value = ""; });
 $("openKit").addEventListener("click", () => { renderKit(); openDialog($("kit")); });
 $("closeKit").addEventListener("click", () => $("kit").close());
 $("closeSkills").addEventListener("click", () => $("skillsDlg").close());
@@ -2234,10 +2107,10 @@ $("fromResume").addEventListener("click", () => {
   const before = { ...state.profile };
   let added = 0;
   for (const [k, v] of Object.entries(found)) if (!state.profile[k]) { state.profile[k] = v; added++; }
-  store.set("profile", state.profile); renderKit(); syncScoring();
+  store.set("profile", state.profile); renderKit();
   if (!added) { toast("Nothing new found in your resume: every field it has is already filled in."); return; }
   undoable(`Filled ${added} field${added === 1 ? "" : "s"} from your resume. Check them.`, "filling from your resume", () => {
-    state.profile = before; store.set("profile", before); renderKit(); syncScoring();
+    state.profile = before; store.set("profile", before); renderKit();
   });
 });
 
@@ -2607,15 +2480,14 @@ $("closeTailor").addEventListener("click", () => $("tailorDlg").close());
 const queue = { data: null, synced: false, timer: 0 };
 let syncTimer = 0;
 
-// The helper scores jobs with this resume exactly as this page does, and
-// drafts answers with the Apply kit details.
+// The helper scores jobs with this resume exactly as this page does.
 function syncScoring() {
   if (!HELPER || !state.resume) return;
   clearTimeout(syncTimer);
   syncTimer = setTimeout(() => {
     const r = state.resume;
     api("/api/scoring", { name: r.name, text: r.text, skills: r.skills, off: r.off || [], added: r.added || [],
-      years: r.years != null ? r.years : null, profile: state.profile, at: r.at || 0 }).catch(() => {});
+      years: r.years != null ? r.years : null, at: r.at || 0 }).catch(() => {});
   }, 800);
 }
 
@@ -2905,7 +2777,13 @@ function openPrefs() {
 $("closePrefs").addEventListener("click", () => $("prefsDlg").close());
 $("viewTabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) showView(b.dataset.view); });
 $("pickN").addEventListener("change", (e) => { state.pickN = +e.target.value; store.set("pickN", state.pickN); renderQueue(); });
-window.addEventListener("hashchange", () => showView(location.hash.slice(1)));
+// "#kit" (the extension's "Open the Apply kit") opens the kit over the Apply queue.
+function showHash() {
+  const kitLink = location.hash === "#kit";
+  showView(kitLink ? "queue" : location.hash.slice(1));
+  if (kitLink && !$("kit").open) { renderKit(); openDialog($("kit")); }
+}
+window.addEventListener("hashchange", showHash);
 
 // ---------------------------------------------------------------- settings page
 //
@@ -3805,14 +3683,25 @@ const SETUP_RENDER = {
       inputs[k] = i;
       return field(label, i, found[k] && !state.profile[k] ? "Read from your resume." : "");
     });
+    // The questions nearly every US application asks; the rest are in the Apply kit.
+    const asked = RULES ? RULES.STANDARD_ANSWERS.filter(([k]) => ["workAuth", "sponsorNow", "sponsorFuture"].includes(k)) : [];
+    const picks = {};
+    const answers = asked.map(([k, label, options]) => {
+      const sel = el("select", {}, ...options.map((o) => el("option", { value: o, text: o === "" ? "Ask me each time" : o === "yes" ? "Yes" : "No" })));
+      sel.value = state.answers[k] || "";
+      picks[k] = sel;
+      return field(label, sel);
+    });
     body.append(...setupHead("Check your details",
-      "Used to fill in applications, by the Apply kit and the browser extension. Fix anything that was read wrong."),
-      el("div", { class: "fields" }, ...fields));
+      "The browser extension fills applications with these. Fix anything that was read wrong; the Apply kit has the rest."),
+      el("div", { class: "fields" }, ...fields, ...answers));
     return nextButton("Next", () => {
       for (const [k, i] of Object.entries(inputs)) state.profile[k] = i.value.trim();
       store.set("profile", state.profile);
-      updateBookmarklet();
-      syncScoring();
+      if (asked.length) {
+        for (const [k, sel] of Object.entries(picks)) state.answers[k] = sel.value;
+        store.set("answers", state.answers);
+      }
       next();
     });
   },
@@ -3946,6 +3835,11 @@ const SETUP_RENDER = {
 
   extension(body, next) {
     const x = setup.app.extension || {};
+    const seen = el("p", { class: "note", "aria-live": "polite" });
+    const showSeen = (ok) => { seen.textContent = ok
+      ? "Connected. It reads your details and resumes from the app, so there's nothing to copy over."
+      : "Not connected yet. Once it's installed, this turns to Connected by itself."; };
+    showSeen(!!x.seen);
     const copy = (c) => el("button", { type: "button", text: "Copy", onclick: async () => {
       try { await navigator.clipboard.writeText(c); toast("Copied"); } catch { toast("Select it and copy it."); }
     } });
@@ -3973,8 +3867,12 @@ const SETUP_RENDER = {
         el("section", { class: "found" }, el("h3", { text: "Chrome or Edge" }), chrome)),
       x.folder && !(x.firefox_store && x.chrome_store) ? el("div", { class: "field" }, el("label", { class: "section-h", text: "Extension folder" }),
         el("div", { class: "rowline" }, el("code", { class: "cmd", text: x.folder }), copy(x.folder))) : null,
-      el("p", { class: "note", text: "Once it's installed, open its options and press Import from dashboard to copy your details over. " +
-        "You can do this later; the Apply kit at the top of the dashboard has the same details." }));
+      seen);
+    // Ticks over to "connected" as soon as the installed extension reaches the app.
+    const poll = setInterval(async () => {
+      if (!seen.isConnected) { clearInterval(poll); return; }
+      try { if ((await api("/api/app")).extension.seen) { showSeen(true); clearInterval(poll); } } catch {}
+    }, 3000);
     return nextButton("Next", next);
   },
 
@@ -4256,7 +4154,6 @@ for (const host of [document.body, ...document.querySelectorAll("dialog")]) live
 
 renderNotices();
 rescore();
-updateBookmarklet();
 if (state.advanced === null) state.advanced = !!(SETTINGS.ui && SETTINGS.ui.advanced);
 $("advMode").checked = state.advanced;
 render();
@@ -4292,7 +4189,7 @@ if (HELPER) {
         pushState(k);
       }
     }
-    if (changed) { renderKit(); updateBookmarklet(); syncScoring(); render(); }
+    if (changed) { if ($("kit").open) renderKit(); render(); }
   }).catch(() => {});
 }
 if (HELPER && store.get("advanced", null) === null) {
@@ -4301,7 +4198,7 @@ if (HELPER && store.get("advanced", null) === null) {
 }
 if (HELPER) {
   $("viewTabs").hidden = false;
-  showView(location.hash.slice(1));
+  showHash();
   if (state.view !== "queue") loadQueue();   // the ready count on the tab, and marks from the extension
 }
 // Keep relative times current; reload for fresh data every 10 minutes unless a dialog is open.

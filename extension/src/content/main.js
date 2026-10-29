@@ -1,6 +1,7 @@
 /* Content-script entry point: finds the application form, fills what the
- * saved profile and answers cover, remembers answers the user types into
- * custom questions, and reports the rest in the panel.
+ * Apply kit, the standard answers and the resume in the Onward app cover,
+ * remembers answers the user types into custom questions, and reports the
+ * rest in the panel. A form for a job the apply queue prepared fills itself.
  *
  * It never clicks Submit, Next, Apply or any other control that sends or
  * advances the form, and never creates accounts.
@@ -34,13 +35,31 @@
   /* ------------------------------------------------------------- storage */
 
   async function load() {
-    const s = await api.storage.local.get(["profile", "answers", "settings"]);
+    const [s, kit] = await Promise.all([api.storage.local.get("settings"),
+      api.runtime.sendMessage({ type: "jr:kit" }).catch(() => null)]);
+    const k = kit && !kit.error ? kit : {};
     store = {
-      profile: Object.assign({}, R.DEFAULT_PROFILE, s.profile),
-      answers: Object.assign({}, R.DEFAULT_ANSWERS, s.answers),
-      settings: R.withDefaults(s.settings).settings,
+      profile: Object.assign({}, R.DEFAULT_PROFILE, k.profile && k.profile.value),
+      answers: Object.assign({}, R.DEFAULT_ANSWERS, k.answers && k.answers.value),
+      settings: Object.assign({}, R.DEFAULT_SETTINGS, s.settings),
+      draftBackend: k.draft_backend || "chatgpt",
+      resume: k.resume && k.resume.data ? { name: k.resume.name, type: "application/pdf", data: k.resume.data } : null,
+      history: k.history || null,
+      // Never reached the app: nothing to fill with yet.
+      empty: !kit || !!kit.error,
     };
     return store;
+  }
+
+  /** Work history, education, skills and projects from the master resume behind this job
+   * (the app's copy of the default master when it doesn't know the job or isn't running). */
+  let historyAsk = null;
+  function resumeHistory() {
+    if (!historyAsk) {
+      historyAsk = api.runtime.sendMessage({ type: "jr:history", url: location.href })
+        .then((r) => (r && !r.error ? r : store.history), () => store.history);
+    }
+    return historyAsk;
   }
 
   const memKey = (label) => {
@@ -85,7 +104,7 @@
     if (cls.cat === "profile" || cls.cat === "std" || cls.cat === "eeo") {
       const v = answerFor(cls, store.profile, store.answers);
       if (!v) {
-        const where = cls.cat === "profile" ? "add it to your profile in the extension options" : "no saved answer; set one in the extension options";
+        const where = cls.cat === "profile" ? "add it to the Apply kit in Onward" : "no saved answer; set one in the Apply kit in Onward";
         return Object.assign(base, { status: "needs", why: where });
       }
       const textual = R.TEXT_KINDS.has(q.kind) || q.kind === "textarea";
@@ -141,6 +160,10 @@
     JR.panel.update({ open: true, busy: true, status: "Filling…" });
     try {
       await load();
+      if (store.empty) {
+        JR.panel.update({ busy: false, items: [], status: "Onward isn't running, so there's nothing to fill with yet. Open the Onward app, then press Fill again." });
+        return summary();
+      }
       ensureStyle();
       sections = [];
       let qs = JR.sites.collect(document, site);
@@ -159,16 +182,9 @@
       const projectsQ = H.projectsQuestion(qs) || H.rows(qs).some((r) => r.type === "proj") || (workday && !!H.addButton("proj", document));
       if (wantsHistory || skillsQ || projectsQ) {
         JR.panel.update({ status: "Filling work history and education from your resume…" });
-        // Entries edited in the extension's options win; the master resume fills the gaps.
-        const mine = (await api.storage.local.get("history")).history || null;
-        const has = (k) => !!(mine && Array.isArray(mine[k]) && mine[k].length);
-        let fromResume = null;
-        if (store.settings.helper && !(has("work") && has("education") && has("skills") && has("projects"))) {
-          fromResume = await api.runtime.sendMessage({ type: "jr:history", url: location.href }).catch(() => null);
-          if (!fromResume || fromResume.error) fromResume = null;
-        }
-        const pick = (k) => (has(k) ? mine[k] : fromResume && fromResume[k]) || [];
-        hist = mine || fromResume
+        const fromResume = await resumeHistory();
+        const pick = (k) => (fromResume && Array.isArray(fromResume[k]) ? fromResume[k] : []);
+        hist = fromResume
           ? { work: pick("work"), education: pick("education"), skills: pick("skills"), certifications: pick("certifications"),
             projects: pick("projects") }
           : null;
@@ -211,8 +227,8 @@
       const keys = qs.map((q) => memKey(q.label)).filter(Boolean);
       const mem = keys.length ? await api.storage.local.get(keys) : {};
       const ctx = { company: JR.sites.jobInfo(document).company || "" };
-      const prep = store.settings.helper ? await getPrepared() : null;
-      if (qs.some((q) => q.kind === "file")) ctx.resume = resumeFor(prep, (await api.storage.local.get("resume")).resume || null);
+      const prep = await getPrepared();
+      if (qs.some((q) => q.kind === "file")) ctx.resume = resumeFor(prep, store.resume);
 
       for (const q of qs) {
         if (histTouched && q.history) continue;   // filled above
@@ -226,7 +242,7 @@
         items.push(it);
       }
       if (prep && prep.answers && prep.answers.length) await usePrepared(items, prep.answers);
-      if (store.settings.aiFill && store.settings.helper && store.settings.draftBackend !== "manual") {
+      if (store.settings.aiFill && store.settings.helper) {
         await aiFill(items);
       }
       const n = items.filter((i) => i.status === "filled").length;
@@ -255,13 +271,13 @@
     return prepared;
   }
 
-  /** The tailored PDF when one was prepared and chosen, under the name the helper gives it
-   * (Firstname_Lastname_Company_Resume.pdf), else the stored resume's; without one, the stored resume. */
+  /** The resume the app picked for this job (tailored when one was prepared and chosen, else the
+   * master), under the name it gives it (Firstname_Lastname_Company_Resume.pdf); for a job the app
+   * doesn't know, its master. */
   function resumeFor(prep, master) {
     if (!prep || !prep.resume || !prep.resume.data) return master;
-    const base = master && master.name ? master.name.replace(/\.[a-z0-9]+$/i, "") : "Resume";
-    const name = /^[\w.-]{1,150}\.pdf$/i.test(prep.resume.name || "") ? prep.resume.name : base + ".pdf";
-    return { name, type: "application/pdf", data: prep.resume.data, updated: Date.now(), tailored: true };
+    const name = /^[\w.-]{1,150}\.pdf$/i.test(prep.resume.name || "") ? prep.resume.name : "Resume.pdf";
+    return { name, type: "application/pdf", data: prep.resume.data, updated: Date.now(), tailored: prep.choice === "tailored" };
   }
 
   function preparedLine(prep, items) {
@@ -380,15 +396,15 @@
       cands.push({ it, kind, opts });
     }
     if (!cands.length) return;
-    const who = BACKEND_NAMES[store.settings.draftBackend] || store.settings.draftBackend;
+    const who = BACKEND_NAMES[store.draftBackend] || store.draftBackend;
     JR.panel.update({ items, status: `Asking ${who} about ${cands.length} more question${cands.length === 1 ? "" : "s"}…` });
     const info = JR.sites.jobInfo(document);
     const payload = {
       questions: cands.map((c, i) => ({ id: String(i), question: c.it.label, kind: c.kind, options: c.opts,
         max_chars: c.it.q.el.maxLength > 0 ? c.it.q.el.maxLength : 0,
         context: c.it.q.container ? textOf(c.it.q.container).slice(0, 800) : "" })),
-      profile: store.profile, company: info.company, title: info.title, url: location.href,
-      jd: JR.sites.jobDescription(document), backend: store.settings.draftBackend, entries: await jobEntries(),
+      company: info.company, title: info.title, url: location.href,
+      jd: JR.sites.jobDescription(document), entries: await jobEntries(),
     };
     let result;
     try {
@@ -436,7 +452,7 @@
     for (const q of qs) {
       if (q.kind === "file") continue;
       const cls = classify(q.label, q.kind, q.attrs, q.section, optionTexts(q));
-      if (cls.cat !== "custom") continue;   // profile, sponsorship and EEO answers live in the options page
+      if (cls.cat !== "custom") continue;   // profile, sponsorship and EEO answers live in the Apply kit
       const k = memKey(q.label);
       const v = W.get(q);
       if (!k || !v || v.length > 5000) continue;
@@ -461,19 +477,16 @@
    */
   async function fitSkills(skills) {
     let keywords = [];
-    if (store.settings.helper) {
-      const r = await api.runtime.sendMessage({ type: "jr:jobKeywords", url: location.href }).catch(() => null);
-      if (r && !r.error && r.found && Array.isArray(r.keywords)) keywords = r.keywords;
-    }
+    const r = await api.runtime.sendMessage({ type: "jr:jobKeywords", url: location.href }).catch(() => null);
+    if (r && !r.error && r.found && Array.isArray(r.keywords)) keywords = r.keywords;
     return R.skillsForPosting(skills, await JR.sites.postingText(document), JR.sites.jobInfo(document).title, { keywords });
   }
 
-  /** The saved jobs and projects that relate to this posting, for the AI; the rest aren't sent. */
+  /** The resume's jobs and projects that relate to this posting, for the AI; the rest aren't sent. */
   async function jobEntries() {
     try {
-      const { history } = await api.storage.local.get("history");
       const info = JR.sites.jobInfo(document);
-      return R.relevantEntries(history, await JR.sites.postingText(document), info.title);
+      return R.relevantEntries(await resumeHistory(), await JR.sites.postingText(document), info.title);
     } catch (e) {
       return "";
     }
@@ -517,7 +530,7 @@
   async function draft(it, note = "") {
     it.drafting = true;
     it.prompt = "";
-    const b = store.settings.draftBackend;
+    const b = store.draftBackend;
     const verb = note ? "Redrafting" : "Drafting";
     it.why = b === "chatgpt" || b === "claude-code" ? verb + " with your " + BACKEND_NAMES[b] + " login…"
       : verb + " with your " + (BACKEND_NAMES[b] || b) + " key…";
@@ -528,16 +541,11 @@
       question: it.label, context: it.q.container ? textOf(it.q.container).slice(0, 1500) : "",
       company: info.company, title: info.title, url: location.href,
       jd: JR.sites.jobDescription(document), max_chars: it.q.el.maxLength > 0 ? it.q.el.maxLength : 0,
-      backend: store.settings.draftBackend, note, previous: before, entries: await jobEntries(),
+      note, previous: before, entries: await jobEntries(),
     };
     try {
       const start = await api.runtime.sendMessage({ type: "jr:draftStart", payload });
       if (!start || start.error) throw new Error((start && start.error) || "The Onward helper didn't answer.");
-      if (start.prompt) {
-        it.prompt = start.prompt;
-        it.why = "Manual mode: paste this into ChatGPT or Claude, then paste the answer into the field.";
-        return;
-      }
       if (start.estimate != null) {
         it.why = "Drafting with your " + (BACKEND_NAMES[b] || b) + " key, about " + (start.estimate < 0.01 ? "under 1¢" : "$" + start.estimate.toFixed(2)) + "…";
         JR.panel.render();
@@ -649,11 +657,8 @@
   function askNext() {
     if (nextAsked) return;
     nextAsked = true;
-    load().then(() => {
-      if (!store.settings.helper) return;
-      return api.runtime.sendMessage({ type: "jr:nextJob", url: location.href }).then((r) => {
-        if (r && r.next && r.next.apply_url && r.next.apply_url !== location.href) JR.panel.update({ next: r.next });
-      });
+    api.runtime.sendMessage({ type: "jr:nextJob", url: location.href }).then((r) => {
+      if (r && r.next && r.next.apply_url && r.next.apply_url !== location.href) JR.panel.update({ next: r.next });
     }).catch(() => {});
   }
 
@@ -664,7 +669,7 @@
     const form = site && JR.sites.formRoot(document, site);
     if (!form) return;
     // Ties this tab to the job, so its confirmation page is recognized later.
-    if (!prepared) load().then(() => { if (store.settings.helper) getPrepared(); });
+    getPrepared();
     JR.panel.mount(handlers);
     if (inFrame) JR.panel.update({ frame: true });
     askNext();
@@ -672,10 +677,12 @@
     if (sig !== stepSig) {
       const first = !stepSig;
       stepSig = sig;
-      load().then(async () => {
-        // After the user has filled this form once, every next step fills itself.
+      Promise.all([load(), getPrepared()]).then(async ([, prep]) => {
+        // After the user has filled this form once, every next step fills itself, and a job the
+        // apply queue prepared fills from the start: opening it is the go-ahead.
         const keepGoing = store.settings.fillSteps && engaged();
-        if ((store.settings.autoRun || keepGoing) && !stepsFilled.has(sig)) {
+        const queued = !!(prep && prep.state === "ready");
+        if ((store.settings.autoRun || keepGoing || queued) && !stepsFilled.has(sig)) {
           if (!first) JR.panel.update({ open: true, step: "", items: [], status: "New step. Filling…" });
           await sleep(500);   // the step's fields can still be arriving
           if (stepSignature() === sig) fill();

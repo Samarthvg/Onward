@@ -72,6 +72,40 @@ def serve():
     return httpd
 
 
+def fake_helper():
+    """Stands in for the Onward app on its port, so the extension never reaches
+    the real one: work history from the fixture resume, nothing else."""
+    sys.path.insert(0, str(EXT.parent))
+    import resume_tex as rt
+    master = (EXT.parent / "tests" / "fixtures" / "history_master.tex").read_text(encoding="utf-8")
+    history = json.dumps(rt.history(rt.parse(master))).encode()
+
+    class Helper(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def answer(self, status, body):
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path.startswith("/api/resume/entries"):
+                return self.answer(200, history)
+            self.answer(404, b'{"error":"not in this test"}')
+
+        do_POST = do_GET
+
+    try:
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 8765), Helper)
+    except OSError:
+        sys.exit("Something is using port 8765, probably Onward itself. Quit it, then run this again.")
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd
+
+
 def test_copy() -> Path:
     tmp = Path(tempfile.mkdtemp(prefix="jr-ff-"))
     dst = tmp / "ext"
@@ -97,6 +131,7 @@ def test_copy() -> Path:
 
 def main():
     httpd = serve()
+    helper = fake_helper()
     ext = test_copy()
     opts = Options()
     opts.binary_location = FIREFOX
@@ -118,11 +153,13 @@ def main():
         driver.switch_to.window(driver.window_handles[0])
 
         def seed(extra=None):
-            # Selenium can't intercept the helper, so it stays off: otherwise the
-            # forms would get work history from the user's real master resume.
-            data = {**PROFILE, "settings": {**PROFILE["settings"], "helper": False},
-                    "resume": {"name": "fake-resume.pdf", "type": "application/pdf", "size": len(RESUME), "updated": 1,
-                               "data": base64.b64encode(RESUME).decode()}, **(extra or {})}
+            # The extension's stored copy of what the app sends, from the fake profile.
+            extra = dict(extra or {})
+            resume = extra.pop("resume", True)
+            kit = {"profile": {"value": PROFILE["profile"], "at": 1}, "answers": {"value": PROFILE["answers"], "at": 1},
+                   "resume": {"name": "fake-resume.pdf", "data": base64.b64encode(RESUME).decode()} if resume else None,
+                   "history": None, "draft_backend": "chatgpt", "memory": None, "fetched": time.time() * 1000 + 3600_000}
+            data = {"settings": PROFILE["settings"], "kit": kit, "memorySynced": True, **extra}
             driver.get(f"http://127.0.0.1:{PORT}/seed.html")
             WebDriverWait(driver, 10).until(lambda d: d.execute_script("return document.readyState") == "complete")
             driver.execute_script("window.postMessage({__jrSeed: arguments[0]}, '*')", data)
@@ -220,6 +257,7 @@ def main():
     finally:
         driver.quit()
         httpd.shutdown()
+        helper.shutdown()
         shutil.rmtree(ext.parent, ignore_errors=True)
         (DIST / "embed-local.html").unlink(missing_ok=True)
         (DIST / "seed.html").unlink(missing_ok=True)

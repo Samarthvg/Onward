@@ -58,27 +58,10 @@
     fillSteps: true,           // once filled, fill each next step of the form (Workday) as it appears
     remember: true,            // save answers typed into custom questions
     fillRemembered: true,      // reuse saved short answers automatically
-    draftBackend: "chatgpt",   // one of DRAFT_BACKENDS
-    helper: true,              // offer drafting through the local helper
+    helper: true,              // offer drafting through the Onward app
     aiFill: true,              // answer the remaining questions with the helper after filling
     fitSkills: true,           // add only the resume skills that fit the posting
   };
-  // openai-api and claude-api bill the user's own key, within the budget set in Onward.
-  const DRAFT_BACKENDS = ["chatgpt", "claude-code", "openai-api", "claude-api", "manual"];
-
-  // Saved settings over the defaults. A drafting backend that no longer
-  // exists (the local Ollama model was removed) falls back to ChatGPT;
-  // `notice` says so, once, until the settings are saved again.
-  function withDefaults(saved) {
-    const settings = Object.assign({}, DEFAULT_SETTINGS, saved);
-    let notice = "";
-    if (!DRAFT_BACKENDS.includes(settings.draftBackend)) {
-      notice = `Drafting with "${settings.draftBackend}" is no longer available, so drafts now use ChatGPT. Pick another under Drafting answers.`;
-      settings.draftBackend = DEFAULT_SETTINGS.draftBackend;
-    }
-    return { settings, notice };
-  }
-
   const US_STATES = {
     AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut",
     DE: "Delaware", DC: "District of Columbia", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois",
@@ -815,7 +798,7 @@
 
   root.JR = root.JR || {};
   root.JR.rules = {
-    PROFILE_FIELDS, STANDARD_ANSWERS, EEO_ANSWERS, DECLINE, DEFAULT_ANSWERS, DEFAULT_PROFILE, DEFAULT_SETTINGS, DRAFT_BACKENDS, withDefaults,
+    PROFILE_FIELDS, STANDARD_ANSWERS, EEO_ANSWERS, DECLINE, DEFAULT_ANSWERS, DEFAULT_PROFILE, DEFAULT_SETTINGS,
     US_STATES, CHOICE_KINDS, TEXT_KINDS, clean, normQ, classify, answerFor, pickOption, asText, alternatives, DECLINE_RE, historyField,
     companyKey, sameCompany, companyNames, namesIn, mentions, savedAnswerUse, languageList, relevantEntries, skillKey, sameSkill, splitSkills, skillSearchTerms, skillsForPosting,
   };

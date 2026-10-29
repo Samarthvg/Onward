@@ -398,7 +398,7 @@
 
   async function setFile(q, values, cls, ctx) {
     const r = ctx && ctx.resume;
-    if (!r || !r.data) return { ok: false, why: "choose your resume in the extension options" };
+    if (!r || !r.data) return { ok: false, why: "add your master resume in Onward" };
     const accept = (q.el.accept || "").toLowerCase();
     const ext = (r.name.match(/\.[a-z0-9]+$/i) || [""])[0].toLowerCase();
     if (accept && ext && !accept.split(",").some((a) => a.trim() === ext || a.trim() === r.type || a.trim() === "*/*" || (a.trim().endsWith("/*") && r.type.startsWith(a.trim().slice(0, -1))))) {

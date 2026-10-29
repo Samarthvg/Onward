@@ -501,7 +501,7 @@
           else if (field === "fluent") values = [/native|fluent|bilingual|mother/i.test(l.level) ? "yes" : "no"];
           else values = levels;
           if (!values.length) {
-            items.push(Object.assign(base, { status: "needs", why: `add a level for ${l.name} in the extension options, e.g. "${l.name} (Fluent)"` }));
+            items.push(Object.assign(base, { status: "needs", why: `add a level for ${l.name} under Languages in the Onward Apply kit, e.g. "${l.name} (Fluent)"` }));
             continue;
           }
           if (field === "fluent" && values[0] === "no") continue;

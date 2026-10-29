@@ -26,6 +26,7 @@ from pathlib import Path
 from unittest import mock
 
 import config
+import kit
 import notify
 import prep
 import questions
@@ -190,8 +191,8 @@ class Base(unittest.TestCase):
         self.prep = prep.Preparer(server.db, self.resume_dir, self.resume_dir / "tailored", log=lambda m: None,
                                   store=self.store)
         self.prep.save_settings({"threshold": 40, "locations": ["Boston"], "remote_ok": True})
-        self.prep.save_scoring({"name": "resume.pdf", "text": RESUME_TEXT,
-                                "profile": {"firstName": "Testy", "school": "Example State University"}})
+        self.prep.save_scoring({"name": "resume.pdf", "text": RESUME_TEXT})
+        kit.save("profile", {"firstName": "Testy", "school": "Example State University"}, 1)
         self.now = time.time()
         simulate_radar_run(self.db_path, self.now)
 
@@ -400,8 +401,10 @@ class EndpointTests(Base):
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         self.port = httpd.server_address[1]
         self.patches += [mock.patch.object(server, "PORT", self.port), mock.patch.object(server, "PREP", self.prep),
-                         mock.patch.object(server, "ORIGINS", {f"http://127.0.0.1:{self.port}"})]
-        for p in self.patches[-3:]:
+                         mock.patch.object(server, "ORIGINS", {f"http://127.0.0.1:{self.port}"}),
+                         # No TeX runs here: the master's PDF is only attached once it's been compiled.
+                         mock.patch.object(server, "warm_master_pdf", lambda path=None: None)]
+        for p in self.patches[-4:]:
             p.start()
         self.httpd = httpd
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -435,7 +438,7 @@ class EndpointTests(Base):
         # Attached as Firstname_Lastname_Company_Resume.pdf (the profile here has a first name only).
         self.assertEqual(data["resume"]["name"], "Testy_Tailorco_Resume.pdf")
         self.assertEqual(len(data["answers"]), 2)
-        # Master chosen: no PDF, so the extension attaches its own.
+        # Master chosen, and its PDF not compiled yet: the extension attaches its copy of the master.
         url2 = "https://job-boards.greenhouse.io/embed/job_app?for=coveredco&token=102"
         st, data = self.call("/api/prepared?url=" + urllib.request.quote(url2, safe=""), headers=self.EXT)
         self.assertEqual((st, data["choice"], data["resume"]), (200, "master", None))
@@ -457,13 +460,13 @@ class EndpointTests(Base):
             self.assertTrue(r.read().startswith(b"%PDF"))
 
     def test_name_from_the_apply_kit_or_the_resume(self):
-        server.save_dash_state("profile", {"firstName": "Ada", "lastName": "Lovelace"}, 1)
+        server.kit.save("profile", {"firstName": "Ada", "lastName": "Lovelace"}, 1)
         self.assertEqual(server.resume_file_name("The Home Depot"), "Ada_Lovelace_The_Home_Depot_Resume.pdf")
         # No Apply kit name: the resume's own first line, when it's a name.
-        with mock.patch.object(server, "dash_state", lambda: {}), \
+        with mock.patch.object(server.kit, "value", lambda key: {}), \
                 mock.patch.object(self.prep, "scoring", lambda: {"text": "Ada Lovelace\nLondon, UK\nada@example.com"}):
             self.assertEqual(server.resume_file_name("Acme"), "Ada_Lovelace_Acme_Resume.pdf")
-        with mock.patch.object(server, "dash_state", lambda: {}), mock.patch.object(self.prep, "scoring", lambda: None):
+        with mock.patch.object(server.kit, "value", lambda key: {}), mock.patch.object(self.prep, "scoring", lambda: None):
             self.assertEqual(server.resume_file_name("Acme"), "Acme_Resume.pdf")
 
     def test_only_the_extension_gets_prepared_data(self):

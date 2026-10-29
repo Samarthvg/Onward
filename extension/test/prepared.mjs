@@ -161,6 +161,16 @@ await test("greenhouse confirmation page marks the job applied and offers the ne
   expect("confirm gh: next job offered", /Nextco/.test(text) && /Open next application/.test(text), text);
   const href = await panel.locator("a", { hasText: "Open next application" }).getAttribute("href");
   expect("confirm gh: next link opens its form", href === NEXT.apply_url, href);
+  // The next one opens by itself after a countdown, unless the user stays.
+  expect("confirm gh: counting down to the next", /Opening the next one in \d+s/.test(text), text);
+  await page.waitForURL(NEXT.apply_url, { timeout: 15000 }).catch(() => {});
+  expect("confirm gh: the next form opened", page.url() === NEXT.apply_url, page.url());
+
+  await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001/confirmation");
+  await panel.locator("button", { hasText: "Stay here" }).click();
+  await sleep(9500);
+  expect("confirm gh: Stay here stays", page.url().endsWith("/confirmation"), page.url());
+  expect("confirm gh: countdown gone", !/Opening the next one/.test(await panel.innerText()));
   await env.ctx.unroute("https://job-boards.greenhouse.io/mockco/jobs/1001/confirmation");
 });
 
@@ -175,14 +185,15 @@ await test("ashby thank-you message counts only in a tab that showed a radar job
 
   helper.prepared = tailored();
   await page.reload();
-  await page.locator("#onward-autofill").waitFor({ state: "attached" });
-  await sleep(1500);   // the form's job is looked up as soon as the form shows
+  // A job the queue prepared fills itself as soon as its form opens.
+  await page.locator("#onward-autofill .status").filter({ hasText: /^Filled \d+/ }).waitFor({ timeout: 30000 });
+  expect("confirm ashby: the queued job filled itself", (await page.evaluate(() => window.__mockState()))._systemfield_name === "Testy McTestface");
   // What Ashby shows after Submit (the user's own click; this mock just swaps it in).
   await page.evaluate(() => {
     document.querySelector(".ashby-application-form-container").outerHTML =
       '<div class="ashby-application-form-success-container"><h2>Thank you for applying!</h2><p>We will be in touch.</p></div>';
   });
-  await page.locator("#onward-autofill .panel").waitFor({ timeout: 10000 });
+  await page.locator("#onward-autofill .panel .status").filter({ hasText: /Marked as applied/ }).waitFor({ timeout: 10000 });
   const text = await panelText(page);
   expect("confirm ashby: recorded with the tab's job", helper.applied.length === 1 && helper.applied[0].key === "mock|job", JSON.stringify(helper.applied));
   expect("confirm ashby: names the job", /Software Engineer, New Grad at Mock Co/.test(text), text);

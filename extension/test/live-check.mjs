@@ -20,6 +20,9 @@ const blocked = [];
 // Work history on live forms comes from the fake fixture resume, never the user's own.
 await env.ctx.route(/^http:\/\/127\.0\.0\.1:8765\/api\/resume\/entries/, (route) =>
   route.fulfill({ status: 200, contentType: "application/json", body: fixtureHistory() }));
+// Nor the app's resumes or details: the stored fake kit is all a live form gets.
+await env.ctx.route(/^http:\/\/127\.0\.0\.1:8765\/api\/(prepared|kit|state)/, (route) =>
+  route.fulfill({ status: 404, contentType: "application/json", body: '{"error":"not in this test"}' }));
 await env.ctx.route(/^https:\/\//, (route) => {
   const r = route.request();
   // Greenhouse posts to .../applications, Lever to .../apply, Ashby runs a
@@ -36,7 +39,7 @@ for (const [name, url, want] of PAGES) {
   if (only && !name.includes(only)) continue;
   // --ai: also answer the leftover questions through the helper (your ChatGPT login).
   const ai = process.argv.includes("--ai");
-  await seed(env, ai ? { resume: null, settings: { autoRun: false, remember: true, fillRemembered: true, helper: true, aiFill: true, draftBackend: "chatgpt" } } : { resume: null });
+  await seed(env, ai ? { resume: null, settings: { autoRun: false, remember: true, fillRemembered: true, helper: true, aiFill: true } } : { resume: null });
   const page = await env.ctx.newPage();
   console.log("•", name, url);
   try {

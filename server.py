@@ -35,6 +35,7 @@ import appinfo
 import ats
 import config
 import filters
+import kit
 import prep
 import pricing
 import radar
@@ -303,8 +304,39 @@ def extension_dir() -> Path | None:
 def app_payload() -> dict:
     """The app's state for the dashboard's setup steps and status."""
     return {"name": appinfo.NAME, "version": appinfo.VERSION, "schedule": SCHEDULER.status(),
-            "setup": STORE.section("setup"), "tex": texengine.status(), "extension": extension_info(),
+            "setup": STORE.section("setup"), "tex": texengine.status(),
+            "extension": {**extension_info(), "seen": EXTENSION_SEEN.get("at"), "seen_version": EXTENSION_SEEN.get("version")},
             "backends": tailor.backend_status(), "data_folder": str(STORE.home), **APP_STATE}
+
+
+def job_roles(key: str) -> list[str]:
+    """The roles a stored job was found for."""
+    conn = db()
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
+        row = conn.execute("SELECT roles FROM jobs WHERE key = ?", (key,)).fetchone() if "roles" in cols else None
+    finally:
+        conn.close()
+    return json.loads(row[0]) if row and row[0] else []
+
+
+def kit_payload() -> dict:
+    """What the extension fills forms with: the Apply kit, the standard
+    answers, its saved answers' backup, the master resume (a PDF and its
+    entries) and which model drafts answers. It keeps a copy for when the
+    app isn't running."""
+    st = kit.state()
+    out = {"profile": st.get("profile"), "answers": st.get("answers"), "memory": st.get("memory"),
+           "draft_backend": STORE.section("tailoring")["draft_backend"], "resume": None, "history": None}
+    pdf = master_pdf(MASTER, wait=False)
+    if pdf:
+        out["resume"] = attached(pdf, resume_file_name(""))
+    if MASTER.exists():
+        try:
+            out["history"] = rt.history(rt.parse(MASTER.read_text(encoding="utf-8")))
+        except ValueError:
+            pass
+    return out
 
 
 def set_role_resume(rid: str, name: str) -> None:
@@ -451,58 +483,66 @@ def save_settings(patch: dict, label: str) -> str | None:
 
 
 # --------------------------------------------------------------------------
-# What the dashboard keeps for the user (Apply kit details, Applied and
-# Dismiss marks), held here so the app's window, any browser and the
-# extension see the same. Each value carries when it was last changed; the
-# later one wins.
+# The Apply kit, the standard answers, the marks and the extension's saved
+# answers are kept by kit.py. The master resume as a PDF, for the extension
+# to attach when no tailored one is chosen, is compiled once per version.
 
-DASH_STATE_LOCK = threading.Lock()
+MASTER_PDF_LOCK = threading.Lock()
 
 
-def _clean_profile(v) -> dict | None:
-    if not isinstance(v, dict) or len(v) > 100:
+def master_pdf(path: Path, wait: bool = True) -> Path | None:
+    """The compiled master resume at `path`, cached by its contents. None
+    when there's no master or it doesn't compile; without `wait`, also while
+    it hasn't been compiled yet (warm_master_pdf then compiles it)."""
+    if not path.exists():
         return None
-    return {str(k)[:60]: str(x)[:2000] for k, x in v.items() if isinstance(x, (str, int, float)) and not isinstance(x, bool)}
-
-
-def _clean_marks(v) -> dict | None:
-    if not isinstance(v, dict) or len(v) > 50000:
+    tex = path.read_text(encoding="utf-8")
+    out = master_pdf_path(path, tex)
+    if out is None:
         return None
-    return {str(k)[:2000]: x for k, x in v.items() if x in ("applied", "dismissed")}
+    if out.exists():
+        return out
+    if not wait:
+        warm_master_pdf(path)
+        return None
+    with MASTER_PDF_LOCK:
+        if out.exists():
+            return out
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            rt.compile_pdf(tex, out)
+        except (rt.CompileError, OSError, ValueError) as e:
+            log(f"master pdf: {e}")
+            return None
+        drop_old_master_pdfs(path, out)
+    return out if out.exists() else None
 
 
-DASH_KEYS = {"profile": _clean_profile, "marks": _clean_marks}
+def drop_old_master_pdfs(path: Path, keep: Path) -> None:
+    for old in OUT_DIR.glob(f"attach-{path.stem}-*.pdf"):
+        if old != keep and old.name != keep.name:
+            old.unlink(missing_ok=True)
 
 
-def dash_state_path() -> Path:
-    return STORE.path_for("resume_dir") / "dashboard.json"
-
-
-def dash_state() -> dict:
-    """{key: {"value": ..., "at": ms}} for the keys that are saved."""
+def master_pdf_path(path: Path, tex: str) -> Path | None:
     try:
-        data = json.loads(dash_state_path().read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return {k: v for k, v in data.items() if k in DASH_KEYS and isinstance(v, dict) and "value" in v} \
-        if isinstance(data, dict) else {}
+        return OUT_DIR / f"attach-{path.stem}-{rt.parse(tex).digest[:12]}.pdf"
+    except ValueError:
+        return None
 
 
-def save_dash_state(key: str, value, at: float) -> dict:
-    """Saves one value unless what's saved is newer. Returns what's saved now."""
-    clean = DASH_KEYS[key](value)
-    if clean is None:
-        raise ValueError(f"That isn't a valid {key} value")
-    with DASH_STATE_LOCK:
-        data = dash_state()
-        if key not in data or float(data[key].get("at") or 0) <= at:
-            data[key] = {"value": clean, "at": at}
-            path = dash_state_path()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_name(path.name + ".tmp")
-            tmp.write_text(json.dumps(data), encoding="utf-8")
-            os.replace(tmp, path)
-        return data[key]
+def warm_master_pdf(path: Path | None = None) -> None:
+    """Compiles a master PDF in the background, so the extension's first
+    application doesn't wait for it."""
+    threading.Thread(target=lambda: master_pdf(path or MASTER), daemon=True, name="master-pdf").start()
+
+
+def attached(pdf: Path, name: str) -> dict:
+    return {"name": name, "data": base64.b64encode(pdf.read_bytes()).decode()}
+
+
+# When the extension last reached the helper, for the setup step.
+EXTENSION_SEEN: dict = {}
 
 
 NAME_LINE = re.compile(r"[A-Z][A-Za-z'.-]+(?: [A-Z][A-Za-z'.-]+){1,3}")
@@ -510,13 +550,13 @@ NAME_LINE = re.compile(r"[A-Z][A-Za-z'.-]+(?: [A-Z][A-Za-z'.-]+){1,3}")
 
 def applicant_name() -> str:
     """The applicant's name, for the files employers see: the Apply kit's,
-    else the one the queue keeps for drafts, else the first line of the
-    scored resume that looks like a name. Empty when there's none."""
+    else the first line of the scored resume that looks like a name. Empty
+    when there's none."""
+    prof = kit.value("profile")
+    name = " ".join(str(prof.get(k) or "").strip() for k in ("firstName", "lastName")).strip()
+    if name:
+        return name
     scoring = PREP.scoring() or {}
-    for prof in ((dash_state().get("profile") or {}).get("value") or {}, scoring.get("profile") or {}):
-        name = " ".join(str(prof.get(k) or "").strip() for k in ("firstName", "lastName")).strip()
-        if name:
-            return name
     lines = [ln.strip() for ln in str(scoring.get("text") or "").splitlines() if ln.strip()][:5]
     return next((ln for ln in lines if NAME_LINE.fullmatch(ln)), "")
 
@@ -744,8 +784,11 @@ class Handler(BaseHTTPRequestHandler):
         # Firefox may omit Origin on an extension's own requests. Extension
         # versions before 0.2.5 sent the header under its old name.
         client = self.headers.get("X-Onward-Client") or self.headers.get("X-JobRadar-Client")
-        return (allow_extension and client == EXT_CLIENT
-                and (origin is None or bool(EXT_ORIGIN.match(origin))))
+        ok = (allow_extension and client == EXT_CLIENT
+              and (origin is None or bool(EXT_ORIGIN.match(origin))))
+        if ok:
+            EXTENSION_SEEN.update(at=time.time(), version=str(self.headers.get("X-Onward-Version") or "")[:20])
+        return ok
 
     def _body(self) -> dict | None:
         length = int(self.headers.get("Content-Length") or 0)
@@ -781,6 +824,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(HTTPStatus.NOT_FOUND, "Run radar.py once to build the dashboard")
             return self._send(200, DASHBOARD.read_bytes(), "text/html; charset=utf-8")
 
+        if path == "/rules.js":
+            # The extension's form rules: the Apply kit shows the fields they fill.
+            folder = extension_dir()
+            f = folder / "src" / "shared" / "rules.js" if folder else None
+            if not f or not f.is_file():
+                return self._err(HTTPStatus.NOT_FOUND, "Not found")
+            return self._send(200, f.read_bytes(), "text/javascript; charset=utf-8")
+
         if path == "/api/status":
             role = (q.get("role") or [""])[0][:40]
             return self._json(200, {"backends": tailor.backend_status(), "master": master_meta(role),
@@ -791,7 +842,7 @@ class Handler(BaseHTTPRequestHandler):
             # no Origin header) and the extension's import; never another site.
             if self.headers.get("Origin") not in (None, *ORIGINS) and not self._origin_ok(allow_extension=True):
                 return self._err(HTTPStatus.FORBIDDEN, "Forbidden")
-            return self._json(200, dash_state())
+            return self._json(200, kit.state())
 
         if path == "/api/scoring":
             # The resume this browser last scored with, for a browser that has none stored.
@@ -878,6 +929,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(HTTPStatus.FORBIDDEN, "Only the Onward extension can ask for this")
             return self._json(200, job_keywords((q.get("url") or [""])[0][:2000]))
 
+        if path == "/api/kit":
+            if not self._origin_ok(allow_extension=True):
+                return self._err(HTTPStatus.FORBIDDEN, "Only the Onward extension can ask for this")
+            return self._json(200, kit_payload())
+
         if path in ("/api/prepared", "/api/queue/next"):
             if not self._origin_ok(allow_extension=True):
                 return self._err(HTTPStatus.FORBIDDEN, "Only the Onward extension can ask for this")
@@ -925,7 +981,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok():
             return self._refuse("Bad host")
         path = urlparse(self.path).path
-        if not self._origin_ok(allow_extension=path in ("/api/draft", "/api/answers", "/api/applied")):
+        if not self._origin_ok(allow_extension=path in ("/api/draft", "/api/answers", "/api/applied", "/api/state")):
             return self._refuse("Requests must come from the dashboard")
         data = self._body()
         if data is None:
@@ -952,10 +1008,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/state":
             key, at = data.get("key"), data.get("at")
-            if key not in DASH_KEYS or not isinstance(at, (int, float)) or isinstance(at, bool):
+            if key not in kit.CLEAN or not isinstance(at, (int, float)) or isinstance(at, bool):
                 return self._err(HTTPStatus.BAD_REQUEST, "Expected a key and when it changed")
             try:
-                return self._json(200, save_dash_state(key, data.get("value"), float(at)))
+                return self._json(200, kit.save(key, data.get("value"), float(at)))
             except ValueError as e:
                 return self._err(HTTPStatus.BAD_REQUEST, str(e))
 
@@ -1065,6 +1121,11 @@ class Handler(BaseHTTPRequestHandler):
             before = {**file_state(target, target.with_suffix(".json")), **old_preview}
             roles_before = STORE.load()["roles"] if role else None
             target.write_text(tex, encoding="utf-8")
+            # The preview is the master as the extension attaches it.
+            cached = master_pdf_path(target, tex)
+            if cached and preview.exists():
+                cached.write_bytes(preview.read_bytes())
+                drop_old_master_pdfs(target, cached)
             target.with_suffix(".json").write_text(json.dumps({"name": str(data.get("name", "master.tex"))[:200],
                                                                "uploaded": time.time(), "pages": pages}), encoding="utf-8")
             if role:
@@ -1281,26 +1342,16 @@ class Handler(BaseHTTPRequestHandler):
         if not job:
             return self._err(HTTPStatus.NOT_FOUND, "Onward doesn't know this job")
         p = PREP.prepared(job["key"]) or {"state": None, "choice": "master", "pdf": None, "answers": []}
-        pdf = p.pop("pdf")
+        pdf = p.pop("pdf") or master_pdf(PREP.master_for(job_roles(job["key"])), wait=False)
         return self._json(200, {"job": {"key": job["key"], "company": job["company"], "title": job["title"]},
-                                **p, "resume": {"name": resume_file_name(job["company"]), "data": base64.b64encode(pdf.read_bytes()).decode()}
-                                if pdf else None})
+                                **p, "resume": attached(pdf, resume_file_name(job["company"])) if pdf else None})
 
     def _resume_entries(self, page_url: str):
         """Work history and education from the master resume behind the job
         at page_url (its role's own master when it has one), for filling
         Work Experience and Education sections field by field."""
         job = job_by_url(page_url) if page_url else None
-        path = MASTER
-        if job:
-            conn = db()
-            try:
-                cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
-                row = conn.execute("SELECT roles FROM jobs WHERE key = ?", (job["key"],)).fetchone() if "roles" in cols else None
-            finally:
-                conn.close()
-            if row and row[0]:
-                path = PREP.master_for(json.loads(row[0]))
+        path = PREP.master_for(job_roles(job["key"])) if job else MASTER
         if not path.exists():
             return self._err(HTTPStatus.NOT_FOUND, "Upload your master .tex resume in the dashboard first")
         try:
@@ -1321,7 +1372,7 @@ class Handler(BaseHTTPRequestHandler):
     def _draft(self, data: dict):
         if not MASTER.exists():
             return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume in the dashboard first")
-        backend = str(data.get("backend", "chatgpt"))
+        backend = str(data.get("backend") or STORE.section("tailoring")["draft_backend"])
         if backend not in set(tailor.DRAFT_BACKENDS) | {"manual"}:
             return self._err(HTTPStatus.BAD_REQUEST, "Drafting works with " + ", ".join(tailor.DRAFT_BACKENDS) + " or manual")
         question = str(data.get("question", "")).strip()[:2000]
@@ -1358,7 +1409,7 @@ class Handler(BaseHTTPRequestHandler):
         """Answers for the questions autofill couldn't fill; poll /api/draft/<id>."""
         if not MASTER.exists():
             return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume in the dashboard first")
-        backend = str(data.get("backend", "chatgpt"))
+        backend = str(data.get("backend") or STORE.section("tailoring")["draft_backend"])
         if backend not in tailor.DRAFT_BACKENDS:
             return self._err(HTTPStatus.BAD_REQUEST, "Answering works with " + ", ".join(tailor.DRAFT_BACKENDS))
         questions = []
@@ -1375,7 +1426,7 @@ class Handler(BaseHTTPRequestHandler):
                               "options": [str(o)[:300] for o in (q.get("options") or [])[:200]]})
         if not questions:
             return self._err(HTTPStatus.BAD_REQUEST, "No questions to answer")
-        profile = data.get("profile") if isinstance(data.get("profile"), dict) else {}
+        profile = kit.value("profile")
         row = job_by_url(str(data.get("url", ""))[:2000]) or {}
         params = {"backend": backend, "questions": questions,
                   "profile": {k: str(v)[:300] for k, v in profile.items() if k in tailor.PROFILE_FOR_ANSWERS},
@@ -1417,6 +1468,7 @@ def start_background() -> None:
     threading.Thread(target=_render_loop, name="render", daemon=True).start()
     PREP.start()
     SCHEDULER.start()
+    warm_master_pdf()
 
 
 def main() -> int:

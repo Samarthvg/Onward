@@ -368,36 +368,6 @@ await test("dashboard: Apply remembers the list from that job down", async (page
   expect("dashboard: no page errors", !errors.length, errors.join("; "));
 });
 
-await test("options: entries imported from the resume, edited, then used on Workday", async (page) => {
-  const opt = await env.ctx.newPage();
-  await opt.goto(`chrome-extension://${env.id}/src/options/options.html`);
-  await opt.click("#histImport");
-  await opt.locator("#histWork details.entry").nth(2).waitFor({ timeout: 10000 });
-  expect("options: three jobs, two schools, one project", (await opt.locator("#histWork details.entry").count()) === 3
-    && (await opt.locator("#histEdu details.entry").count()) === 2 && (await opt.locator("#histProj details.entry").count()) === 1);
-  const first = opt.locator("#histWork details.entry").first();
-  await first.locator("summary").click();
-  await first.locator("textarea").fill("Led the estimate tool rewrite in Vue.js.\nCut load time by half.");
-  await first.locator("select").first().selectOption("Internship");
-  await sleep(800);
-  const saved = await opt.evaluate(() => chrome.storage.local.get("history"));
-  expect("options: edit saved", saved.history.work[0].description.startsWith("Led the estimate") && saved.history.work[0].type === "Internship",
-    JSON.stringify(saved.history.work[0]).slice(0, 300));
-  expect("options: skills imported", (await opt.inputValue("#histSkills")).startsWith("Python, Java"));
-  await opt.close();
-
-  await page.goto("https://mockco.wd5.myworkdayjobs.com/en-US/External/job/Boston-MA/Software-Engineer_JR1001/apply/applyManually?empty=1");
-  await page.locator("#onward-autofill").waitFor({ state: "attached" });
-  await page.click("[data-automation-id='bottom-navigation-next-button']");
-  await sleep(900);
-  await runFill(page, 120000);
-  const st = await page.evaluate(() => window.__mockState());
-  expectState("edited entries used", st, {
-    "workExperience-1--roleDescription": "Led the estimate tool rewrite in Vue.js.\nCut load time by half.",
-    "workExperience-2--companyName": "Example Solutions Pvt Ltd",
-  });
-});
-
 await test("options: removes saved answers tied to one company", async (page) => {
   const now = Date.now();
   await seed(env, {
@@ -432,23 +402,11 @@ await test("toolbar button fills the active tab", async (page) => {
   expectState("toolbar", await page.evaluate(() => window.__mockState()), { name: "Testy McTestface" });
 });
 
-await test("draft (manual mode) shows a prompt built by the helper", async (page) => {
-  await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001");
-  const text = await runFill(page);
-  if (!/Draft an answer/.test(text)) { expect("draft button offered", false, text); return; }
-  const status = await env.sw.evaluate(async () => { try { return (await fetch("http://127.0.0.1:8765/api/status")).ok; } catch (e) { return false; } });
-  if (!status) { console.log("  (skipped: helper not running)"); return; }
-  await page.locator("#onward-autofill button", { hasText: "Draft an answer" }).first().click();
-  const ta = page.locator("#onward-autofill textarea");
-  await ta.waitFor({ timeout: 15000 }).catch(() => {});
-  const prompt = (await ta.count()) ? await ta.inputValue() : await panelText(page);
-  expect("draft prompt has the question and resume", /Why do you want to work at Mock Co/.test(prompt) && /RESUME/.test(prompt), prompt.slice(0, 400));
-  expectState("draft: nothing inserted in manual mode", await page.evaluate(() => window.__mockState()), { why: "" });
-});
-
 // Uses the ChatGPT login through the helper, so it only runs when asked.
 if (process.argv.includes("--real-draft")) await test("draft (ChatGPT login) is inserted for review, not sent", async (page) => {
-  await seed(env, { settings: { autoRun: false, remember: true, fillRemembered: true, helper: true, draftBackend: "chatgpt" } });
+  await seed(env, { settings: { autoRun: false, remember: true, fillRemembered: true, helper: true } });
+  // Only drafting goes to the real app.
+  await env.ctx.route(/^http:\/\/127\.0\.0\.1:8765\/api\/draft/, (r) => r.continue());
   await page.goto("https://job-boards.greenhouse.io/mockco/jobs/1001");
   await runFill(page);
   await page.locator("#onward-autofill button", { hasText: "Draft an answer" }).first().click();

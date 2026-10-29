@@ -363,16 +363,5 @@ check("no saved sponsorship answer by default", () => assert.equal(R.answerFor({
 check("EEO defaults to decline", () => assert.equal(R.DEFAULT_ANSWERS.eeoGender, R.DECLINE));
 check("normQ", () => assert.equal(R.normQ("  Why do you want to work at Netic?* (Required) "), "why do you want to work at netic"));
 
-check("removed drafting backend falls back to ChatGPT", () => {
-  const old = R.withDefaults({ draftBackend: "ollama", autoRun: true });
-  assert.equal(old.settings.draftBackend, "chatgpt");
-  assert.equal(old.settings.autoRun, true);
-  assert.match(old.notice, /no longer available/);
-  const ok = R.withDefaults({ draftBackend: "claude-code" });
-  assert.equal(ok.settings.draftBackend, "claude-code");
-  assert.equal(ok.notice, "");
-  assert.equal(R.withDefaults(undefined).settings.draftBackend, "chatgpt");
-});
-
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -72,11 +72,13 @@ turned off in Settings when you'd rather the model name what your work plainly i
 
 ### Autofill that never submits
 
-The Onward Autofill extension for Firefox fills Greenhouse, Lever, Ashby and Workday forms: your details, work
-history, education and projects, the prepared resume, and standard questions you've answered once. It drafts
-written answers from your resume, which you can redraft with a note ("use my other project"). It never presses
-Submit, never signs in, and leaves sponsorship, salary and legal questions to you unless you've saved an answer.
-When the confirmation page appears, the job is marked applied and the next one in the queue is offered.
+The Onward Autofill extension for Firefox fills Greenhouse, Lever, Ashby and Workday forms from the app: your
+Apply kit details, work history, education and projects, the prepared resume, and the standard questions you've
+answered once. There's nothing to copy into it; it reads the app on this computer. A form for a job the apply
+queue prepared fills itself as it opens, drafted answers included, which you can redraft with a note ("use my
+other project"). It never presses Submit, never signs in, and leaves sponsorship, salary and legal questions to
+you unless you've answered them in the Apply kit. When the confirmation page appears, the job is marked applied
+and the next one opens.
 Details in [extension/README.md](extension/README.md).
 
 <p align="center">
@@ -116,8 +118,8 @@ Linux the menu opens the download page. The extension updates itself in Firefox.
 ### What you'll want alongside it
 
 - **AI (optional):** your ChatGPT or Claude account (through the free `codex` or `claude` command-line tools,
-  signed in once), your own OpenAI or Anthropic API key, or none: Onward then gives you prompts to paste into
-  any chat. Searching, scoring and filling forms never need AI.
+  signed in once), your own OpenAI or Anthropic API key, or none: tailoring then gives you a prompt to paste
+  into any chat. Searching, scoring and filling forms never need AI.
 - **Tailored PDFs:** Onward uses an installed TeX (MiKTeX, TeX Live, MacTeX), or offers to download
   [Tectonic](https://tectonic-typesetting.github.io) for you. A `.tex` resume keeps its own layout; a PDF or
   text resume is turned into a plain `.tex` once, for you to check. Word files: save as PDF first.
@@ -131,6 +133,10 @@ The dashboard has four pages:
 - **All jobs:** every posting, with filters and a count for each time range.
 - **How it works:** what scores, dates and badges mean.
 - **Settings:** your roles, companies, AI, the apply queue and the app.
+
+**Apply kit**, at the top, holds what forms are filled with: your details, the standard questions (work
+authorization, sponsorship, relocation) and the voluntary self-identification answers. The extension reads it
+from the app, so it's the only place to keep them.
 
 The tray icon's menu opens the dashboard (in its window, or your browser), starts a search, turns Start at login
 on or off, opens the data folder, installs updates, and quits. Its dot is amber while a search runs and red after

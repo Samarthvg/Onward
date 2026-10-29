@@ -53,7 +53,9 @@ export async function launch({ headless = true, mocks = true, ext = EXT } = {}) 
       if (url.startsWith("http://127.0.0.1:8765/api/resume/entries")) {
         return route.fulfill({ status: 200, contentType: "application/json", body: fixtureHistory() });
       }
-      if (url.startsWith("http://127.0.0.1:8765/")) return route.continue();   // the local helper
+      // Never the real app on this computer: a test registers the helper answers it needs.
+      // Without them the extension works from its stored copy of the kit (seed()).
+      if (url.startsWith("http://127.0.0.1:8765/")) return route.abort();
       // The mocks need nothing else; keep tests off the network.
       return route.abort();
     });
@@ -61,26 +63,27 @@ export async function launch({ headless = true, mocks = true, ext = EXT } = {}) 
   let [sw] = ctx.serviceWorkers();
   if (!sw) sw = await ctx.waitForEvent("serviceworker", { timeout: 15000 });
   const id = new URL(sw.url()).host;
-  // The extension opens its options page on install; close it so it can't
-  // take over a page a test is about to use.
-  const isOptions = (p) => p.url().startsWith(`chrome-extension://${id}/src/options/`);
-  const end = Date.now() + 5000;
-  while (!ctx.pages().some(isOptions) && Date.now() < end) await new Promise((r) => setTimeout(r, 100));
-  for (const p of ctx.pages()) if (isOptions(p)) await p.close();
   const close = async () => { await ctx.close(); rmSync(profileDir, { recursive: true, force: true }); };
   return { ctx, id, sw, close };
 }
 
+/** The extension's stored copy of what the app sends (/api/kit), made from the fake profile.
+ * `extra` may set profile, answers, resume (null for none) and history, as the app would, and
+ * settings or any other storage key. */
 export async function seed(env, extra = {}) {
+  const { profile, answers, resume, history, ...rest } = extra;
+  const kit = {
+    profile: { value: Object.assign({}, FAKE.profile, profile), at: 1 },
+    answers: { value: Object.assign({}, FAKE.answers, answers), at: 1 },
+    resume: resume === null ? null : { name: "fake-resume.pdf", data: RESUME_BYTES.toString("base64") },
+    history: history || null, draft_backend: "chatgpt", memory: null, fetched: Date.now() + 3600 * 1000,
+  };
   const page = await env.ctx.newPage();
   await page.goto(`chrome-extension://${env.id}/src/options/options.html`);
-  await page.evaluate(async ({ profile, answers, settings, resume, extra }) => {
+  await page.evaluate(async (data) => {
     await chrome.storage.local.clear();
-    await chrome.storage.local.set(Object.assign({
-      profile, answers, settings,
-      resume: { name: "fake-resume.pdf", type: "application/pdf", size: resume.length, updated: 1, data: btoa(String.fromCharCode(...resume)) },
-    }, extra));
-  }, { profile: FAKE.profile, answers: FAKE.answers, settings: FAKE.settings, resume: [...RESUME_BYTES], extra });
+    await chrome.storage.local.set(data);
+  }, Object.assign({ settings: FAKE.settings, kit, memorySynced: true }, rest));
   await page.close();
 }
 

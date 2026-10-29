@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Callable
 
 import config
+import kit
 import match
 import notify
 import questions
@@ -177,11 +178,10 @@ class Preparer:
 
     def save_scoring(self, data: dict) -> bool:
         """The dashboard's resume as it scores it (text, skills, the user's
-        corrections, years) and the Apply kit details used for drafts.
+        corrections, years).
         "at" is when the resume was last changed (ms); a copy older than the
         saved one (a browser that hasn't seen the change) is refused: False."""
         at = data.get("at") if isinstance(data.get("at"), (int, float)) and not isinstance(data.get("at"), bool) else None
-        prof = data.get("profile") if isinstance(data.get("profile"), dict) else {}
         out = {
             "name": str(data.get("name", ""))[:200],
             "text": str(data.get("text", ""))[:200000],
@@ -189,7 +189,6 @@ class Preparer:
             "off": [str(x)[:80] for x in (data.get("off") or [])][:500],
             "added": [str(x)[:80] for x in (data.get("added") or [])][:500],
             "years": data.get("years") if isinstance(data.get("years"), (int, float)) else None,
-            "profile": {k: str(v)[:300] for k, v in prof.items() if k in tailor.PROFILE_FOR_ANSWERS},
             "updated": time.time(),
             "at": at if at is not None else time.time() * 1000,
         }
@@ -516,7 +515,7 @@ class Preparer:
         if not self.reserve(conn, s["daily_cap"]):
             notes.append("daily model run limit reached, so questions are drafted when you open the form")
             return []
-        prof = (self.scoring() or {}).get("profile") or {}
+        prof = kit.value("profile")
         # Short ids for the model; positions map them back.
         batch = [{**q, "id": str(i), "context": ""} for i, q in enumerate(qs)]
         try:

@@ -1,6 +1,10 @@
 /* Background: the toolbar button and shortcut, and the only code that talks
  * to the local Onward helper (server.py on 127.0.0.1:8765). Content
- * scripts can't reach it themselves because of the page's CORS rules. */
+ * scripts can't reach it themselves because of the page's CORS rules.
+ *
+ * The app holds what forms are filled with (the Apply kit, the standard
+ * answers, the master resume); this keeps the last copy it sent, for when
+ * the app isn't running. Saved answers live here and the app keeps a backup. */
 "use strict";
 
 const api = globalThis.browser || globalThis.chrome;
@@ -10,7 +14,7 @@ const SUPPORTED = /^https:\/\/([a-z0-9-]+\.)*(greenhouse\.io|lever\.co|ashbyhq\.
 async function helper(path, body) {
   // The custom header makes a browser preflight any cross-site attempt to
   // send the same request, and the helper never answers preflights.
-  const init = { headers: { "X-Onward-Client": "autofill" } };
+  const init = { headers: { "X-Onward-Client": "autofill", "X-Onward-Version": api.runtime.getManifest().version } };
   if (body !== undefined) {
     init.method = "POST";
     init.headers["Content-Type"] = "application/json";
@@ -20,7 +24,7 @@ async function helper(path, body) {
   try {
     res = await fetch(HELPER + path, init);
   } catch (e) {
-    throw new Error("The Onward helper isn't running. Start it with: pythonw server.py");
+    throw new Error("Onward isn't running. Open the Onward app.");
   }
   let data = null;
   try { data = await res.json(); } catch (e) {}
@@ -49,6 +53,80 @@ function clip(s, n) {
   return String(s == null ? "" : s).slice(0, n);
 }
 
+/* ------------------------------------------------------------------ kit */
+
+const KIT_FRESH = 60 * 1000;
+let kitAsk = null;
+
+/** What forms are filled with, from the app; its last copy when the app isn't running. */
+async function getKit(fresh = false) {
+  const { kit } = await api.storage.local.get("kit");
+  if (!fresh && kit && Date.now() - (kit.fetched || 0) < KIT_FRESH) return kit;
+  if (!kitAsk) {
+    kitAsk = (async () => {
+      await migrate();
+      const got = await helper("/api/kit");
+      const next = Object.assign({}, got, { fetched: Date.now() });
+      await api.storage.local.set({ kit: next });
+      await restoreMemory(got.memory);
+      return next;
+    })().finally(() => { kitAsk = null; });
+  }
+  try {
+    return await kitAsk;
+  } catch (e) {
+    if (kit) return Object.assign({}, kit, { offline: true });
+    throw e;
+  }
+}
+
+/* Before 0.3 the extension kept its own copy of the profile, the standard
+ * answers, a resume and work history. The profile and answers go to the app
+ * where it has nothing for a field; the rest the app has itself. */
+const LEGACY = ["profile", "answers", "resume", "history"];
+async function migrate() {
+  const old = await api.storage.local.get(LEGACY);
+  if (!old.profile && !old.answers && !old.resume && !old.history) return;
+  const remote = await helper("/api/state");
+  for (const key of ["profile", "answers"]) {
+    const mine = old[key] && typeof old[key] === "object" ? old[key] : {};
+    const theirs = (remote[key] && remote[key].value) || {};
+    const merged = Object.assign({}, theirs);
+    let added = 0;
+    for (const [k, v] of Object.entries(mine)) {
+      if (typeof v === "string" && v.trim() && !String(theirs[k] || "").trim()) { merged[k] = v.trim(); added++; }
+    }
+    if (added) await helper("/api/state", { key, value: merged, at: Date.now() });
+  }
+  await api.storage.local.remove(LEGACY);
+}
+
+/* Saved answers: a copy goes to the app whenever they change, and a fresh
+ * install (or a new browser) gets them back from it. */
+let memTimer = 0;
+async function backupMemory() {
+  // Not before this browser has what the app kept, or the backup would lose it.
+  if (!(await api.storage.local.get("memorySynced")).memorySynced) await getKit(true);
+  const all = await api.storage.local.get(null);
+  const value = Object.fromEntries(Object.entries(all).filter(([k]) => k.startsWith("mem:") || k.startsWith("use:")));
+  await helper("/api/state", { key: "memory", value, at: Date.now() });
+  await api.storage.local.set({ memorySynced: true });
+}
+async function restoreMemory(remote) {
+  const { memorySynced } = await api.storage.local.get("memorySynced");
+  if (memorySynced) return;
+  const saved = remote && remote.value && typeof remote.value === "object" ? remote.value : {};
+  const items = Object.fromEntries(Object.entries(saved).filter(([k]) => k.startsWith("mem:") || k.startsWith("use:")));
+  const all = await api.storage.local.get(null);
+  const fresh = Object.fromEntries(Object.entries(items).filter(([k]) => !(k in all)));
+  await api.storage.local.set(Object.assign(fresh, { memorySynced: true }));
+}
+api.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !Object.keys(changes).some((k) => k.startsWith("mem:") || k.startsWith("use:"))) return;
+  clearTimeout(memTimer);
+  memTimer = setTimeout(() => { backupMemory().catch(() => {}); }, 3000);
+});
+
 async function fillTab(tab) {
   if (!tab || tab.id == null) return;
   let res;
@@ -74,13 +152,14 @@ async function fillTab(tab) {
 
 api.action.onClicked.addListener(fillTab);
 
-// Nothing can be filled until the profile exists, so start there.
-api.runtime.onInstalled.addListener(async (details) => {
+api.runtime.onInstalled.addListener(async () => {
   // Saved-answer uses are recorded from this version on; the options page says so.
   const { useLogSince } = await api.storage.local.get("useLogSince");
   if (!useLogSince) await api.storage.local.set({ useLogSince: Date.now() });
-  if (details.reason === "install") api.runtime.openOptionsPage();
+  // Reaching the app marks the extension connected in its setup steps.
+  getKit(true).catch(() => {});
 });
+if (api.runtime.onStartup) api.runtime.onStartup.addListener(() => { getKit(true).catch(() => {}); });
 
 if (api.commands && api.commands.onCommand) {
   api.commands.onCommand.addListener(async (cmd) => {
@@ -91,10 +170,9 @@ if (api.commands && api.commands.onCommand) {
 }
 
 const HANDLERS = {
-  /* The Apply kit details the dashboard saved with the helper. */
-  async "jr:dashboardProfile"() {
-    const state = await helper("/api/state");
-    return { profile: state && state.profile ? state.profile.value : null };
+  /* What the form is filled with: the Apply kit, the answers, the master resume. */
+  async "jr:kit"(msg) {
+    return getKit(!!msg.fresh);
   },
   /* The resume and answers the helper prepared for this form's job. */
   async "jr:history"(msg) {
@@ -139,7 +217,7 @@ const HANDLERS = {
       question: clip(p.question, 2000), context: clip(p.context, 2000), company: clip(p.company, 200),
       title: clip(p.title, 300), url: clip(p.url, 2000), jd: clip(p.jd, 30000),
       max_chars: Math.max(0, Math.min(Number(p.max_chars) || 0, 20000)),
-      backend: clip(p.backend, 40), note: clip(p.note, 500), previous: clip(p.previous, 20000), entries: clip(p.entries, 6000),
+      note: clip(p.note, 500), previous: clip(p.previous, 20000), entries: clip(p.entries, 6000),
     });
   },
   async "jr:answersStart"(msg) {
@@ -150,9 +228,8 @@ const HANDLERS = {
       options: (Array.isArray(q.options) ? q.options : []).slice(0, 200).map((o) => clip(o, 300)),
     }));
     return helper("/api/answers", {
-      questions, profile: p.profile && typeof p.profile === "object" ? p.profile : {},
-      company: clip(p.company, 200), title: clip(p.title, 300), url: clip(p.url, 2000), jd: clip(p.jd, 30000),
-      backend: clip(p.backend, 40), entries: clip(p.entries, 6000),
+      questions, company: clip(p.company, 200), title: clip(p.title, 300), url: clip(p.url, 2000), jd: clip(p.jd, 30000),
+      entries: clip(p.entries, 6000),
     });
   },
   async "jr:draftStatus"(msg) {

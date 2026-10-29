@@ -10,7 +10,7 @@
 <main>
   <header>
     <h1>Onward Autofill</h1>
-    <p class="lede">Fills Greenhouse, Lever, Ashby and Workday applications with the details below. Everything stays in this browser. It never presses Submit or Next, and never creates accounts.</p>
+    <p class="lede">Fills Greenhouse, Lever, Ashby and Workday applications with what you keep in the Onward app, and attaches the resume it picked for the job. It never presses Submit or Next, and never creates accounts.</p>
     <span class="saved" id="saved" role="status" aria-live="polite"></span>
   </header>
 
@@ -21,88 +21,25 @@
   </div>
 
   <section>
-    <h2>Resume</h2>
-    <p class="hint">Attached to the resume upload field on each application.</p>
+    <h2>Onward</h2>
+    <p class="hint">Your details, standard answers and resumes come from the Onward app: edit them in its Apply kit. The last copy is kept here for when the app isn't running.</p>
     <div class="row">
-      <label class="file"><input type="file" id="resumeFile" accept=".pdf,.doc,.docx,application/pdf"><span>Choose file…</span></label>
-      <span id="resumeInfo" class="muted">No resume chosen.</span>
-      <button type="button" id="resumeRemove" class="ghost" hidden>Remove</button>
+      <span id="helperStatus" class="muted">Checking…</span>
+      <button type="button" id="helperCheck" class="ghost">Check again</button>
+      <a class="btn" id="openKit" href="http://127.0.0.1:8765/#kit" target="_blank" rel="noopener">Open the Apply kit</a>
     </div>
-  </section>
-
-  <section>
-    <h2>Profile</h2>
-    <div class="row">
-      <button type="button" id="importDash">Import from dashboard</button>
-      <button type="button" id="pasteToggle" class="ghost">Paste an export instead</button>
-    </div>
-    <p class="hint" id="importMsg"></p>
-    <div id="pasteBox" hidden>
-      <label for="pasteText">In the dashboard's Apply kit, press <b>Copy for extension</b>, then paste here.</label>
-      <textarea id="pasteText" rows="4"></textarea>
-      <div class="row"><button type="button" id="pasteImport">Import</button></div>
-    </div>
-    <div class="grid" id="profileFields"></div>
-  </section>
-
-  <section id="historySection">
-    <h2>Experience, education and projects</h2>
-    <p class="hint">What Work Experience, Education and Skills sections on forms are filled with (Workday's My Experience step, Greenhouse's Education and Employment rows). Import them from your master resume, then edit anything a form should say differently. Without entries here, forms are filled straight from your resume.</p>
-    <div class="row">
-      <button type="button" id="histImport">Import from my resume</button>
-      <span class="muted" id="histMsg"></span>
-    </div>
-    <h3>Work experience</h3>
-    <div class="entries" id="histWork"></div>
-    <div class="row"><button type="button" class="ghost" id="addWork">Add work experience</button></div>
-    <h3>Education</h3>
-    <div class="entries" id="histEdu"></div>
-    <div class="row"><button type="button" class="ghost" id="addEdu">Add education</button></div>
-    <h3>Projects</h3>
-    <div class="entries" id="histProj"></div>
-    <div class="row"><button type="button" class="ghost" id="addProj">Add project</button></div>
-    <h3><label for="histSkills">Skills</label></h3>
-    <p class="hint">Comma separated, in the order you want them added to a form's skills box.</p>
-    <textarea id="histSkills" rows="3"></textarea>
-  </section>
-
-  <section>
-    <h2>Work authorization and standard answers</h2>
-    <p class="hint">Sponsorship and work authorization questions are only answered when you set an answer here. Leave one on "Ask me each time" and the form will leave it for you.</p>
-    <div class="grid" id="stdFields"></div>
-  </section>
-
-  <section>
-    <h2>Voluntary self-identification</h2>
-    <p class="hint">Demographic questions (gender, race, veteran, disability). "Decline to answer" picks the form's decline option; if a form has none, the question is left for you.</p>
-    <div class="grid" id="eeoFields"></div>
   </section>
 
   <section>
     <h2>Drafting answers</h2>
-    <p class="hint">For questions like "Why do you want to work here?", the panel can draft an answer from your master resume and the job posting, using the Onward helper on this computer. Your ChatGPT or Claude login costs nothing extra; an OpenAI or Anthropic API key you added in the Onward settings is billed per draft and stops at its monthly budget. Drafts go into the field for you to edit; nothing is sent to the employer.</p>
-    <div class="grid">
-      <p id="backendNotice" class="hint" role="status" hidden style="grid-column: 1 / -1"></p>
-      <label for="draftBackend">Draft with</label>
-      <select id="draftBackend">
-        <option value="chatgpt">ChatGPT (your ChatGPT login via codex)</option>
-        <option value="claude-code">Claude (your Claude login via claude CLI)</option>
-        <option value="openai-api">OpenAI API key (billed per draft)</option>
-        <option value="claude-api">Anthropic API key (billed per draft)</option>
-        <option value="manual">Manual: copy a prompt, paste it into any chat</option>
-      </select>
-      <span></span>
-      <span class="muted">Helper</span>
-      <span id="helperStatus" class="muted">Not checked yet.</span>
-      <button type="button" id="helperCheck" class="ghost">Check</button>
-    </div>
+    <p class="hint">For questions like "Why do you want to work here?", the panel drafts an answer from your master resume and the job posting, with the model picked in Onward under Settings, "Draft form answers with". Drafts go into the field for you to edit; nothing is sent to the employer.</p>
     <label class="check"><input type="checkbox" id="set-helper"> Offer "Draft an answer" on writing questions</label>
     <label class="check"><input type="checkbox" id="set-aiFill"> After filling, answer the remaining questions with AI too (marked "AI answer, check it"). Sponsorship, demographic, consent and legal questions are never sent.</label>
   </section>
 
   <section>
     <h2>Behaviour</h2>
-    <label class="check"><input type="checkbox" id="set-autoRun"> Fill automatically when an application form opens (otherwise press the Autofill button or Alt+Shift+F)</label>
+    <label class="check"><input type="checkbox" id="set-autoRun"> Fill every application form as soon as it opens. Forms for jobs your apply queue prepared always fill themselves; others wait for the Autofill button or Alt+Shift+F.</label>
     <label class="check"><input type="checkbox" id="set-fillSteps"> Keep filling as I move through a form: after you press Autofill once, each next step (Workday's pages) fills itself</label>
     <label class="check"><input type="checkbox" id="set-fitSkills"> Only add skills that fit the job: the ones the posting names and close neighbours of them (TypeScript for a React job, never fine-tuning for HTML/CSS). Skills left out are listed in the panel.</label>
     <label class="check"><input type="checkbox" id="set-remember"> Remember answers I type into other questions</label>
@@ -121,21 +58,12 @@
     <p class="muted" id="memMore"></p>
   </section>
 
-  <section>
-    <h2>Backup</h2>
-    <div class="row">
-      <button type="button" id="exportAll">Export everything</button>
-      <label class="file"><input type="file" id="importAll" accept=".json,application/json"><span>Import a backup…</span></label>
-    </div>
-    <p class="hint">The export holds your profile, answers and saved answers, not the resume file.</p>
-  </section>
-
   <section class="rules">
     <h2>What autofill will never do</h2>
     <ul>
       <li>Press Submit, Next, Apply or Save and Continue, or submit a form in any way.</li>
       <li>Create an account or sign in.</li>
-      <li>Answer sponsorship, work authorization or demographic questions without an answer saved here.</li>
+      <li>Answer sponsorship, work authorization or demographic questions without an answer in your Apply kit.</li>
       <li>Answer salary, consent, signature, background-check or legal questions.</li>
       <li>Fill a field whose label it can't tie to that one field.</li>
       <li>Overwrite something already typed in a field.</li>

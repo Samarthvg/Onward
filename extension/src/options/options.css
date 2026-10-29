@@ -28,26 +28,21 @@ h2 { font-size: 15px; margin: 0 0 6px; }
 .hint { color: var(--muted); font-size: 13px; margin: 0 0 10px; max-width: 72ch; }
 .hint:empty { display: none; }
 .muted { color: var(--muted); font-size: 13px; }
-.grid { display: grid; grid-template-columns: minmax(180px, max-content) minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; }
-.grid label { font-size: 13px; color: var(--muted); }
-.grid > :nth-child(3n):not(.cell) { justify-self: start; }
 input[type=text], input[type=email], input[type=tel], input[type=url], input[type=search], select, textarea {
   font: inherit; font-size: 14px; color: var(--text); background: var(--surface-2); border: 1px solid var(--line);
   border-radius: 7px; padding: 6px 8px; width: 100%; min-width: 0;
 }
 textarea { resize: vertical; }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-button, .file span {
+button, a.btn {
   font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
   border: 1px solid var(--line); background: var(--surface); color: var(--text); display: inline-flex; align-items: center; gap: 6px;
 }
-button:hover, .file:hover span { border-color: var(--muted); }
+button:hover, a.btn:hover { border-color: var(--muted); }
+a.btn { text-decoration: none; }
 button.ghost { background: transparent; color: var(--muted); }
 button.ghost:hover { color: var(--text); }
 button.danger { color: var(--warn); }
-.file { position: relative; display: inline-flex; }
-.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
-.file:focus-within span { outline: 2px solid var(--accent); outline-offset: 1px; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 .row input[type=search] { flex: 1 1 260px; }
 .check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; margin: 8px 0 0; }
@@ -62,33 +57,7 @@ button.danger { color: var(--warn); }
 .mem .meta { color: var(--muted); font-size: 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .rules ul { margin: 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
 .rules li { margin: 2px 0; }
-@media (max-width: 640px) {
-  .grid { grid-template-columns: minmax(0, 1fr) auto; }
-  .grid label, .grid .muted:first-child { grid-column: 1 / -1; margin-top: 4px; }
-  .grid > :nth-child(3n) { justify-self: auto; }
-}
-.grid .cell { width: 100%; min-width: 0; }
 .mem .flag { font-size: 12px; color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 4px 8px; }
 section h3 { font-size: 14px; margin: 16px 0 6px; }
-.entries { display: grid; gap: 8px; }
-.entry { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--surface-2); }
-.entry > summary { cursor: pointer; padding: 2px 0; }
-.entry[open] > summary { margin-bottom: 8px; }
-.entry textarea { margin-top: 4px; }
-.entry .row { margin: 8px 0 0; }
-.entry .lbl { font-size: 13px; color: var(--muted); }
-.date { display: inline-flex; gap: 6px; }
-.date select { width: auto; }
-.date input { width: 6em; }
-.dates { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
-.check.inline { margin: 0; display: inline-flex; font-size: 13px; }
-@media (max-width: 640px) {
-  .entry .grid { grid-template-columns: minmax(0, 1fr); gap: 4px; }
-  .entry .grid > span:empty { display: none; }
-  .entry .grid > .lbl { margin-top: 6px; }
-  .entry .grid input:not([type=checkbox]), .entry .grid select { width: 100%; }
-  .entry .grid .date input:not([type=checkbox]) { width: 6em; }
-  .entry .grid .date select { width: auto; }
-}
 /* The hidden attribute wins over display rules like button's inline-flex. */
 [hidden] { display: none !important; }

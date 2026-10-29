@@ -230,17 +230,34 @@
       el("a", { class: "btn", href: n.apply_url, rel: "noopener" }, action));
   }
 
+  // After a confirmed application the next one opens by itself, unless
+  // cancelled. Not from inside an embedded form, which can't move the page.
+  const NEXT_IN = 8;
+  function startNext(d) {
+    if (d.timer || d.cancelled || view.frame || !d.next || d.error) return;
+    d.left = NEXT_IN;
+    d.timer = setInterval(() => {
+      d.left -= 1;
+      if (d.left <= 0) { clearInterval(d.timer); location.href = d.next.apply_url; return; }
+      render();
+    }, 1000);
+  }
+
   function renderDone(wrap) {
     const d = view.done;
     const n = d.next;
+    startNext(d);
+    const counting = d.timer && !d.cancelled;
     const body = el("div", { class: "body" },
       el("div", { class: "status" }, d.error ? d.error : `Marked as applied${d.title ? `: ${d.title} at ${d.company}` : ""}.`),
+      counting ? el("div", { class: "row" }, el("span", null, `Opening the next one in ${d.left}s.`),
+        el("button", { onclick: () => { d.cancelled = true; clearInterval(d.timer); render(); } }, "Stay here")) : null,
       n ? nextBox(n, "Open next application")
         : el("div", { class: "note" }, "Nothing else to apply to in your list or your apply queue. ",
           el("a", { href: "http://127.0.0.1:8765/", target: "_blank", rel: "noopener" }, "Open Onward")));
     wrap.append(el("div", { class: "panel", role: "dialog", "aria-label": "Onward" },
       el("header", null, el("b", null, "Onward"),
-        el("button", { class: "x", title: "Close", "aria-label": "Close", onclick: () => { view.open = false; view.done = null; unmount(); } }, "×")),
+        el("button", { class: "x", title: "Close", "aria-label": "Close", onclick: () => { clearInterval(d.timer); view.open = false; view.done = null; unmount(); } }, "×")),
       body));
   }
 
