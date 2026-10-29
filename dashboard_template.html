@@ -2344,24 +2344,25 @@ function renderTailorForm(j, jd, history) {
       el("div", {}, el("b", { text: be.name }), el("span", { text: ready ? be.desc() : (be.setup || "Not available") }))));
   }
 
-  // How much this run may change: "none" only reorders and trims, the rest
-  // are the strictness levels. Remembered per browser, else the setting.
-  const levels = [["none", "Only reorder and trim"], ...["strict", "reword", "rewrite"].map((k) => [k, LABELS.strictness[k][0]])];
-  const change = el("select", { id: "changeSel" }, ...levels.map(([v, label]) => el("option", { value: v, text: label })));
-  const saved = store.get("change", store.get("rewrite", true) === false ? "none" : "");
-  change.value = levels.some(([v]) => v === saved) ? saved : (SETTINGS.tailoring.strictness || "strict");
+  // How much this run may change (config.STRICTNESS). The pick is saved, so
+  // the next dialog and the apply queue's own tailoring use it too.
+  const change = el("select", { id: "changeSel" },
+    ...Object.entries(LABELS.strictness).map(([v, [label]]) => el("option", { value: v, text: label })));
+  change.value = LABELS.strictness[SETTINGS.tailoring.strictness] ? SETTINGS.tailoring.strictness : "reword";
   const changeNote = el("p", { class: "note" });
   const syncChange = () => {
-    changeNote.textContent = change.value === "none"
-      ? "Bullets keep their words. Only the order, the tech lines and the skills change, and weak bullets may be cut."
-      : LABELS.strictness[change.value][1]
-        + (SETTINGS.tailoring.check_claims === false ? " Edits aren't checked against your resume (Settings, Tailoring)." : "");
+    changeNote.textContent = LABELS.strictness[change.value][1]
+      + (change.value !== "none" && SETTINGS.tailoring.check_claims === false
+        ? " Edits aren't checked against your resume (Settings, Tailoring)." : "");
   };
-  change.addEventListener("change", () => { store.set("change", change.value); syncChange(); estimate(); });
+  change.addEventListener("change", () => {
+    syncChange();
+    estimate();
+    postSettings({ tailoring: { strictness: change.value } }, "the tailoring level")
+      .then(() => { SETTINGS.tailoring.strictness = change.value; }, fail);
+  });
   syncChange();
-  const level = () => change.value === "none"
-    ? { rewrite: false, strictness: SETTINGS.tailoring.strictness || "strict" }
-    : { rewrite: true, strictness: change.value };
+  const level = () => ({ strictness: change.value });
 
   const jdBox = el("textarea", { class: "jd", id: "jdBox", placeholder: "Paste the full job description here." });
   jdBox.value = jd;
@@ -2564,7 +2565,7 @@ function renderResult(r, out, onAdjust) {
     el("div", { class: "row" },
       el("b", { text: `${r.pages} page${r.pages === 1 ? "" : "s"}` }),
       el("span", { class: "note", text: `${r.model} · ${r.seconds}s` + (r.cost != null ? ` · ${money(r.cost)}` : "")
-        + (r.strictness && r.strictness !== "strict" && LABELS.strictness[r.strictness] ? ` · ${LABELS.strictness[r.strictness][0].toLowerCase()}` : "")
+        + (r.strictness && r.strictness !== "reword" && LABELS.strictness[r.strictness] ? ` · ${LABELS.strictness[r.strictness][0].toLowerCase()}` : "")
         + (r.check_claims === false ? " · edits not checked against your resume" : "") }),
       el("span", { class: "spacer", style: "flex:1" }),
       el("a", { class: "btn primary", href: "/files/" + r.pdf, target: "_blank", rel: "noopener", text: "Open PDF ↗" }),
@@ -2924,8 +2925,8 @@ const LABELS = {
   backends: { chatgpt: "ChatGPT (your ChatGPT plan)", "claude-code": "Claude (your Claude plan)",
     "openai-api": "OpenAI API key (billed per use)", "claude-api": "Anthropic API key (billed per use)", manual: "Paste into any chat" },
   strictness: {
-    strict: ["Strict", "Bullets keep their wording. The model may only swap in the job's terms for things a bullet already says."],
-    reword: ["Reword", "Bullets may be rephrased and restructured to fit the job."],
+    none: ["Only reorder and trim", "Bullets keep their words. The order, the tech lines and the skills change, and the least relevant bullets may be cut."],
+    reword: ["Reword", "Bullets may be rephrased in the job's terms and restructured, growing a little at most."],
     rewrite: ["Rewrite", "Bullets may be rewritten from scratch from everything that job or project's entry says, and may grow to fill their lines."],
   },
   tones: { casual: ["Casual", "Like a student talking to a person: contractions, plain words."],
@@ -3483,8 +3484,6 @@ function tailoringCard() {
   const backend = select(ch.backends.map((b) => [b, LABELS.backends[b] || b]), t.backend);
   const draft = select(ch.draft_backends.map((b) => [b, LABELS.backends[b] || b]), t.draft_backend);
   const pages = number(t.target_pages, 1, 3, 1);
-  const strict = radios("How much tailoring may change", "strictness",
-    ch.strictness.map((k) => [k, ...LABELS.strictness[k]]), t.strictness);
   const claims = el("input", { type: "checkbox" });
   claims.checked = t.check_claims;
   const adv = advanced();
@@ -3493,7 +3492,6 @@ function tailoringCard() {
     el("div", { class: "fields" },
       field("Tailor with", backend, "The model picked first in the Tailor resume dialog."),
       field("Draft form answers with", draft, "Used by the browser extension when you don't pick one."),
-      strict.node,
       el("div", { class: "field wide" },
         el("label", { class: "toggle" }, claims, "Block edits my resume doesn't back"),
         el("p", { class: "note", text: "On: an edit that adds a skill, a number or a job-only term your resume doesn't show is undone. "
@@ -3503,8 +3501,8 @@ function tailoringCard() {
       el("button", { type: "button", text: "Apply queue settings…", onclick: async () => { await loadQueue(); openPrefs(); } }),
       el("span", { class: "note", text: "Minimum match, daily model runs, notifications." })),
     saveBar("Save tailoring", () => postSettings({ tailoring: {
-      backend: backend.value, draft_backend: draft.value, strictness: strict.get(), check_claims: claims.checked, ...(adv ? { target_pages: +pages.value } : {}),
-    } }, "the tailoring settings").then((data) => { SETTINGS.tailoring.backend = backend.value; SETTINGS.tailoring.strictness = strict.get(); SETTINGS.tailoring.check_claims = claims.checked; store.del("backend"); store.del("change"); return data; }),
+      backend: backend.value, draft_backend: draft.value, check_claims: claims.checked, ...(adv ? { target_pages: +pages.value } : {}),
+    } }, "the tailoring settings").then((data) => { SETTINGS.tailoring.backend = backend.value; SETTINGS.tailoring.check_claims = claims.checked; store.del("backend"); return data; }),
       "Saved the tailoring settings.", "the tailoring settings"));
 }
 

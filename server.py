@@ -224,7 +224,7 @@ def settings_payload() -> dict:
             "seniority": list(config.SENIORITY), "workplace": list(config.WORKPLACE),
             "visa": list(config.VISA_STATUS), "backends": list(config.TAILOR_BACKENDS),
             "draft_backends": list(config.DRAFT_BACKENDS), "sources": list(config.SOURCES),
-            "strictness": list(config.STRICTNESS), "tones": list(tailor.voice.TONES),
+            "tones": list(tailor.voice.TONES),
             "max_samples": tailor.voice.MAX_SAMPLES, "sample_max": tailor.voice.SAMPLE_MAX,
         },
         "resumes": {r["id"]: master_meta(r["id"]) for r in s["roles"]},
@@ -637,7 +637,6 @@ def run_job(jid: str, params: dict) -> None:
         meta = {"company": params.get("company", ""), "title": params.get("title", ""),
                 "instruction": params.get("instruction", "")}
         result = tailor.tailor(master, meta, params["jd"], backend, OUT_DIR,
-                               rewrite_bullets=params.get("rewrite", True),
                                manual_answer=params.get("answer"), level=params.get("level"),
                                confirmed=PREP.confirmed_skills())
         conn = db()
@@ -1085,7 +1084,7 @@ class Handler(BaseHTTPRequestHandler):
             jd = str(data.get("jd") or row.get("description") or "")
             params = {"key": key, "jd": jd, "company": row.get("company", data.get("company", "")),
                       "title": row.get("title", data.get("title", "")),
-                      "backend": str(data.get("backend") or STORE.section("tailoring")["backend"]), "rewrite": bool(data.get("rewrite", True)),
+                      "backend": str(data.get("backend") or STORE.section("tailoring")["backend"]),
                       "answer": data.get("answer"), "instruction": tailor.clean_instruction(data.get("instruction")),
                       "role": role, "level": tailor_level(data)}
             if path == "/api/prompt":

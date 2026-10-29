@@ -60,8 +60,9 @@ Django means Python), plus skills you confirm under Review skills where the job 
 your layout, on one page, with no line left holding a word or two. You see every change, the job keywords
 found in the final PDF, and anything it refused to claim.
 
-You pick how much each run may change: only reorder and trim, Strict (the job's terms for what a bullet
-already says), Reword, or Rewrite (bullets rewritten from scratch from everything that entry says). Edits are
+You pick how much each run may change: only reorder and trim, Reword (bullets rephrased in the job's terms),
+or Rewrite (bullets rewritten from scratch from everything that entry says). The apply queue uses your last
+pick. Edits are
 held to your own voice: no em dashes, no "spearheaded" or "leveraged", no ", ensuring ..." tacked on. A bullet
 that reads machine-written gets one fix-up and is left as you wrote it if that fails. The claim checks can be
 turned off in Settings when you'd rather the model name what your work plainly involved. Tailored resumes are named

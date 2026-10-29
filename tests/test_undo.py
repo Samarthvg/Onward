@@ -75,10 +75,10 @@ class UndoTests(Base):
 
     def test_settings_save_is_undone_and_only_once(self):
         before = self.store.load()
-        status, r = self.call("/api/settings", {"settings": {"tailoring": {"strictness": "reword"}, "ui": {"advanced": True}}})
+        status, r = self.call("/api/settings", {"settings": {"tailoring": {"strictness": "rewrite"}, "ui": {"advanced": True}}})
         self.assertEqual(status, 200, r)
         self.assertTrue(r["undo"])
-        self.assertEqual(self.store.load()["tailoring"]["strictness"], "reword")
+        self.assertEqual(self.store.load()["tailoring"]["strictness"], "rewrite")
         status, u = self.undo(r["undo"])
         self.assertEqual(status, 200, u)
         after = self.store.load()
@@ -89,11 +89,11 @@ class UndoTests(Base):
         self.assertIn("can't be undone", again["error"])
 
     def test_undo_keeps_later_changes_to_other_sections(self):
-        _, r = self.call("/api/settings", {"settings": {"tailoring": {"strictness": "reword"}}})
+        _, r = self.call("/api/settings", {"settings": {"tailoring": {"strictness": "rewrite"}}})
         self.call("/api/settings", {"settings": {"voice": {"tone": "formal"}}})
         self.undo(r["undo"])
         s = self.store.load()
-        self.assertEqual(s["tailoring"]["strictness"], "strict")
+        self.assertEqual(s["tailoring"]["strictness"], "reword")
         self.assertEqual(s["voice"]["tone"], "formal", "only what that save changed goes back")
 
     def test_nothing_changed_means_nothing_to_undo(self):

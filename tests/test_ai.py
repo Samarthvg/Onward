@@ -456,14 +456,14 @@ class StrictnessTests(unittest.TestCase):
         _, changes, state = rt.plan_edits(self.res, {"bullet_rewrites": [{"id": "B1", "text": text}]}, JD, level)
         return changes[0]
 
-    def test_reword_allows_a_longer_rephrase_that_strict_rejects(self):
-        text = ("Designed and built the billing APIs that charge every customer, in \\textbf{Python} and FastAPI, "
-                "running them on AWS")
+    def test_rewrite_allows_a_longer_bullet_that_reword_rejects(self):
+        text = (r"Designed and built the billing APIs that charge every customer each month, in \textbf{Python} "
+                r"and FastAPI, running them all on AWS.")
         n = len(rt.plain(text))
-        self.assertTrue(self.base * 1.3 + 40 < n <= self.base * 1.5 + 40, n)
-        strict = self.plan(text, "strict")
-        self.assertEqual((strict.status, strict.reason), ("rejected", "makes the bullet much longer"))
-        self.assertEqual(self.plan(text, "reword").status, "applied")
+        self.assertTrue(self.base * 1.5 + 40 < n <= self.base * 1.8 + 50, n)
+        reword = self.plan(text, "reword")
+        self.assertEqual((reword.status, reword.reason), ("rejected", "makes the bullet much longer"))
+        self.assertEqual(self.plan(text, "rewrite").status, "applied")
 
     def test_honesty_checks_hold_at_every_level(self):
         cases = {
@@ -478,12 +478,14 @@ class StrictnessTests(unittest.TestCase):
                 self.assertIn(why, c.reason, (level, why))
 
     def test_levels_change_the_rules_not_the_truthfulness(self):
-        strict, reword = tailor.instructions("strict"), tailor.instructions("reword")
-        self.assertEqual(strict, tailor.INSTRUCTIONS)
+        none, reword = tailor.instructions("none"), tailor.instructions("reword")
+        self.assertEqual(reword, tailor.INSTRUCTIONS)
         self.assertIn("rephrase a bullet freely", reword)
-        self.assertNotIn("rephrase a bullet freely", strict)
-        for rule in ("1. Truthfulness comes first.", "2. Never add or change numbers", "6. tech_lines and skills_rows"):
-            self.assertIn(rule, reword)
+        self.assertNotIn("rephrase a bullet freely", none)
+        self.assertIn("bullet_rewrites must be empty", none)
+        for level in config.STRICTNESS:
+            for rule in ("1. Truthfulness comes first.", "2. Never add or change numbers", "6. tech_lines and skills_rows"):
+                self.assertIn(rule, tailor.instructions(level))
 
     def test_setting_reaches_the_prompt(self):
         tmp = Path(tempfile.mkdtemp(prefix="jr-strict-"))
@@ -491,11 +493,12 @@ class StrictnessTests(unittest.TestCase):
         st = config.Store(tmp / "settings.json", tmp)
         config.use(st)
         self.addCleanup(config.use, None)
-        self.assertIn("about the same length as the original", tailor.build_manual_prompt(TEX, {}, JD))
-        st.update({"tailoring": {"strictness": "reword"}})
         self.assertIn("rephrase a bullet freely", tailor.build_manual_prompt(TEX, {}, JD))
-        with self.assertRaises(config.SettingsError):
-            st.update({"tailoring": {"strictness": "anything goes"}})
+        st.update({"tailoring": {"strictness": "none"}})
+        self.assertIn("bullet_rewrites must be empty", tailor.build_manual_prompt(TEX, {}, JD))
+        for bad in ("anything goes", "strict"):
+            with self.assertRaises(config.SettingsError):
+                st.update({"tailoring": {"strictness": bad}})
 
     def test_rewrite_draws_on_the_whole_entry_only(self):
         tex = TEX.replace(r"\section*{Skills}", "\n".join([
@@ -523,11 +526,11 @@ class StrictnessTests(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp(prefix="jr-level-"))
         self.addCleanup(shutil.rmtree, tmp, True)
         st = config.Store(tmp / "settings.json", tmp)
-        st.update({"tailoring": {"strictness": "reword"}})
+        st.update({"tailoring": {"strictness": "none"}})
         with mock.patch.object(server, "STORE", st):
             self.assertEqual(server.tailor_level({"strictness": "rewrite"}), "rewrite")
-            self.assertEqual(server.tailor_level({}), "reword")
-            self.assertEqual(server.tailor_level({"strictness": "anything goes"}), "reword")
+            self.assertEqual(server.tailor_level({}), "none")
+            self.assertEqual(server.tailor_level({"strictness": "strict"}), "none")
 
 
 # --------------------------------------------------------------------------

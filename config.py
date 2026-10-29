@@ -42,7 +42,7 @@ import voice
 
 CODE_DIR = Path(__file__).resolve().parent
 SETTINGS_FILE = "settings.json"
-VERSION = 7
+VERSION = 8
 
 
 HOME_ENV = ("ONWARD_HOME", "JOBRADAR_HOME")     # the second is the name before the rename
@@ -252,9 +252,10 @@ VISA_STATUS = ("opt", "sponsorship", "authorized")
 # claude-api bill the user's own API key (ai.py), within a monthly budget.
 TAILOR_BACKENDS = ("chatgpt", "claude-code", "openai-api", "claude-api", "manual")
 DRAFT_BACKENDS = ("chatgpt", "claude-code", "openai-api", "claude-api")
-# strict: bullets keep their wording except for the job's terms; reword: they may
-# be rephrased freely. Both reject new skills, numbers and job-only terms.
-STRICTNESS = ("strict", "reword", "rewrite")
+# How much tailoring may change a bullet. none: only reorder, trim and edit
+# tech lines and skills; reword: rephrase in the job's terms; rewrite: write
+# it again from everything its entry says.
+STRICTNESS = ("none", "reword", "rewrite")
 SETUP_STEPS = ("welcome", "resume", "profile", "role", "ai", "extension", "fetch")
 SOURCES = ("greenhouse", "lever", "ashby", "workday", "smartrecruiters", "oracle", "eightfold", "amazon", "icims")
 
@@ -392,7 +393,7 @@ SCHEMA = Obj({
         "backend": Str("chatgpt", choices=TAILOR_BACKENDS),     # the tailor dialog's default
         "draft_backend": Str("chatgpt", choices=DRAFT_BACKENDS),
         "target_pages": Int(1, 1, 3),
-        "strictness": Str("strict", choices=STRICTNESS),
+        "strictness": Str("reword", choices=STRICTNESS),     # the last level picked in the Tailor dialog
         # Block edits that name a skill, number or job-only term the master
         # resume doesn't back (resume_tex.check_honesty).
         "check_claims": Bool(True),
@@ -553,7 +554,17 @@ def _v7(data: dict, home: Path) -> dict:
     return data
 
 
-MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3, 4: _v4, 5: _v5, 6: _v6, 7: _v7}
+def _v8(data: dict, home: Path) -> dict:
+    """"strict" and "reword" were too close to tell apart; they are one level,
+    "reword", now."""
+    t = data.get("tailoring")
+    if isinstance(t, dict) and t.get("strictness") == "strict":
+        t["strictness"] = "reword"
+    return data
+
+
+MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3, 4: _v4, 5: _v5, 6: _v6, 7: _v7,
+                                                       8: _v8}
 
 
 def migrate(data: dict, home: Path) -> tuple[dict, bool]:

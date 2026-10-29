@@ -63,9 +63,9 @@ INSTRUCTIONS = """You tailor a software engineer's resume to one job description
 Rules
 1. Truthfulness comes first. A skill may appear in an entry's bullets or tech line only if it is in that entry's VERIFIED SKILLS list. Skills-section rows may use only the VERIFIED INVENTORY. If the job wants something the resume doesn't support, report it as "missing" in jd_keywords and do not add it anywhere.
 2. Never add or change numbers, metrics, company names, job titles, dates or URLs.
-3. Keep what each bullet says the person did. You may rephrase a bullet so it uses the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs" when the job says that), or so that a verified skill for that entry is named explicitly. Change as few words as that takes.
+3. Keep what each bullet says the person did: the same work, scope, results and tools. Within that, you may rephrase a bullet freely: restructure the sentence, lead with the part that matters most for this job, pick different verbs, use the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs"), and name a verified skill for that entry explicitly.
 4. Keep LaTeX exactly as it appears in the original bullet: \\textbf{...}, \\textit{...} and \\href{url}{text} stay as they are. Use no other LaTeX commands. Write & % $ # _ as \\& \\% \\$ \\# \\_.
-5. A rewritten bullet must stay about the same length as the original (one printed line is about 110 characters). Only rewrite bullets where it clearly helps; leave the rest out of bullet_rewrites.
+5. A rewritten bullet may grow a little, at most about a third longer than the original (one printed line is about 110 characters); shorter is better. Rewrite any bullet a rephrase makes clearly better for this job; leave the rest out of bullet_rewrites.
 6. tech_lines and skills_rows are comma-separated lists of the person's own tool names. Keep every existing item, spelled exactly as written (e.g. keep "React.js", "NumPy", "PouchDB"). You may only reorder items so the job's tools come first, and append a few items the job asks for that are in that entry's VERIFIED SKILLS (tech lines) or the VERIFIED INVENTORY (skills rows). Never replace a tool with a category name such as "Machine Learning", "Frontend" or "Full Stack". Only include a row or tech line in your output if you changed it.
 7. bullet_priority lists every bullet ID, most relevant to this job first. Projects are printed in this order too (by their most relevant bullet); work experience stays in date order.
 8. The result must fit on one page. Put the least relevant bullets in drop_bullets and, if needed, the least relevant projects in drop_entries. Never drop work experience entries. Keep at least two bullets per entry.
@@ -105,18 +105,20 @@ SCHEMA = {
     "additionalProperties": False,
 }
 
-# The rules that change at the "reword" strictness. The truthfulness rules
-# (1, 2, 6) are the same at every level, and resume_tex checks them in code.
-STRICT_RULES = (
-    """3. Keep what each bullet says the person did. You may rephrase a bullet so it uses the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs" when the job says that), or so that a verified skill for that entry is named explicitly. Change as few words as that takes.""",
-    """5. A rewritten bullet must stay about the same length as the original (one printed line is about 110 characters). Only rewrite bullets where it clearly helps; leave the rest out of bullet_rewrites.""",
-)
+# The rules that change with the strictness. INSTRUCTIONS has the "reword"
+# ones. The truthfulness rules (1, 2, 6) are the same at every level, and
+# resume_tex checks them in code.
 REWORD_RULES = (
     """3. Keep what each bullet says the person did: the same work, scope, results and tools. Within that, you may rephrase a bullet freely: restructure the sentence, lead with the part that matters most for this job, pick different verbs, use the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs"), and name a verified skill for that entry explicitly.""",
     """5. A rewritten bullet may grow a little, at most about a third longer than the original (one printed line is about 110 characters); shorter is better. Rewrite any bullet a rephrase makes clearly better for this job; leave the rest out of bullet_rewrites.""",
 )
-assert all(r in INSTRUCTIONS for r in STRICT_RULES)
+assert all(r in INSTRUCTIONS for r in REWORD_RULES)
 
+# "none": bullets keep their words; the rest of the tailoring still runs.
+NONE_RULES = (
+    """3. Leave every bullet's wording as it is: bullet_rewrites must be empty. Tailor through the order, the tech lines and the skills rows.""",
+    """5. Choose drop_bullets and drop_entries by relevance to this job; the wording itself doesn't change.""",
+)
 
 # "rewrite": the most freedom. A bullet may be rewritten from scratch and use
 # facts from the rest of its entry (resume_tex checks it against the whole
@@ -125,14 +127,14 @@ REWRITE_RULES = (
     """3. Each bullet must stay true to its entry: everything it says has to come from that entry's own bullets, tech line or verified skills. Within that, you may rewrite a bullet from scratch: say what matters most for this job, combine details from the entry's other bullets (and put the bullet you took them from in drop_bullets if it would repeat them), pick a different angle on the same work, and use the job description's terminology for things the entry already describes. Never move work, tools or results from one entry to another.""",
     """5. A rewritten bullet may be up to about two thirds longer than the original (one printed line is about 110 characters), but a bullet that ends a few words into a new line is sent back, so aim for one or two full lines. Rewrite every bullet you can make clearly better for this job; leave the rest out of bullet_rewrites.""",
 )
-LEVEL_RULES = {"reword": REWORD_RULES, "rewrite": REWRITE_RULES}
+LEVEL_RULES = {"none": NONE_RULES, "rewrite": REWRITE_RULES}
 
 
-def instructions(level: str = "strict", check: bool = True) -> str:
+def instructions(level: str = "reword", check: bool = True) -> str:
     """The tailoring rules for a strictness level (config.STRICTNESS), with
     or without the claim checks."""
     text = INSTRUCTIONS
-    swaps = list(zip(STRICT_RULES, LEVEL_RULES.get(level, STRICT_RULES)))
+    swaps = list(zip(REWORD_RULES, LEVEL_RULES.get(level, REWORD_RULES)))
     if not check:
         swaps += zip(CHECKED_RULES, OPEN_RULES)
     for old, new in swaps:
@@ -160,7 +162,7 @@ class Rules:
     """How one tailoring may change the resume: the strictness level
     (config.STRICTNESS), the user's banned phrases, and whether edits are held
     to the master resume's claims."""
-    level: str = "strict"
+    level: str = "reword"
     banned: tuple = ()
     check: bool = True
 
@@ -293,7 +295,7 @@ def estimate(backend: str, system: str, user: str, purpose: str, questions: int 
     return ai.estimate(provider, system, user, purpose, questions, exact) if provider else None
 
 
-def tailor_prompt(res: rt.Resume, job: dict, jd: str, level: str = "strict",
+def tailor_prompt(res: rt.Resume, job: dict, jd: str, level: str = "reword",
                   check: bool = True) -> tuple[str, str]:
     """(system, user). The rules and resume are the same for every job, so
     the API backends cache them; only the job block varies."""
@@ -1022,8 +1024,7 @@ def _slug(s: str) -> str:
 
 
 def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
-           rewrite_bullets: bool = True, manual_answer: str | None = None, level: str | None = None,
-           confirmed=()) -> dict:
+           manual_answer: str | None = None, level: str | None = None, confirmed=()) -> dict:
     """`level` is the strictness (config.STRICTNESS), the user's setting by default.
     `confirmed`: skills the person confirmed under Review skills, which the
     skills section may list though the master resume doesn't."""
@@ -1041,7 +1042,7 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
     else:
         system, user = tailor_prompt(res, job, jd, level, check)
         raw, model, cost = ask(backend, system, user, SCHEMA, "tailor", cache_system=True)
-    if not rewrite_bullets:
+    if level == "none":
         raw = {**raw, "bullet_rewrites": []}
 
     # The user's own banned phrases, from Settings, writing voice.

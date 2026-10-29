@@ -693,7 +693,8 @@ class Change:
 # be restructured, which tends to lengthen it; "rewrite" may also draw on the
 # entry's other bullets. The honesty checks above are the same at every
 # level, measured against the bullet, or for "rewrite" against its entry.
-BULLET_GROWTH = {"strict": (1.3, 40), "reword": (1.5, 40), "rewrite": (1.8, 50)}
+# "none" rewrites no bullets.
+BULLET_GROWTH = {"reword": (1.5, 40), "rewrite": (1.8, 50)}
 
 # Words and shapes that mark a resume line as machine-written, on top of the
 # user's own banned phrases (Settings, writing voice). A rewrite may not add
@@ -743,14 +744,14 @@ def entry_evidence(e: Entry) -> str:
     return "\n".join([e.title, e.tech_tex, *(b.tex for b in e.bullets)])
 
 
-def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "strict",
+def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "reword",
                banned=(), check: bool = True) -> tuple[list[tuple[Span, str]], list[Change], dict]:
     """Turn model output into concrete span replacements plus a change log.
     Anything that fails validation is logged as rejected and left unchanged.
     `check` False skips check_honesty (the user turned it off).
     Rewrites that read as machine-written are kept for now and listed in
     state["style"] ({id: problems}) for one fix-up pass (tailor.polish)."""
-    factor, extra = BULLET_GROWTH.get(strictness, BULLET_GROWTH["strict"])
+    factor, extra = BULLET_GROWTH.get(strictness, BULLET_GROWTH["reword"])
     changes: list[Change] = []
     rewrites: dict[str, str] = {}
     style: dict[str, list[str]] = {}
