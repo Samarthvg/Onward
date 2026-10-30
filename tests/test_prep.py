@@ -11,6 +11,7 @@ Run:  python -m unittest tests.test_prep
 
 import base64
 import json
+import urllib.parse
 import re
 import shutil
 import sqlite3
@@ -309,37 +310,47 @@ class QueueTests(Base):
         self.prep.unmark(key)
         self.assertEqual(self.items()["Tailorco"]["state"], "ready")
 
-    def test_tailor_anyway(self):
+    def tailored_by_hand(self, key, tid):
+        """A version made in the Tailor dialog, as server.run_job stores it."""
+        self.prep.out_dir.mkdir(parents=True, exist_ok=True)
+        (self.prep.out_dir / f"{tid}.pdf").write_bytes(b"%PDF by hand (TEST)")
+        conn = self.prep.connect()
+        with conn:
+            conn.execute("INSERT INTO tailored (id, job_key, created, backend, model, pdf, tex, result) "
+                         "VALUES (?, ?, ?, 'chatgpt', 'm', ?, '', '{}')", (tid, key, time.time(), f"{tid}.pdf"))
+        conn.close()
+        self.prep.use_tailored(key, tid)
+
+    def test_a_resume_tailored_by_hand_is_the_jobs_resume(self):
         self.prep.step()
         key = self.items()["Coveredco"]["key"]
+        self.tailored_by_hand(key, "byhand1")
+        c = self.items()["Coveredco"]
+        self.assertEqual((c["state"], c["choice"], c["reviewed"], c["own"], c["tailored_id"]),
+                         ("ready", "tailored", True, True, "byhand1"))
+        self.assertEqual(c["answers"], 2, "the drafts it had are kept")
+        self.assertEqual(self.prep.prepared(key)["pdf"].name, "byhand1.pdf", "what the extension attaches")
+
+    def test_a_job_tailored_by_hand_joins_the_queue_and_stays(self):
+        self.prep.step()
+        key = self.items()["Coveredco"]["key"]
+        conn = self.prep.connect()
+        with conn:
+            conn.execute("DELETE FROM prep WHERE job_key = ?", (key,))
+        conn.close()
         calls = len(self.model.calls)
-        self.assertTrue(self.prep.force_tailor(key))
+        self.tailored_by_hand(key, "byhand2")
+        self.assertEqual(self.items()["Coveredco"]["state"], "queued")
         self.prep.step()
         c = self.items()["Coveredco"]
-        self.assertEqual((c["state"], c["choice"]), ("ready", "tailored"))
-        self.assertEqual(c["answers"], 2, "earlier drafts kept")
-        self.assertEqual(len(self.model.calls), calls + 1, "only the tailoring run")
-        self.assertFalse(self.prep.force_tailor(key), "already tailored")
-
-    def test_retailor_with_instruction(self):
+        self.assertEqual((c["state"], c["choice"], c["tailored_id"]), ("ready", "tailored", "byhand2"),
+                         "drafting its answers keeps the resume")
+        self.assertEqual(len(self.model.calls), calls + 1, "only the answers were drafted, not another tailoring")
+        # Past the queue's own rules (a higher minimum match, a full queue), it stays.
+        self.prep.save_settings({"threshold": 99, "max_active": 1})
+        self.prep.dirty = True
         self.prep.step()
-        t = self.items()["Tailorco"]
-        self.prep.set_choice(t["key"], "tailored")
-        calls = len(self.model.calls)
-        self.assertTrue(self.prep.force_tailor(t["key"], "Emphasize   backend work more."))
-        self.prep.step()
-        t2 = self.items()["Tailorco"]
-        self.assertEqual((t2["state"], t2["choice"], t2["reviewed"]), ("ready", "tailored", False))
-        self.assertNotEqual(t2["tailored_id"], t["tailored_id"])
-        self.assertEqual(len(self.model.calls), calls + 1)
-        self.assertIn("Emphasize backend work more.", self.model.prompts[-1])
-        conn = server.db()
-        try:
-            versions = conn.execute("SELECT id, result FROM tailored WHERE job_key = ? ORDER BY created", (t["key"],)).fetchall()
-        finally:
-            conn.close()
-        self.assertEqual([v[0] for v in versions], [t["tailored_id"], t2["tailored_id"]], "earlier version kept")
-        self.assertEqual(json.loads(versions[1][1])["instruction"], "Emphasize backend work more.")
+        self.assertEqual(self.items()["Coveredco"]["state"], "ready")
 
     def test_applications_table_when_a_tracker_exists(self):
         conn = server.db()
@@ -505,9 +516,12 @@ class EndpointTests(Base):
             # Plain tailoring from the dashboard isn't capped.
             st, _ = self.call("/api/tailor", {"key": key, "backend": "chatgpt"}, headers=dash)
             self.assertEqual(st, 202)
-            st, q = self.call("/api/queue/tailor", {"key": key, "instruction": "More backend."}, headers=dash)
-            self.assertEqual(st, 200, q)
             pool.shutdown(wait=True)      # the tailoring runs use the fake model
+            # What the dialog made goes on the form: the newest version, and the job stays in the queue.
+            hist = self.call("/api/history?key=" + urllib.parse.quote(key))[1]
+            self.assertEqual([h["in_use"] for h in hist][:1], [True])
+            self.assertEqual(self.prep.prepared(key)["tailored_id"], hist[0]["id"])
+            self.assertTrue(self.items()["Tailorco"]["own"])
 
     def test_dashboard_settings_and_marks(self):
         st, s = self.call("/api/prep/settings", {"threshold": 75, "daily_cap": 9999},

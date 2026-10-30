@@ -18,6 +18,11 @@ index.json, which makes the new version visible, and only then the deletion
 of files the new index no longer names. A run that fails before the index
 leaves the feed as it was; the next one publishes that version again from
 the saved database, overwriting the files nothing points to.
+
+Once a week, after the feed, the run also reads USCIS's H-1B Data Hub and
+publishes the two newest fiscal years under h1b/, the same way: the year
+files first, then h1b/index.json. A run that can't read the Data Hub leaves
+what's published and tries again a day later.
 """
 
 from __future__ import annotations
@@ -30,14 +35,21 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+import feed  # noqa: E402
+
 SETTINGS = Path(__file__).with_name("feed-settings.json")
 STATE_KEY = "jobs.db.gz"
 IMMUTABLE = "public, max-age=31536000, immutable"   # a version's files never change once named
 INDEX_CACHE = "public, max-age=60"
+H1B_INDEX = "h1b/index.json"
+H1B_EVERY = 7 * 86400           # USCIS adds a quarter at a time
+H1B_RETRY = 86400
 
 
 class DirStore:
@@ -110,6 +122,47 @@ def search(home: Path, out: Path) -> None:
         raise SystemExit(f"the search failed (exit {code}); nothing was published")
 
 
+def read_h1b(home: Path) -> dict[int, Path]:
+    """radar.py's Data Hub download, with home as its data folder."""
+    env = {**os.environ, "ONWARD_HOME": str(home)}
+    subprocess.run([sys.executable, str(ROOT / "radar.py"), "--update-h1b"], cwd=ROOT, env=env, timeout=900)
+    data = home / "data"
+    return {int(f.stem[6:]): f for f in data.glob("h1b-FY*.csv")} if data.is_dir() else {}
+
+
+def run_h1b(feed_store, work: Path, now: float, read_fn: Callable[[Path], dict[int, Path]] = read_h1b,
+            log: Callable[[str], None] = print) -> dict | None:
+    """Publishes the H-1B years when the published ones are a week old.
+    Returns the index published, or None when nothing changed."""
+    raw = feed_store.get(H1B_INDEX)
+    before = json.loads(raw) if raw else {}
+    if now < before.get("next", 0):
+        return None
+    home, out = work / "h1b-home", work / "h1b-public"
+    home.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(SETTINGS, home / "settings.json")
+    files = read_fn(home)
+    if len(files) < 2:
+        log("couldn't read both H-1B years from the Data Hub; the published ones stay")
+        if before:
+            feed_store.put(H1B_INDEX, json.dumps({**before, "next": now + H1B_RETRY}).encode(),
+                           "application/json", INDEX_CACHE)
+        return None
+    index = feed.publish_h1b(files, out, now)
+    index["next"] = now + H1B_EVERY
+    old = {y["path"] for y in before.get("years", [])}
+    for y in index["years"]:
+        if y["path"] not in old:
+            feed_store.put(y["path"], (out / y["path"]).read_bytes(), "application/gzip", IMMUTABLE)
+            log(f"uploaded {y['path']}")
+    feed_store.put(H1B_INDEX, json.dumps(index).encode(), "application/json", INDEX_CACHE)
+    keep = {y["path"] for y in index["years"]} | {H1B_INDEX}
+    for path in sorted(feed_store.keys("h1b/") - keep):
+        feed_store.delete(path)
+    log("H-1B data: " + ", ".join(f"FY{y['year']}" for y in index["years"]))
+    return index
+
+
 def named(index: dict) -> set[str]:
     return {s["path"] for s in index.get("snapshots", [])} | {c["path"] for c in index.get("changes", [])}
 
@@ -167,6 +220,10 @@ def main(argv: list[str] | None = None) -> int:
         feed_store, state_store = R2Store(os.environ["FEED_BUCKET"], client), R2Store(os.environ["STATE_BUCKET"], client)
     with tempfile.TemporaryDirectory(prefix="onward-feed-") as work:
         run(feed_store, state_store, Path(work))
+        try:
+            run_h1b(feed_store, Path(work), time.time())
+        except Exception as e:          # never fails the feed run
+            print(f"H-1B data not published: {type(e).__name__}: {e}")
     return 0
 
 

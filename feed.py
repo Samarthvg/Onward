@@ -9,6 +9,9 @@ folder that any static host or CDN can serve:
   snapshots/<version>.json.gz  every open posting
   changes/<version>.json.gz    from version-1 to version: postings added or
                              changed, and postings that closed
+  h1b/index.json             USCIS's H-1B approvals per employer, for the
+  h1b/FY<year>-<sha>.csv.gz  two newest fiscal years, so no copy has to read
+                             USCIS's slow export itself (publish_h1b)
 
 Clients pull(): a new or far-behind copy reads the snapshot, an up-to-date
 one only the change files since its version. Each file's SHA-256 is in the
@@ -25,8 +28,10 @@ then searches by itself as before.
 
 from __future__ import annotations
 
+import csv
 import gzip
 import hashlib
+import io
 import json
 import os
 import re
@@ -42,6 +47,9 @@ KEEP_SNAPSHOTS = 2              # the previous one stays while clients may still
 WINDOW_DAYS = 60                # the longest a client shows a posting (radar.program_days default)
 STALE_AFTER = 3 * 3600          # a feed whose search hasn't run for this long isn't trusted
 MAX_FILE = 300 * 1024 * 1024    # bytes, compressed
+H1B_HEADER = ["Employer", "Initial Approval", "Continuing Approval"]
+H1B_PATH = re.compile(r"h1b/FY(\d{4})-[0-9a-f]{12}\.csv\.gz")
+H1B_MAX = 40 * 1024 * 1024      # bytes, uncompressed: a year is about 2 MB
 
 # Posting fields in the feed, with their types. Text is capped at the given
 # length when read, so a bad feed can't fill a client's database.
@@ -186,6 +194,27 @@ def _prune(out: Path, index: dict) -> None:
                     f.unlink()
                 except OSError:
                     pass
+
+
+def publish_h1b(files: dict[int, Path], out_dir: Path | str, now: float) -> dict:
+    """The H-1B files radar.update_h1b saved ({year: path}), compressed under
+    names that change with their contents, and h1b/index.json naming them.
+    Each entry carries the SHA-256 of both the download and the CSV inside,
+    so a copy that already has a year's CSV skips it."""
+    out = Path(out_dir)
+    years = []
+    for year, path in sorted(files.items(), reverse=True):
+        data = path.read_bytes()
+        raw = gzip.compress(data, 9, mtime=0)
+        sha = hashlib.sha256(raw).hexdigest()
+        rel = f"h1b/FY{year}-{sha[:12]}.csv.gz"
+        (out / "h1b").mkdir(parents=True, exist_ok=True)
+        (out / rel).write_bytes(raw)
+        years.append({"year": year, "path": rel, "sha256": sha, "size": len(raw),
+                      "csv_sha256": hashlib.sha256(data).hexdigest()})
+    index = {"format": FORMAT, "updated": now, "years": years}
+    (out / "h1b" / "index.json").write_text(json.dumps(index, indent=1), encoding="utf-8")
+    return index
 
 
 # --------------------------------------------------------------------------
@@ -352,3 +381,55 @@ def pull(conn: sqlite3.Connection, url: str, now: float, get: Callable[[str], by
     return {"version": version, "new": len(set(upsert) - existing), "upserted": len(upsert), "closed": len(closed),
             "snapshot": use_snapshot, "checked": checked, "boards": int(index.get("boards") or 0),
             "failed": int(index.get("failed") or 0)}
+
+
+def pull_h1b(url: str, have: dict[int, str], get: Callable[[str], bytes] = http_get) -> dict[int, dict | None]:
+    """The feed's H-1B years: {year: {employer: [initial, continuing]}}, or
+    None for a year whose CSV is already saved (`have`: {year: CSV SHA-256}).
+    Everything is checked before anything is returned."""
+    base = check_url(url)
+    try:
+        index = json.loads(get(base + "h1b/index.json"))
+    except Exception as e:
+        raise FeedError(f"Couldn't read the feed's H-1B data: {e}") from e
+    entries = index.get("years") if isinstance(index, dict) and index.get("format") == FORMAT else None
+    if not isinstance(entries, list) or not entries or len(entries) > 4:
+        raise FeedError("The feed's H-1B index isn't one this version reads")
+    out: dict[int, dict | None] = {}
+    for entry in entries:
+        m = H1B_PATH.fullmatch(str(entry.get("path", ""))) if isinstance(entry, dict) else None
+        if not m or int(m.group(1)) != entry.get("year"):
+            raise FeedError("The feed's H-1B index names an unexpected file")
+        year = int(m.group(1))
+        if have.get(year) and have[year] == entry.get("csv_sha256"):
+            out[year] = None
+            continue
+        try:
+            raw = get(base + entry["path"])
+        except Exception as e:
+            raise FeedError(f"Couldn't download {entry['path']}: {e}") from e
+        if hashlib.sha256(raw).hexdigest() != entry.get("sha256"):
+            raise FeedError(f"{entry['path']} doesn't match the feed's index (changed or cut short); try again later")
+        try:
+            data = gzip.decompress(raw)
+        except OSError as e:
+            raise FeedError(f"{entry['path']} isn't a readable feed file") from e
+        if len(data) > H1B_MAX:
+            raise FeedError(f"{entry['path']} is larger than a year of H-1B data can be")
+        out[year] = _h1b_rows(data.decode("utf-8-sig", "replace"), entry["path"])
+    return out
+
+
+def _h1b_rows(text: str, name: str) -> dict[str, list[int]]:
+    reader = csv.reader(io.StringIO(text, newline=""))
+    if next(reader, None) != H1B_HEADER:
+        raise FeedError(f"{name} isn't in the H-1B format this version reads; update Onward")
+    totals: dict[str, list[int]] = {}
+    for row in reader:
+        try:
+            employer, initial, continuing = row[0].strip()[:300], int(row[1]), int(row[2])
+        except (IndexError, ValueError):
+            continue
+        if employer and 0 <= initial < 10**7 and 0 <= continuing < 10**7:
+            totals[employer] = [initial, continuing]
+    return totals

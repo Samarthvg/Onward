@@ -76,7 +76,9 @@ The Onward Autofill extension for Firefox fills Greenhouse, Lever, Ashby and Wor
 Apply kit details, work history, education and projects, the prepared resume, and the standard questions you've
 answered once. There's nothing to copy into it; it reads the app on this computer. A form for a job the apply
 queue prepared fills itself as it opens, drafted answers included, which you can redraft with a note ("use my
-other project"). It never presses Submit, never signs in, and leaves sponsorship, salary and legal questions to
+other project"). On Workday's sign-in and create-account pages it types your email and the one account password you
+saved in the Apply kit (kept in your system's keychain), and you press the button. It never presses Submit, Sign In or
+Create Account, and leaves sponsorship, salary and legal questions to
 you unless you've answered them in the Apply kit. When the confirmation page appears, the job is marked applied
 and the next one opens.
 Details in [extension/README.md](extension/README.md).
@@ -168,10 +170,12 @@ Onward runs on your computer. Your resume, details, scores and applications stay
 Onward itself. What does leave your computer:
 
 - **The shared job feed:** Onward downloads new postings from this project's feed instead of every computer
-  reading every board. It's a download only, so the feed learns nothing about you. Companies you add yourself are
+  reading every board, and the H-1B approvals with them, if one of your roles needs visa information. It's a
+  download only, so the feed learns nothing about you. Companies you add yourself are
   still read straight from their own job boards. You can turn the feed off under Settings, Search (advanced
   settings): Onward then reads every board from your computer, which takes several minutes per search.
-- **USCIS H-1B data,** every 90 days, if one of your roles needs visa information.
+- **USCIS H-1B data,** every 90 days, if one of your roles needs visa information and the feed is off or can't be
+  read.
 - **The daily update check** (turn it off under Settings, App), and Firefox's update check for the extension.
 - **Whatever you send to the AI you chose** when tailoring or drafting: your resume, your details and the posting.
 - **Tectonic's download,** if you chose it, and **phone notifications,** if you set up an ntfy topic.

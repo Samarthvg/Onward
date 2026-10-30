@@ -138,6 +138,82 @@ class RunTests(Base):
         self.assertEqual(s["radar"]["feed_url"], "", "the search never reads a feed itself")
 
 
+class H1BTests(Base):
+    """The feed's copy of USCIS's H-1B data, published weekly and read by every copy."""
+
+    def setUp(self):
+        super().setUp()
+        self.reads = []
+        self.years = {2026: {"ACME SOFTWARE INC": [7, 3]}, 2025: {"ACME SOFTWARE INC": [9, 1]}}
+
+    def read(self, home):
+        self.reads.append(home)
+        assert json.loads((home / "settings.json").read_text())["radar"]["feed_url"] == "", "never reads itself"
+        out = {}
+        for year, totals in self.years.items():
+            (home / "data").mkdir(exist_ok=True)
+            out[year] = home / "data" / f"h1b-FY{year}.csv"
+            radar.write_h1b(out[year], totals)
+        return out
+
+    def publish(self, now):
+        self.runs += 1
+        return run_feed.run_h1b(self.feed, self.tmp / f"runner-{self.runs}", now, self.read, log=lambda m: None)
+
+    def test_published_weekly_and_read_by_copies(self):
+        now = time.time()
+        index = self.publish(now)
+        self.assertEqual([y["year"] for y in index["years"]], [2026, 2025])
+        self.assertIsNone(self.publish(now + 3600), "a week between reads of the Data Hub")
+        self.assertEqual(len(self.reads), 1)
+
+        reader = self.tmp / "reader-data"
+        url = (self.tmp / "bucket-feed").as_uri()
+        with mock.patch.object(radar, "H1B_DIR", reader), mock.patch.object(radar, "log", lambda m: None):
+            self.assertEqual(radar.h1b_from_feed(url), [2026, 2025])
+            self.assertEqual(set(radar.H1BIndex.load().lookup("Acme Software")["years"]), {"2026", "2025"})
+            got = []
+            self.assertEqual(radar.h1b_from_feed(url, lambda u: got.append(u) or feed.http_get(u)), [2026, 2025])
+            self.assertEqual(got, [url + "/h1b/index.json"], "unchanged years aren't downloaded again")
+
+            # A new quarter: the changed year replaces the old file, in the bucket and on the copy.
+            self.years = {2027: {"ACME SOFTWARE INC": [2, 0]}, 2026: {"ACME SOFTWARE INC": [8, 3]}}
+            self.publish(now + run_feed.H1B_EVERY + 1)
+            self.assertEqual(radar.h1b_from_feed(url), [2027, 2026])
+            self.assertEqual(sorted(f.name for f in reader.iterdir()), ["h1b-FY2026.csv", "h1b-FY2027.csv"])
+        self.assertEqual(sorted(self.feed.keys("h1b/")), sorted(
+            [run_feed.H1B_INDEX] + [y["path"] for y in json.loads(self.feed.get(run_feed.H1B_INDEX))["years"]]))
+
+    def test_a_data_hub_that_cant_be_read_keeps_what_is_published(self):
+        now = time.time()
+        first = self.publish(now)
+        self.years = {}
+        self.assertIsNone(self.publish(now + run_feed.H1B_EVERY + 1))
+        kept = json.loads(self.feed.get(run_feed.H1B_INDEX))
+        self.assertEqual(kept["years"], first["years"])
+        self.assertIsNone(self.publish(now + run_feed.H1B_EVERY + 3600), "tried again a day later, not every run")
+        self.assertEqual(len(self.reads), 2)
+
+    def test_a_tampered_or_odd_file_changes_nothing(self):
+        self.publish(time.time())
+        index = json.loads(self.feed.get(run_feed.H1B_INDEX))
+        path = self.tmp / "bucket-feed" / index["years"][0]["path"]
+        path.write_bytes(path.read_bytes()[:-4])
+        with self.assertRaisesRegex(feed.FeedError, "doesn't match"):
+            feed.pull_h1b((self.tmp / "bucket-feed").as_uri(), {})
+        index["years"][0]["path"] = "../secrets.csv.gz"
+        self.feed.put(run_feed.H1B_INDEX, json.dumps(index).encode(), "application/json")
+        with self.assertRaisesRegex(feed.FeedError, "unexpected file"):
+            feed.pull_h1b((self.tmp / "bucket-feed").as_uri(), {})
+
+    def test_rows_are_checked(self):
+        rows = feed._h1b_rows("Employer,Initial Approval,Continuing Approval\r\nACME,3,4\r\nBAD,x,1\r\n,1,1\r\n"
+                              "HUGE,1,99999999\r\n", "t")
+        self.assertEqual(rows, {"ACME": [3, 4]})
+        with self.assertRaisesRegex(feed.FeedError, "format"):
+            feed._h1b_rows("Employer,Approvals\r\nACME,3\r\n", "t")
+
+
 class R2StoreTests(unittest.TestCase):
     """The calls R2Store makes, checked by botocore's stubber (no network)."""
 

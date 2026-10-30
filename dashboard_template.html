@@ -152,7 +152,7 @@
   .seg button { white-space: nowrap; }
   .seg button:hover { color: var(--text); background: transparent; border-color: transparent; }
   .seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); border-color: var(--control); font-weight: 600; }
-  input[type=search], input[type=text], input[type=email], input[type=tel], input[type=url], input[type=number], input[type=time], select, textarea {
+  input[type=search], input[type=text], input[type=password], input[type=email], input[type=tel], input[type=url], input[type=number], input[type=time], select, textarea {
     padding: 6px 10px; min-height: 32px; border: 1px solid var(--control); border-radius: 6px;
     background: var(--surface); color: var(--text); font: inherit; font-size: 14px; min-width: 0;
   }
@@ -671,6 +671,17 @@
       <p class="note">Asked on most US applications and never used to decide on you. "Decline to answer" is always fine.</p>
       <div class="kit" id="kitEeo"></div>
     </div>
+    <div class="kit-sec" id="acctBox">
+      <p class="section-h">Job site accounts</p>
+      <p>Workday has you make an account on each company's own site. With a password here, the extension fills those sign-in and create-account pages with your email above and this password, then leaves the button to you. Use a password only for job sites, not the one for your email.</p>
+      <div class="row">
+        <input type="password" id="acctPw" autocomplete="new-password" maxlength="128" placeholder="Account password" aria-label="Account password for job sites" style="flex:1;min-width:0">
+        <button type="button" id="acctShow" aria-pressed="false">Show</button>
+        <button type="button" id="acctSave">Save</button>
+        <button type="button" class="ghost" id="acctRemove" hidden>Remove</button>
+      </div>
+      <p class="note" id="acctNote" aria-live="polite"></p>
+    </div>
     <div class="kit-sec" id="aboutBox">
       <p class="section-h">About me, for drafted answers</p>
       <p>Written answers ("Why this company?") can only mention things you tell them. Write a few lines in your own words: what you're into, why certain areas excite you, products you use, anything true about you that a resume doesn't say. Drafts use only what's here and in your resume.</p>
@@ -1076,7 +1087,9 @@ async function pdfText(buf) {
 }
 
 function texText(src) {
-  return src
+  // Only what's printed: the preamble's font and package names aren't the resume.
+  const body = src.indexOf("\\begin{document}");
+  return (body >= 0 ? src.slice(body) : src)
     .replace(/(^|[^\\])%.*$/gm, "$1")
     .replace(/\\(?:href|url)\{([^}]*)\}(?:\{([^}]*)\})?/g, " $1 $2 ")
     .replace(/\\(?:begin|end)\{[^}]*\}/g, " ")
@@ -1170,10 +1183,18 @@ function contactsFrom(text) {
     const p = first.split(" ").filter((w, i, all) => i === 0 || i === all.length - 1 || !/^[A-Za-z]\.?$/.test(w));
     out.firstName = p[0]; out.lastName = p.slice(1).join(" ");
   }
-  const school = text.match(/[A-Z][A-Za-z.&' ]{2,60}(?:University|College|Institute of Technology)(?: of [A-Z][A-Za-z ]+)?/);
-  if (school) out.school = school[0].trim();
+  // "Northeastern University", "University of Texas at Austin"; a month after it isn't part of the name.
+  const OF = "(?: of [A-Z][a-z]+(?: (?:at |in |and )?(?!(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\b)[A-Z][a-z]+)*)";
+  const schoolRe = (kinds) => new RegExp(`[A-Z][A-Za-z.&' ]{2,60}(?:${kinds})${OF}?|University${OF}`);
+  const school = text.match(schoolRe("University|College|Institute of Technology"));
+  if (school) {
+    // "Khoury College of Computer Sciences, Northeastern University": forms want the university.
+    const uni = text.slice(school.index).split(/\n/)[0].match(schoolRe("University"));
+    out.school = (uni ? uni[0] : school[0]).trim();
+  }
   const top = text.split(/\n/).slice(0, 4).join(" | ");
-  const loc = top.match(/\b([A-Z][A-Za-z.]+(?: [A-Z][A-Za-z.]+)*, [A-Z]{2})\b/); if (loc) out.location = loc[1];
+  const loc = top.match(/\b([A-Z][A-Za-z.]+(?: [A-Z][A-Za-z.]+)*), ([A-Z]{2})\b/);
+  if (loc && RULES && RULES.US_STATES[loc[2]]) { out.city = loc[1]; out.state = loc[2]; }
   const deg = text.match(/\b(Bachelor|Master|Doctor)(?:'s)? of ([A-Z][a-z]+(?: [A-Z][a-z]+)?)(?:,? in ([A-Z][A-Za-z&]*(?: (?:and |& )?(?!(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b)[A-Z][A-Za-z&]*){0,4}))?/);
   if (deg) {
     out.degree = `${deg[1]} of ${deg[2]}`;
@@ -2013,6 +2034,12 @@ const KIT = RULES ? RULES.PROFILE_FIELDS.map(([k, label]) => [k, label, KIT_TYPE
 
 function renderKit() {
   const P = state.profile;
+  // Before 0.1.12 the kit had one "City, State" field; the app splits it as well.
+  if (P.location && !P.city && !P.state && RULES) {
+    const p = RULES.place(P);
+    Object.assign(P, { city: p.city, state: p.abbr || p.state });
+  }
+  delete P.location;
   const box = $("kitFields");
   box.replaceChildren();
   for (const [key, label, type] of KIT) {
@@ -2060,11 +2087,42 @@ function renderAnswers() {
 }
 
 // Whether the extension has reached the app (it reads the kit from here).
+// The job sites' password goes to the keychain through the helper; the page
+// only ever learns whether one is saved.
+function showAccount(st) {
+  $("acctRemove").hidden = !st.saved;
+  $("acctPw").placeholder = st.saved ? "Saved. Type a new one to change it" : "Account password";
+  $("acctNote").textContent = st.saved
+    ? `Saved in ${st.where === "keychain" ? "your system's keychain" : "a file only you can read, in the data folder"}. Signing in uses the email in your details above.`
+    : "Not saved: the extension leaves account pages to you.";
+}
+$("acctShow").addEventListener("click", () => {
+  const show = $("acctPw").type === "password";
+  $("acctPw").type = show ? "text" : "password";
+  $("acctShow").textContent = show ? "Hide" : "Show";
+  $("acctShow").setAttribute("aria-pressed", String(show));
+});
+$("acctSave").addEventListener("click", async () => {
+  const pw = $("acctPw").value;
+  if (!pw) { toast("Type the password first."); $("acctPw").focus(); return; }
+  try {
+    showAccount(await api("/api/account", { password: pw }));
+    $("acctPw").value = "";
+    toast("Account password saved.");
+  } catch (e) { $("acctNote").textContent = e.message; }
+});
+$("acctRemove").addEventListener("click", async () => {
+  try { showAccount(await api("/api/account", { password: "" })); toast("Account password removed."); } catch (e) { fail(e); }
+});
+
 async function showExtension() {
   const n = $("kitExt");
+  $("acctBox").hidden = !HELPER;
   if (!HELPER) { n.textContent = ""; return; }
   try {
-    const x = (await api("/api/app")).extension || {};
+    const app = await api("/api/app");
+    showAccount(app.account || {});
+    const x = app.extension || {};
     n.textContent = x.seen
       ? `The extension is connected (last seen ${fmt(x.seen)}) and fills forms with these.`
       : "The extension hasn't connected yet. Install it under Settings, App, then open a job's application form.";
@@ -2300,15 +2358,33 @@ function renderTailorForm(j, jd, history) {
   };
   const go = el("button", { type: "button", class: "primary", onclick: start });
 
+  // Every version for this job; the one marked is what the extension attaches.
   const hist = el("div", { style: "display:grid;gap:6px" });
   const showHistory = (list) => hist.replaceChildren(...(list.length ? [
-    el("p", { class: "section-h", text: "Earlier versions for this job" }),
+    el("p", { class: "section-h", text: "Versions for this job" }),
+    el("p", { class: "note", text: list.some((h) => h.in_use)
+      ? "The marked one goes on the application form. The job is in your Apply queue."
+      : "The application form gets your master resume. Pick a version to send instead." }),
     ...list.map((h) => el("div", { class: "row", style: "font-size:13px" },
       el("span", { text: `${fmt(h.created)} · ${h.model}` + (h.result.instruction ? ` · “${h.result.instruction}”` : "") }),
+      h.in_use ? el("span", { class: "badge yes", text: "On the form" }) : el("button", { type: "button", text: "Use this one",
+        "aria-label": `Use the version from ${fmt(h.created)} on the form`, onclick: async () => {
+          try {
+            const r = await api("/api/tailored/use", { key: j.key, id: h.id });
+            undoable("That version goes on the form now.", "using that version", async () => { await serverUndo(r.undo)(); refreshHistory(); });
+          } catch (e) { fail(e); }
+          refreshHistory();
+        } }),
       el("a", { class: "btn", href: "/files/" + h.pdf, target: "_blank", rel: "noopener", text: "PDF" }),
       el("button", { type: "button", class: "ghost", text: "Show changes", onclick: () => renderResult(h.result, result, retailor) })))] : []));
   showHistory(history);
-  const refreshHistory = async () => { try { showHistory(await api("/api/history?key=" + encodeURIComponent(j.key))); } catch {} };
+  // Opened on a job that has one: its changes show straight away.
+  const current = history.find((h) => h.in_use);
+  if (current) renderResult(current.result, result, retailor);
+  const refreshHistory = async () => {
+    try { showHistory(await api("/api/history?key=" + encodeURIComponent(j.key))); } catch {}
+    if (queue.data) loadQueue();
+  };
 
   $("tailorBody").replaceChildren(...[
     el("p", { class: "section-h", text: "Model" }), opts, costLine,
@@ -2323,11 +2399,11 @@ function renderTailorForm(j, jd, history) {
   estimate();
 }
 
-// The role whose master resume tailors a job: the shown one, or with all
-// roles shown, the first role that wants the job.
+// The role whose master resume tailors a job: the one All jobs shows, else
+// (all roles, or from the Apply queue) the job's own roles decide, as they do
+// for the queue's own tailoring.
 function tailorRole(j) {
-  if (state.search !== ALL_ROLES) return state.search;
-  return (j.roles && j.roles[0]) || "";
+  return state.view !== "queue" && state.search !== ALL_ROLES ? state.search : "";
 }
 
 async function runTailor(j, opts, btn, out, onAdjust, onDone) {
@@ -2344,8 +2420,9 @@ async function runTailor(j, opts, btn, out, onAdjust, onDone) {
         renderResult(s.result, out, onAdjust);
         if (onDone) onDone();
         announce("Tailoring finished. The result is below.");
-        if (s.undo) undoable(opts.instruction ? "Made a new version with your request. The earlier ones are still in the list below."
-            : "Made a tailored resume for this job.", "the new resume version", async () => {
+        if (s.undo) undoable((opts.instruction ? "Made a new version with your request. The earlier ones are still in the list below. "
+            : "Made a tailored resume for this job. ") + "It goes on the application form, and the job is in your Apply queue.",
+          "the new resume version", async () => {
           await serverUndo(s.undo)();
           out.replaceChildren(el("p", { class: "note", text: "That version was taken out. The earlier versions are below." }));
           if (onDone) onDone();
@@ -2558,27 +2635,6 @@ function changeLine(c) {
   return line;
 }
 
-async function showChanges(it) {
-  $("tailorTitle").textContent = `Resume changes: ${it.title} at ${it.company}`;
-  const body = $("tailorBody");
-  body.replaceChildren(progressLine("Loading…"));
-  openDialog($("tailorDlg"));
-  try {
-    const hist = await api("/api/history?key=" + encodeURIComponent(it.key));
-    const h = hist.find((x) => x.id === it.tailored_id);
-    if (!h) throw new Error("That tailored version isn't stored any more. Close this and press Tailor anyway to make a new one.");
-    const out = el("div", { style: "display:grid;gap:12px" });
-    renderResult(h.result, out, (text) => {
-      $("tailorDlg").close();
-      queueAction("/api/queue/tailor", { key: it.key, instruction: text }, retailorMsg(), "the re-tailoring request");
-    });
-    body.replaceChildren(out);
-  } catch (e) { body.replaceChildren(el("div", { class: "errbox", role: "alert", text: e.message })); }
-}
-
-const retailorMsg = () => "Re-tailoring with your request." +
-  (queue.data ? ` It uses one of today's ${backendName(queue.data.settings.backend)} runs.` : "");
-
 // A queue change, then its message with Undo (the helper keeps the old row).
 async function queueAction(path, body, text, label, onUndo) {
   try {
@@ -2646,8 +2702,13 @@ function queueItem(it) {
       text: "Open application ↗", "aria-label": `Open application: ${name} (new tab)`,
       title: "The extension attaches the prepared resume and fills the form. You review and submit." }));
   }
+  // The same Tailor dialog as All jobs: model, how much to change, a request, every version.
+  if (it.state === "ready" || it.state === "error") {
+    actions.append(el("button", { type: "button", text: it.tailored_id ? "Changes and versions" : "Tailor", "data-fk": fk("tailor"),
+      "aria-label": `${it.tailored_id ? "Resume changes and versions" : "Tailor resume"}: ${name}`,
+      onclick: () => openTailor(jobByKey(it.key) || { key: it.key, title: it.title, company: it.company }) }));
+  }
   if (it.state === "ready" && it.tailored_id) {
-    actions.append(el("button", { type: "button", text: "View changes", "data-fk": fk("changes"), "aria-label": `View resume changes: ${name}`, onclick: () => showChanges(it) }));
     actions.append(el("a", { class: "btn", href: "/files/" + it.pdf, target: "_blank", rel: "noopener", text: "PDF", "aria-label": `Tailored resume PDF: ${name}` }));
     if (it.choice !== "tailored" || !it.reviewed) {
       actions.append(el("button", { type: "button", text: "Approve", "data-fk": fk("approve"), "aria-label": `Approve the tailored resume: ${name}`,
@@ -2659,17 +2720,6 @@ function queueItem(it) {
         onclick: () => queueAction("/api/queue/choice", { key: it.key, choice: "master" },
           `The extension will attach your master resume for ${name}.`, "using the master resume") }));
     }
-  }
-  if (it.state === "ready" && !it.tailored_id) {
-    actions.append(el("button", { type: "button", text: "Tailor anyway", "data-fk": fk("tailor"), "aria-label": `Tailor anyway: ${name}`,
-      title: `Uses one ${backendName(s.backend)} run from today's limit`,
-      onclick: () => queueAction("/api/queue/tailor", { key: it.key }, `Queued ${name} for tailoring.`, "the tailoring request") }));
-  }
-  if (it.state === "ready") {
-    const det = el("details", { class: "evidence" }, el("summary", { text: it.tailored_id ? "Adjust and re-tailor" : "Tailor with a request", "data-fk": fk("adjust") }));
-    det.append(adjustBox((text) => queueAction("/api/queue/tailor", { key: it.key, instruction: text }, retailorMsg(), "the re-tailoring request"),
-      it.tailored_id ? "Re-tailor" : "Tailor", false));
-    lines.push(det);
   }
   if (it.state === "error") actions.append(el("button", { type: "button", text: "Retry", "data-fk": fk("retry"), "aria-label": `Retry: ${name}`,
     onclick: () => queueAction("/api/queue/retry", { key: it.key }, `Trying ${name} again.`, "the retry") }));
@@ -3623,6 +3673,24 @@ function setupHead(title, lead) {
   return [el("h2", { id: "setupTitle", tabindex: "-1", text: title }), ...(lead ? [el("p", { class: "lead", text: lead })] : [])];
 }
 
+// The app opens Firefox on the signed add-on it ships with, and Firefox asks to add it.
+function installFirefox(copy) {
+  const url = location.origin + "/api/extension.xpi";
+  const note = el("p", { class: "note", "aria-live": "polite",
+    text: "Firefox opens and asks to add Onward Autofill: press Add. It stays installed and updates itself." });
+  const btn = el("button", { type: "button", class: "primary", text: "Install in Firefox", onclick: async () => {
+    btn.disabled = true;
+    try {
+      await api("/api/extension/install", {});
+      note.textContent = "Firefox is open: press Add in its prompt. If no prompt shows, switch to Firefox.";
+    } catch (e) {
+      note.replaceChildren(e.message + ". Install Firefox and press the button again, or open ", el("code", { text: url }),
+        " ", copy(url), " in Firefox yourself and press Continue to installation, then Add.");
+    } finally { btn.disabled = false; }
+  } });
+  return el("div", {}, el("p", {}, btn), note);
+}
+
 function nextButton(label, onclick, opts = {}) {
   return el("button", { type: "button", class: "primary", text: label, disabled: opts.disabled ? "disabled" : null, onclick });
 }
@@ -3676,7 +3744,7 @@ const SETUP_RENDER = {
   profile(body, next) {
     const found = state.resume ? contactsFrom(state.resume.text) : {};
     const P = { ...found, ...Object.fromEntries(Object.entries(state.profile).filter(([, v]) => v)) };
-    const keys = ["firstName", "lastName", "email", "phone", "location", "linkedin", "github", "school", "degree", "major", "gradDate"];
+    const keys = ["firstName", "lastName", "email", "phone", "city", "state", "linkedin", "github", "school", "degree", "major", "gradDate"];
     const inputs = {};
     const fields = KIT.filter(([k]) => keys.includes(k)).map(([k, label, type]) => {
       const i = el("input", { type, value: P[k] || "", autocomplete: "off" });
@@ -3846,9 +3914,7 @@ const SETUP_RENDER = {
     const firefox = x.firefox_store
       ? el("p", {}, el("a", { class: "btn primary", href: x.firefox_store, target: "_blank", rel: "noopener", text: "Add to Firefox" }))
       : x.xpi
-        ? el("div", {}, el("p", {}, el("a", { class: "btn primary", href: "/api/extension.xpi", text: "Install in Firefox" })),
-            el("p", { class: "note", text: "Open this page in Firefox and press the button. Firefox first asks whether this site may install " +
-              "add-ons: press Continue to installation, then Add. It stays installed and updates itself." }))
+        ? installFirefox(copy)
         : el("ol", { class: "steps" },
             el("li", {}, "In Firefox, open ", el("code", { text: "about:debugging#/runtime/this-firefox" }), " ", copy("about:debugging#/runtime/this-firefox")),
             el("li", { text: "Press Load Temporary Add-on… and choose manifest.json in the folder below." }),

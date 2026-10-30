@@ -40,6 +40,9 @@ import config
 import pricing
 
 PROVIDERS = tuple(pricing.MODELS)
+# Kept the same way as the keys, but not model keys: the password the
+# extension fills on job sites' sign-in and create-account pages.
+SECRETS = ("account-password",)
 ENV_KEYS = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
 KEYRING_SERVICE = "Onward"
 LEGACY_KEYRING_SERVICE = "jobradar"     # keys saved before the rename move to KEYRING_SERVICE when read
@@ -121,7 +124,7 @@ def _write_file(data: dict) -> None:
 
 
 def _check_provider(provider: str) -> None:
-    if provider not in PROVIDERS:
+    if provider not in PROVIDERS and provider not in SECRETS:
         raise ValueError(f"Unknown provider {provider!r}")
 
 
@@ -136,7 +139,17 @@ def clean_key(key: str) -> str:
 def save_key(provider: str, key: str) -> str:
     """Store a key; returns where it went ("keychain" or "file")."""
     _check_provider(provider)
-    key = clean_key(key)
+    return _save(provider, clean_key(key))
+
+
+def save_secret(name: str, value: str) -> str:
+    """Store one of SECRETS as given; returns where it went."""
+    if name not in SECRETS:
+        raise ValueError(f"Unknown secret {name!r}")
+    return _save(name, value)
+
+
+def _save(provider: str, key: str) -> str:
     with _KEY_LOCK:
         if _KEYRING is not None:
             try:
@@ -185,7 +198,7 @@ def _stored_key(provider: str) -> tuple[str | None, str | None]:
     key = _read_file().get(provider)
     if isinstance(key, str) and key:
         return key, "file"
-    env = os.environ.get(ENV_KEYS[provider])
+    env = os.environ.get(ENV_KEYS[provider]) if provider in ENV_KEYS else None
     if env:
         return env, "environment"
     return None, None

@@ -79,18 +79,34 @@ def _write(data: dict) -> None:
 
 
 def _upgrade(data: dict) -> bool:
-    """Moves the Apply kit's old answers-in-words out of the profile."""
+    """Brings an older Apply kit up to date: its answers-in-words move out of
+    the profile, and its single "City, State" splits into City and State."""
     prof = (data.get("profile") or {}).get("value")
-    if not isinstance(prof, dict) or not any(k in prof for k in _MOVED):
+    if not isinstance(prof, dict):
         return False
-    ans = dict((data.get("answers") or {}).get("value") or {})
-    for old, new in _MOVED.items():
-        v = prof.pop(old, "")
-        if v and not ans.get(new):
-            ans[new] = v
-    at = max(float(data["profile"].get("at") or 0), float((data.get("answers") or {}).get("at") or 0))
-    data["answers"] = {"value": ans, "at": at}
-    return True
+    changed = False
+    if any(k in prof for k in _MOVED):
+        ans = dict((data.get("answers") or {}).get("value") or {})
+        for old, new in _MOVED.items():
+            v = prof.pop(old, "")
+            if v and not ans.get(new):
+                ans[new] = v
+        at = max(float(data["profile"].get("at") or 0), float((data.get("answers") or {}).get("at") or 0))
+        data["answers"] = {"value": ans, "at": at}
+        changed = True
+    if "location" in prof:
+        city, _, st = str(prof.pop("location")).partition(",")
+        if not prof.get("city") and not prof.get("state"):
+            prof["city"], prof["state"] = city.strip(), st.strip()
+        # Newer than the copies the dashboard and the extension hold, so they take this one.
+        data["profile"]["at"] = float(data["profile"].get("at") or 0) + 1
+        changed = True
+    return changed
+
+
+def location(profile: dict) -> str:
+    """ "City, State", for extensions before 0.3.1, which read one field."""
+    return ", ".join(x for x in (str(profile.get("city") or "").strip(), str(profile.get("state") or "").strip()) if x)
 
 
 def state() -> dict:

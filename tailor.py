@@ -652,7 +652,7 @@ ANSWERS_SCHEMA = {
     "additionalProperties": False,
 }
 
-PROFILE_FOR_ANSWERS = ("firstName", "lastName", "preferredName", "location", "country", "company", "currentTitle",
+PROFILE_FOR_ANSWERS = ("firstName", "lastName", "preferredName", "city", "state", "country", "company", "currentTitle",
                        "school", "degree", "major", "gradDate", "languages", "linkedin", "github", "portfolio")
 
 

@@ -356,6 +356,19 @@ check("full name", () => assert.equal(R.answerFor({ cat: "profile", key: "fullNa
 check("city", () => assert.equal(R.answerFor({ cat: "profile", key: "location", transform: "city" }, P, {}), "Boston"));
 check("state", () => assert.equal(R.answerFor({ cat: "profile", key: "location", transform: "state" }, P, {}), "Massachusetts"));
 check("grad year", () => assert.equal(R.answerFor({ cat: "profile", key: "gradDate", transform: "year" }, P, {}), "2026"));
+check("city and state fields", () => {
+  const loc = (transform, prof) => R.answerFor({ cat: "profile", key: "location", transform }, prof, {});
+  const split = { city: "Boston", state: "ma" };
+  assert.equal(loc("city", split), "Boston");
+  assert.equal(loc("state", split), "Massachusetts");
+  assert.equal(loc(null, split), "Boston, MA");
+  assert.equal(loc("state", { city: "Boston", state: "Massachusetts" }), "Massachusetts");
+  assert.equal(loc("state", { city: "Boston", state: "MA 02445" }), "Massachusetts", "a ZIP after the state");
+  assert.equal(loc("state", { city: "Toronto", state: "Ontario" }), "Ontario", "not a US state: as typed");
+  assert.equal(loc("city", { city: "Boston", state: "MA", location: "Austin, TX" }), "Boston", "the new fields win");
+  assert.equal(R.answerFor({ cat: "profile", key: "address", transform: "full" },
+    { address: "1 Main St", city: "Boston", state: "MA", postalCode: "02445" }, {}), "1 Main St, Boston, MA 02445");
+});
 check("sponsor any: one yes", () => assert.equal(R.answerFor({ cat: "std", key: "sponsorAny" }, {}, { sponsorNow: "no", sponsorFuture: "yes" }), "yes"));
 check("sponsor any: both no", () => assert.equal(R.answerFor({ cat: "std", key: "sponsorAny" }, {}, { sponsorNow: "no", sponsorFuture: "no" }), "no"));
 check("sponsor any: unknown", () => assert.equal(R.answerFor({ cat: "std", key: "sponsorAny" }, {}, { sponsorNow: "no", sponsorFuture: "" }), ""));

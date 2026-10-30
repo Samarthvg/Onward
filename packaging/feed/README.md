@@ -8,7 +8,7 @@ Cloudflare R2. How the feed works is in [feed.py](../../feed.py) and the
 | Piece | File | What it does |
 | --- | --- | --- |
 | Search settings | `feed-settings.json` | A broad role (software, internship to mid level, US): each reader filters by its own roles |
-| One run | `run_feed.py` | Restores the search's database from R2, runs `radar.py --feed-out`, uploads new files, saves the database, uploads `index.json` last |
+| One run | `run_feed.py` | Restores the search's database from R2, runs `radar.py --feed-out`, uploads new files, saves the database, uploads `index.json` last; once a week also reads USCIS's H-1B Data Hub (`radar.py --update-h1b`) and publishes the two newest years under `h1b/` |
 | Workflow | `.github/workflows/feed.yml` | Runs `run_feed.py`, one run at a time; does nothing until the secrets below exist |
 | Trigger | `worker/` | A Worker on a Cron Trigger at :07 and :37 that starts the workflow through GitHub's API |
 

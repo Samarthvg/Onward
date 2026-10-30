@@ -5,6 +5,7 @@ Run:  python -m unittest tests.test_kit
 """
 
 import http.client
+import urllib.parse
 import json
 import shutil
 import tempfile
@@ -14,6 +15,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
+import ai
 import config
 import kit
 import resume_tex as rt
@@ -51,13 +53,27 @@ class StoreTests(Base):
         # Written back, so it happens once.
         self.assertNotIn("workAuth", json.loads(kit.path().read_text(encoding="utf-8"))["profile"]["value"])
 
+    def test_city_and_state_split_out_of_the_old_location(self):
+        kit.path().parent.mkdir(parents=True, exist_ok=True)
+        kit.path().write_text(json.dumps({"profile": {"value": {"firstName": "Testy", "location": "Boston, MA"}, "at": 5}}),
+                              encoding="utf-8")
+        st = kit.state()["profile"]
+        self.assertEqual(st["value"], {"firstName": "Testy", "city": "Boston", "state": "MA"})
+        self.assertGreater(st["at"], 5, "newer than the copies the dashboard and extension hold")
+        # An older dashboard or extension saving the old field: already split fields win.
+        got = kit.save("profile", {"firstName": "Testy", "city": "Cambridge", "state": "MA", "location": "Austin, TX"}, 10)
+        self.assertEqual((got["value"]["city"], got["value"].get("location")), ("Cambridge", None))
+        self.assertEqual(kit.location(got["value"]), "Cambridge, MA")
+
     def test_memory_keeps_only_saved_answers(self):
         got = kit.save("memory", {"mem:when can you start": {"q": "When can you start?", "a": "June"},
                                   "use:when can you start": [{"company": "Mock Co"}], "settings": {"autoRun": True}}, 1)
         self.assertEqual(set(got["value"]), {"mem:when can you start", "use:when can you start"})
 
 
-class EndpointTests(Base):
+class ServerBase(Base):
+    """The helper on a free port, with its data in a temporary folder."""
+
     def setUp(self):
         super().setUp()
         (self.tmp / "master.tex").write_text(MASTER, encoding="utf-8")
@@ -84,8 +100,10 @@ class EndpointTests(Base):
         conn.close()
         return r.status, raw
 
+
+class EndpointTests(ServerBase):
     def test_only_the_extension_reads_the_kit(self):
-        kit.save("profile", {"firstName": "Testy", "lastName": "McTestface"}, 1)
+        kit.save("profile", {"firstName": "Testy", "lastName": "McTestface", "city": "Boston", "state": "MA"}, 1)
         for headers in ({}, {"Origin": "https://evil.example"}, {"Origin": "moz-extension://1234-abcd"}):
             status, raw = self.request("GET", "/api/kit", headers=headers)
             self.assertEqual(status, 403, headers)
@@ -94,6 +112,8 @@ class EndpointTests(Base):
         self.assertEqual(status, 200, raw)
         got = json.loads(raw)
         self.assertEqual(got["profile"]["value"]["firstName"], "Testy")
+        self.assertEqual(got["profile"]["value"]["location"], "Boston, MA", "for extensions before 0.3.1")
+        self.assertNotIn("location", kit.value("profile"), "served, not stored")
         self.assertEqual(got["draft_backend"], "chatgpt")
         self.assertEqual(got["history"]["work"][0]["company"], rt.history(rt.parse(MASTER))["work"][0]["company"])
         self.assertIsNone(got["resume"], "not compiled yet")
@@ -140,6 +160,103 @@ class EndpointTests(Base):
         self.assertEqual(status, 202, raw)
         self.assertEqual(sent["backend"], "claude-code")
         self.assertEqual(sent["profile"]["firstName"], "Testy", "the app's Apply kit, not what the page sent")
+
+
+class FirefoxTests(ServerBase):
+    """Install in Firefox: the app opens Firefox on the signed add-on it ships with."""
+
+    def setUp(self):
+        super().setUp()
+        ext = self.tmp / "extension"
+        (ext / "web-ext-artifacts").mkdir(parents=True)
+        (ext / "web-ext-artifacts" / "onward-autofill-0.3.0.xpi").write_bytes(b"PK signed (TEST)")
+        p = mock.patch.object(server, "extension_dir", lambda: ext)
+        p.start()
+        self.addCleanup(p.stop)
+        self.launched = []
+
+    def test_firefox_opens_the_xpi(self):
+        with mock.patch.object(server.sys, "platform", "win32"), \
+                mock.patch.object(server, "firefox_exe", lambda: r"C:\Firefox\firefox.exe"):
+            server.install_in_firefox(self.launched.append)
+        exe, target = self.launched[0]
+        self.assertEqual(exe, r"C:\Firefox\firefox.exe")
+        self.assertTrue(target.startswith("file:") and target.endswith("onward-autofill-0.3.0.xpi"), target)
+
+    def test_no_firefox_or_no_xpi(self):
+        with mock.patch.object(server.sys, "platform", "win32"), mock.patch.object(server, "firefox_exe", lambda: None):
+            with self.assertRaisesRegex(LookupError, "isn't installed"):
+                server.install_in_firefox(self.launched.append)
+            # Fails before launching anything.
+            status, raw = self.request("POST", "/api/extension/install", {}, {"Origin": f"http://{server.HOST}:{server.PORT}"})
+            self.assertEqual(status, 404)
+            self.assertIn(b"Firefox isn't installed", raw)
+        for f in (self.tmp / "extension" / "web-ext-artifacts").iterdir():
+            f.unlink()
+        with self.assertRaisesRegex(LookupError, "no signed extension"):
+            server.install_in_firefox(self.launched.append)
+        self.assertEqual(self.launched, [])
+
+    def test_only_the_dashboard_may_open_firefox(self):
+        for headers in ({}, {"Origin": "https://evil.example"}, EXT):
+            status, _ = self.request("POST", "/api/extension/install", {}, headers)
+            self.assertEqual(status, 403, headers)
+
+
+class AccountTests(ServerBase):
+    """The job sites' account password: saved from the Apply kit into the
+    keychain, and given to the extension only for Workday's own sites."""
+
+    DASH = {"Origin": f"http://{server.HOST}:{server.PORT}"}
+    PW = "Correct-Horse-9"
+    WORKDAY = "https://mockco.wd5.myworkdayjobs.com/en-US/External/login"
+
+    def setUp(self):
+        super().setUp()
+        from tests.test_ai import FakeKeyring
+        self.keyring = FakeKeyring()
+        ai.use_keyring(self.keyring)
+        self.addCleanup(ai.use_keyring, ai._KEYRING)
+        kit.save("profile", {"firstName": "Testy", "email": "testy@example.com"}, 1)
+
+    def account(self, url, headers=EXT):
+        return self.request("GET", "/api/account?url=" + urllib.parse.quote(url), headers=headers)
+
+    def test_saved_from_the_dashboard_into_the_keychain(self):
+        status, raw = self.request("POST", "/api/account", {"password": "short"}, self.DASH)
+        self.assertEqual(status, 400)
+        self.assertIn(b"at least 8 characters", raw)
+        status, _ = self.request("POST", "/api/account", {"password": self.PW}, EXT)
+        self.assertEqual(status, 403, "the extension can't set it")
+        status, raw = self.request("POST", "/api/account", {"password": self.PW}, self.DASH)
+        self.assertEqual((status, json.loads(raw)), (200, {"saved": True, "where": "keychain"}))
+        self.assertIn(self.PW, self.keyring.data.values())
+        self.assertNotIn(self.PW, json.dumps(server.app_payload()), "the page only learns that one is saved")
+        self.assertNotIn(self.PW, kit.path().read_text(encoding="utf-8"))
+        status, raw = self.request("POST", "/api/account", {"password": ""}, self.DASH)
+        self.assertEqual(json.loads(raw)["saved"], False)
+        self.assertEqual(self.keyring.data, {})
+
+    def test_given_only_to_the_extension_and_only_for_workday(self):
+        self.assertEqual(self.account(self.WORKDAY)[0], 404, "nothing saved yet")
+        self.request("POST", "/api/account", {"password": self.PW}, self.DASH)
+        status, raw = self.account(self.WORKDAY)
+        self.assertEqual((status, json.loads(raw)), (200, {"email": "testy@example.com", "password": self.PW}))
+        self.assertEqual(self.account("https://mockco.wd1.myworkdaysite.com/recruiting/mockco/login")[0], 200)
+        for url in ("https://evil.example/login", "https://myworkdayjobs.com.evil.example/x", "http://mockco.wd5.myworkdayjobs.com/x",
+                    "https://job-boards.greenhouse.io/mockco/jobs/1", ""):
+            status, raw = self.account(url)
+            self.assertEqual(status, 404, url)
+            self.assertNotIn(self.PW.encode(), raw)
+        for headers in ({}, {"Origin": "https://evil.example"}, self.DASH):
+            status, raw = self.account(self.WORKDAY, headers)
+            self.assertEqual(status, 403, headers)
+            self.assertNotIn(self.PW.encode(), raw)
+
+    def test_workday_password_rules(self):
+        self.assertIsNone(server.account_password_problem(self.PW))
+        self.assertEqual(server.account_password_problem("alllowercase1!"), "Workday sites ask for a capital letter.")
+        self.assertIn("a symbol", server.account_password_problem("NoSymbol123"))
 
 
 if __name__ == "__main__":

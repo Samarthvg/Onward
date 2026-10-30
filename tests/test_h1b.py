@@ -66,6 +66,15 @@ class UpdateTests(unittest.TestCase):
             return io.StringIO(export(("ACME SOFTWARE INC", "New Employment Approval", str(years[year]))))
         return open_year
 
+    def test_the_shared_feed_first_and_the_data_hub_when_it_fails(self):
+        def down(url):
+            self.asked.append("feed")
+            raise radar.feed.FeedError("down")
+        with mock.patch.object(radar, "SETTINGS", {"radar": {"feed_url": "https://feed.example.com"}}),                 mock.patch.object(radar, "h1b_from_feed", down),                 mock.patch.object(radar, "update_h1b", lambda now, force=False: self.asked.append(("hub", force)) or [2026]):
+            self.assertEqual(radar.refresh_h1b(self.now), [2026])
+            self.assertEqual(radar.refresh_h1b(self.now, force=True), [2026])
+        self.assertEqual(self.asked, ["feed", ("hub", False), ("hub", True)], "forced: the Data Hub itself")
+
     def test_keeps_the_newest_two_years_with_data(self):
         got = radar.update_h1b(self.now, self.hub({2026: 7, 2025: 9, 2024: 11}))
         self.assertEqual(got, [2026, 2025])

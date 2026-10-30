@@ -190,16 +190,23 @@ class UndoTests(Base):
         self.assertEqual(self.prep_row(key)["choice"], "master")
         self.undo(r["undo"])
         self.assertEqual(self.prep_row(key), before)
-        _, r = self.call("/api/queue/tailor", {"key": key, "instruction": "more backend"})
-        self.assertEqual(self.prep_row(key)["state"], "queued")
+        conn = server.db()
+        with conn:
+            conn.execute("INSERT INTO tailored (id, job_key, created, backend, model, pdf, tex, result) VALUES "
+                         "('v9', ?, ?, 'manual', 'm', 'a.pdf', 'a.tex', '{}')", (key, time.time()))
+        conn.close()
+        _, r = self.call("/api/tailored/use", {"key": key, "id": "v9"})
+        self.assertEqual((self.prep_row(key)["tailored_id"], self.prep_row(key)["own"]), ("v9", 1))
         self.undo(r["undo"])
         self.assertEqual(self.prep_row(key), before)
+        st, _ = self.call("/api/tailored/use", {"key": self.keys[0], "id": "v9"})
+        self.assertEqual(st, 404, "another job's version")
 
     def test_undo_while_preparing_wins_over_the_late_result(self):
         """The preparer's final write only lands while the row is still working."""
         key = self.keys[3]
         before = self.ready_row(key)
-        _, r = self.call("/api/queue/tailor", {"key": key, "instruction": "shorter"})
+        _, r = self.call("/api/queue/retry", {"key": key})
         conn = server.db()
         self.prep._update(conn, key, state="working")
         self.undo(r["undo"])

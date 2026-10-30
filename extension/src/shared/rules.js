@@ -13,7 +13,7 @@
     ["email", "Email"], ["phone", "Phone"], ["phoneType", "Phone type (Mobile, Home or Work)"],
     ["linkedin", "LinkedIn URL"], ["github", "GitHub URL"], ["portfolio", "Portfolio / website URL"],
     ["address", "Street address (e.g. 123 Main St)"],
-    ["location", "City, State (e.g. Boston, MA)"], ["country", "Country"], ["postalCode", "ZIP / postal code"],
+    ["city", "City (e.g. Boston)"], ["state", "State (e.g. MA)"], ["country", "Country"], ["postalCode", "ZIP / postal code"],
     ["company", "Current or most recent company"], ["currentTitle", "Current or most recent job title"],
     ["school", "School"], ["degree", "Degree (e.g. Bachelor of Science)"], ["major", "Major / field of study"],
     ["gradDate", "Graduation (e.g. May 2026)"],
@@ -277,6 +277,18 @@
 
   /* ---------------------------------------------------------------- answers */
 
+  /** Where the applicant lives: { city, state (full name for a US state), abbr }.
+   *  Reads the City and State fields, or the single "City, State" one
+   *  profiles had before 0.3.1. A ZIP typed after the state is ignored. */
+  function place(profile) {
+    profile = profile || {};
+    let city = String(profile.city || "").trim(), st = String(profile.state || "").trim();
+    if (!city && !st && profile.location) [city = "", st = ""] = String(profile.location).split(",").map((x) => x.trim());
+    st = st.replace(/\s+\d{5}(-\d{4})?$/, "");
+    const abbr = Object.keys(US_STATES).find((k) => k === st.toUpperCase() || US_STATES[k].toLowerCase() === st.toLowerCase()) || "";
+    return { city, state: abbr ? US_STATES[abbr] : st, abbr };
+  }
+
   /** The saved value for a classified question, or "" when there is none. */
   function answerFor(cls, profile, answers) {
     profile = profile || {};
@@ -288,17 +300,19 @@
         const mm = String(d.getMonth() + 1).padStart(2, "0"), dd = String(d.getDate()).padStart(2, "0");
         return { month: mm, day: dd, year: String(d.getFullYear()) }[cls.transform] || `${mm}/${dd}/${d.getFullYear()}`;
       }
+      if (cls.key === "location") {
+        const p = place(profile);
+        if (cls.transform === "city") return p.city;
+        if (cls.transform === "state") return p.state;
+        return [p.city, p.abbr || p.state].filter(Boolean).join(", ");
+      }
       let v = String(profile[cls.key] || "").trim();
       if (cls.key === "preferredName" && !v) v = String(profile.firstName || "").trim();
-      if (cls.transform === "city") v = v.split(",")[0].trim();
-      if (cls.transform === "state") {
-        const st = (v.split(",")[1] || "").trim();
-        v = US_STATES[st.toUpperCase()] || st;
-      }
       if (cls.transform === "year") v = (v.match(/\b(19|20)\d{2}\b/) || [""])[0];
       // One box for the whole address: "123 Main St, Boston, MA 02115".
       if (cls.transform === "full" && v) {
-        v = [v, String(profile.location || "").trim()].filter(Boolean).join(", ");
+        const p = place(profile);
+        v = [v, p.city, p.abbr || p.state].filter(Boolean).join(", ");
         if (profile.postalCode) v += " " + String(profile.postalCode).trim();
       }
       return v;
@@ -799,7 +813,7 @@
   root.JR = root.JR || {};
   root.JR.rules = {
     PROFILE_FIELDS, STANDARD_ANSWERS, EEO_ANSWERS, DECLINE, DEFAULT_ANSWERS, DEFAULT_PROFILE, DEFAULT_SETTINGS,
-    US_STATES, CHOICE_KINDS, TEXT_KINDS, clean, normQ, classify, answerFor, pickOption, asText, alternatives, DECLINE_RE, historyField,
+    US_STATES, CHOICE_KINDS, TEXT_KINDS, clean, normQ, classify, place, answerFor, pickOption, asText, alternatives, DECLINE_RE, historyField,
     companyKey, sameCompany, companyNames, namesIn, mentions, savedAnswerUse, languageList, relevantEntries, skillKey, sameSkill, splitSkills, skillSearchTerms, skillsForPosting,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

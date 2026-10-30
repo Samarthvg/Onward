@@ -14,7 +14,7 @@ dashboard in your browser.
 | `python app.py` | The tray app, as installed |
 | `python app.py --window` | The dashboard in its own window |
 | `python app.py --headless` | The app without a tray |
-| `python radar.py` | One search (`--render` rebuilds the page from stored jobs; `--update-h1b` fetches H-1B data now) |
+| `python radar.py` | One search (`--render` rebuilds the page from stored jobs; `--update-h1b` reads H-1B data from USCIS now, skipping the feed) |
 | `python server.py` | Only the dashboard and its helper |
 
 A copy run from source keeps its data in the same folder as the installed app (see the README's

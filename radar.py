@@ -67,6 +67,9 @@ H1B_DIR = ROOT / "data"
 H1B_EXPORT = "https://bigdataanalyticspub-sb.uscis.dhs.gov/views/H1BEmployerDataHub-Final/H1BPublic.csv"
 H1B_YEAR_FIELD = "Fiscal Year   "      # the dashboard's own field name, trailing spaces and all
 H1B_REFRESH = 90 * 86400
+# With the shared feed, which publishes these files once for everyone
+# (packaging/feed), checking costs one small download, so it's daily.
+H1B_FEED_CHECK = 86400
 H1B_LEGACY_YEARS = (2023, 2022)
 H1B_URL = "https://www.uscis.gov/sites/default/files/document/data/h1b_datahubexport-{year}.csv"
 
@@ -2249,14 +2252,60 @@ def h1b_files() -> list[tuple[int, Path]]:
             if (H1B_DIR / f"h1b_datahubexport-{y}.csv").exists()]
 
 
-def h1b_due(now: float) -> bool:
+def h1b_due(now: float, every: float = H1B_REFRESH) -> bool:
     """No Data Hub years saved yet; only one (a download cut short), tried
-    again a day later; or the newest older than H1B_REFRESH."""
+    again a day later; or the newest older than `every`."""
     hub = [f for _, f in h1b_files() if f.name.startswith("h1b-FY")]
     if not hub:
         return True
     age = now - max(f.stat().st_mtime for f in hub)
-    return age > H1B_REFRESH or (len(hub) < 2 and age > 86400)
+    return age > every or (len(hub) < 2 and age > 86400)
+
+
+def refresh_h1b(now: float, force: bool = False) -> list[int]:
+    """The H-1B years, from the shared feed when there is one (a couple of
+    small files, already reduced), else from the Data Hub. `force` always
+    reads the Data Hub: it is how the feed's own copy is made."""
+    url = SETTINGS["radar"]["feed_url"]
+    if url and not force:
+        try:
+            return h1b_from_feed(url)
+        except feed.FeedError as e:
+            log(f"h1b: {e}; reading the Data Hub instead")
+    if force or h1b_due(now):
+        return update_h1b(now, force=force)
+    return []
+
+
+def h1b_from_feed(url: str, get: Callable[[str], bytes] = feed.http_get) -> list[int]:
+    """Saves the years the feed publishes, downloading only those that
+    differ from what's saved. Returns the years."""
+    H1B_DIR.mkdir(parents=True, exist_ok=True)
+    have = {}
+    for f in H1B_DIR.glob("h1b-FY*.csv"):
+        if m := re.fullmatch(r"h1b-FY(\d{4})\.csv", f.name):
+            have[int(m.group(1))] = hashlib.sha256(f.read_bytes()).hexdigest()
+    got = feed.pull_h1b(url, have, get)
+    for year, totals in got.items():
+        dest = H1B_DIR / f"h1b-FY{year}.csv"
+        if totals is None:
+            os.utime(dest)              # unchanged: checked now
+        else:
+            write_h1b(dest, totals)
+            log(f"h1b: saved FY{year} from the shared feed ({len(totals)} employers)")
+    for f in H1B_DIR.glob("h1b-FY*.csv"):
+        if f.name not in {f"h1b-FY{y}.csv" for y in got}:
+            f.unlink()
+    return sorted(got, reverse=True)
+
+
+def write_h1b(dest: Path, totals: dict[str, list[int]]) -> None:
+    tmp = dest.with_suffix(".tmp")
+    with tmp.open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["Employer", "Initial Approval", "Continuing Approval"])
+        w.writerows([k, *v] for k, v in sorted(totals.items()))
+    tmp.replace(dest)
 
 
 def h1b_open(year: int):
@@ -2316,12 +2365,7 @@ def update_h1b(now: float | None = None, open_year: Callable = h1b_open, force: 
             break
         if not totals:
             continue                    # no data for that year yet
-        tmp = dest.with_suffix(".tmp")
-        with tmp.open("w", encoding="utf-8", newline="") as f:
-            w = csv.writer(f)
-            w.writerow(["Employer", "Initial Approval", "Continuing Approval"])
-            w.writerows([k, *v] for k, v in sorted(totals.items()))
-        tmp.replace(dest)
+        write_h1b(dest, totals)
         log(f"h1b: saved FY{year} from the Data Hub ({len(totals)} employers)")
         got.append(year)
     if len(got) == 2:
@@ -2560,11 +2604,19 @@ def main(argv: list[str] | None = None) -> int:
         STATUS.set(phase="skipped")
         return SKIPPED
     STATUS.set()
+    try:
+        return locked_main(args)
+    finally:
+        lock.release()
 
-    if args.update_h1b or (needs_visa_data(SETTINGS) and h1b_due(time.time())):
+
+def locked_main(args: argparse.Namespace) -> int:
+    """main() once this run holds the lock."""
+    every = H1B_FEED_CHECK if SETTINGS["radar"]["feed_url"] else H1B_REFRESH
+    if args.update_h1b or (needs_visa_data(SETTINGS) and h1b_due(time.time(), every)):
         STATUS.set(phase="visa-data")
         try:
-            update_h1b(force=args.update_h1b)
+            refresh_h1b(time.time(), force=args.update_h1b)
         except Exception as e:           # never stops the search; the saved years stay
             log(f"h1b: update failed ({type(e).__name__}: {e})")
         if args.update_h1b:

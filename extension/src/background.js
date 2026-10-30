@@ -174,6 +174,13 @@ const HANDLERS = {
   async "jr:kit"(msg) {
     return getKit(!!msg.fresh);
   },
+  /* The email and password for a job site's sign-in or create-account page.
+     Asked for the page the message came from, never a URL the page names,
+     and never kept: the helper only answers for sites that have accounts. */
+  async "jr:account"(msg, sender) {
+    const url = (sender && (sender.url || (sender.tab && sender.tab.url))) || "";
+    return helper("/api/account?url=" + encodeURIComponent(clip(url, 2000)));
+  },
   /* The resume and answers the helper prepared for this form's job. */
   async "jr:history"(msg) {
     // Jobs and schools from the master resume, for Work Experience and Education sections.

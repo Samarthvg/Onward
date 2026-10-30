@@ -4,7 +4,8 @@
  * rest in the panel. A form for a job the apply queue prepared fills itself.
  *
  * It never clicks Submit, Next, Apply or any other control that sends or
- * advances the form, and never creates accounts.
+ * advances the form. On a job site's sign-in or create-account page it
+ * types the saved email and password (account.js), and the user presses the button.
  */
 (function (root) {
   "use strict";
@@ -662,10 +663,32 @@
     }).catch(() => {});
   }
 
+  // A sign-in or create-account page before the form: the Apply kit's email
+  // and account password go in, once per password box. The button stays the user's.
+  const accountTried = new WeakSet();
+  async function checkAccount() {
+    const form = JR.account.find(document);
+    if (!form || accountTried.has(form.password)) return;
+    accountTried.add(form.password);
+    const acct = await api.runtime.sendMessage({ type: "jr:account" }).catch(() => null);
+    JR.panel.mount(handlers);
+    if (!acct || acct.error) {
+      JR.panel.update({ open: true, items: [], status: (acct && acct.error ? acct.error + ". " : "") +
+        "Save one in Onward's Apply kit, under Job site accounts, and this page fills itself next time." });
+      return;
+    }
+    const done = JR.account.fill(form, acct);
+    const button = form.kind === "create" ? "Create Account" : "Sign In";
+    JR.panel.update({ open: true, items: [], status: done.length
+      ? `Filled your email and account password. Tick any agreement yourself, then press ${button}.`
+      : `Your account details are already in. Press ${button} when you're ready.` });
+  }
+
   let checkTimer = 0;
   function check() {
     checkConfirmation();
     if (!site) site = JR.sites.detect(document);
+    if (site && site.workday) checkAccount();
     const form = site && JR.sites.formRoot(document, site);
     if (!form) return;
     // Ties this tab to the job, so its confirmation page is recognized later.

@@ -301,12 +301,90 @@ def extension_dir() -> Path | None:
     return dest
 
 
+def firefox_exe() -> str | None:
+    """Firefox on Windows: where its installer registered it, else its usual folders."""
+    import winreg
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        try:
+            with winreg.OpenKey(hive, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\firefox.exe") as k:
+                exe = winreg.QueryValue(k, None)
+        except OSError:
+            continue
+        if exe and Path(exe.strip('"')).exists():
+            return exe.strip('"')
+    for base in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"):
+        exe = Path(os.environ.get(base, "")) / "Mozilla Firefox" / "firefox.exe"
+        if os.environ.get(base) and exe.exists():
+            return str(exe)
+    return None
+
+
+def install_in_firefox(launch=None) -> None:
+    """Opens the signed .xpi shipped with the app in Firefox, which asks to
+    add it. Raises LookupError when there's no .xpi or no Firefox."""
+    import shutil
+    import subprocess
+    info = extension_info()
+    if not info["xpi"]:
+        raise LookupError("This build has no signed extension")
+    xpi = extension_dir() / "web-ext-artifacts" / info["xpi"]
+    launch = launch or (lambda cmd: subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                                     stderr=subprocess.DEVNULL))
+    if sys.platform == "win32":
+        exe = firefox_exe()
+        if not exe:
+            raise LookupError("Firefox isn't installed")
+        launch([exe, xpi.as_uri()])
+    elif sys.platform == "darwin":
+        # open returns at once, and fails when there's no app by that name.
+        if subprocess.run(["open", "-a", "Firefox", str(xpi)], capture_output=True, timeout=30).returncode != 0:
+            raise LookupError("Firefox isn't installed")
+    else:
+        exe = shutil.which("firefox") or shutil.which("firefox-esr")
+        if not exe:
+            raise LookupError("Firefox isn't installed")
+        # A snap Firefox can't read the hidden data folder, so it's served instead.
+        launch([exe, f"http://{HOST}:{PORT}/api/extension.xpi"])
+
+
+# Job sites' accounts. Workday has every company's applicants make an
+# account on that company's own site; the extension fills its sign-in and
+# create-account pages with the Apply kit's email and this one password,
+# kept in the keychain like the API keys. Only those sites get it.
+ACCOUNT_SECRET = "account-password"
+ACCOUNT_HOSTS = re.compile(r"(^|\.)myworkday(jobs|site)\.com$")
+ACCOUNT_RULES = ((r".{8,}", "at least 8 characters"), (r"[a-z]", "a lowercase letter"), (r"[A-Z]", "a capital letter"),
+                 (r"\d", "a number"), (r"[^A-Za-z0-9]", "a symbol such as ! or #"))
+
+
+def account_password_problem(pw: str) -> str | None:
+    """What Workday's usual password rules would reject, or None."""
+    missing = [what for rule, what in ACCOUNT_RULES if not re.search(rule, pw)]
+    if len(pw) > 128:
+        return "Use at most 128 characters."
+    if not missing:
+        return None
+    return "Workday sites ask for " + (", ".join(missing[:-1]) + " and " + missing[-1] if len(missing) > 1 else missing[0]) + "."
+
+
+def account_for(page_url: str) -> dict | None:
+    """The email and password for a job site's account page, or None when
+    there's no password saved or the page isn't a job site that has accounts."""
+    host = (urlparse(page_url).hostname or "").lower()
+    if urlparse(page_url).scheme != "https" or not ACCOUNT_HOSTS.search(host):
+        return None
+    pw = ai.get_key(ACCOUNT_SECRET)
+    email = str(kit.value("profile").get("email") or "").strip()
+    return {"email": email, "password": pw} if pw and email else None
+
+
 def app_payload() -> dict:
     """The app's state for the dashboard's setup steps and status."""
     return {"name": appinfo.NAME, "version": appinfo.VERSION, "schedule": SCHEDULER.status(),
             "setup": STORE.section("setup"), "tex": texengine.status(),
             "extension": {**extension_info(), "seen": EXTENSION_SEEN.get("at"), "seen_version": EXTENSION_SEEN.get("version")},
-            "backends": tailor.backend_status(), "data_folder": str(STORE.home), **APP_STATE}
+            "backends": tailor.backend_status(), "data_folder": str(STORE.home),
+            "account": ai.key_status(ACCOUNT_SECRET), **APP_STATE}
 
 
 def job_roles(key: str) -> list[str]:
@@ -326,7 +404,10 @@ def kit_payload() -> dict:
     entries) and which model drafts answers. It keeps a copy for when the
     app isn't running."""
     st = kit.state()
-    out = {"profile": st.get("profile"), "answers": st.get("answers"), "memory": st.get("memory"),
+    prof = st.get("profile")
+    if prof and kit.location(prof["value"]):
+        prof = {**prof, "value": {**prof["value"], "location": kit.location(prof["value"])}}
+    out = {"profile": prof, "answers": st.get("answers"), "memory": st.get("memory"),
            "draft_backend": STORE.section("tailoring")["draft_backend"], "resume": None, "history": None}
     pdf = master_pdf(MASTER, wait=False)
     if pdf:
@@ -634,7 +715,15 @@ def _undo_tailored(payload: dict, uid: str) -> dict:
             conn.execute("DELETE FROM tailored WHERE id = ?", (payload["id"],))
     finally:
         conn.close()
+    if payload.get("rows"):
+        PREP.restore(payload["rows"])
     return {}
+
+
+def tailor_master(role: str, key: str) -> Path:
+    """The master resume one tailoring starts from: the role's, when the
+    dashboard names one, else that of the job's own roles."""
+    return master_path(role) if role else PREP.master_for(job_roles(key))
 
 
 def _undo_key(payload: dict, uid: str) -> dict:
@@ -672,7 +761,7 @@ def run_job(jid: str, params: dict) -> None:
 
     update(state="running", started=time.time())
     try:
-        master = master_path(params.get("role", "")).read_text(encoding="utf-8")
+        master = Path(params["master"]).read_text(encoding="utf-8")
         backend = params["backend"]
         meta = {"company": params.get("company", ""), "title": params.get("title", ""),
                 "instruction": params.get("instruction", "")}
@@ -688,7 +777,11 @@ def run_job(jid: str, params: dict) -> None:
                      result["pdf"], result["tex"], json.dumps(result)))
         finally:
             conn.close()
-        update(state="done", result=result, undo=remember("tailored", "the new resume version", {"id": jid}))
+        # The new version is the job's resume now, in the apply queue and for the extension.
+        rows = PREP.snapshot([params["key"]]) if params.get("key") else {}
+        if params.get("key"):
+            PREP.use_tailored(params["key"], jid)
+        update(state="done", result=result, undo=remember("tailored", "the new resume version", {"id": jid, "rows": rows}))
     except (tailor.BackendError, rt.CompileError, ValueError) as e:
         update(state="error", error=str(e))
     except Exception as e:  # report, don't kill the worker
@@ -900,7 +993,9 @@ class Handler(BaseHTTPRequestHandler):
                     "WHERE job_key = ? ORDER BY created DESC LIMIT 10", (key,)).fetchall()
             finally:
                 conn.close()
-            return self._json(200, [{"id": r[0], "created": r[1], "backend": r[2], "model": r[3],
+            using = PREP.prepared(key) or {}
+            in_use = using.get("tailored_id") if using.get("choice") == "tailored" else ""
+            return self._json(200, [{"id": r[0], "created": r[1], "backend": r[2], "model": r[3], "in_use": r[0] == in_use,
                                      "pdf": r[4], "tex": r[5], "result": json.loads(r[6])} for r in rows])
 
         if path == "/api/queue":
@@ -933,6 +1028,15 @@ class Handler(BaseHTTPRequestHandler):
             if not self._origin_ok(allow_extension=True):
                 return self._err(HTTPStatus.FORBIDDEN, "Only the Onward extension can ask for this")
             return self._json(200, kit_payload())
+
+        if path == "/api/account":
+            # The extension only: the dashboard never reads the password back.
+            if self.headers.get("Origin") in ORIGINS or not self._origin_ok(allow_extension=True):
+                return self._err(HTTPStatus.FORBIDDEN, "Only the Onward extension can ask for this")
+            acct = account_for((q.get("url") or [""])[0][:2000])
+            if not acct:
+                return self._err(HTTPStatus.NOT_FOUND, "No account password saved in the Apply kit")
+            return self._json(200, acct)
 
         if path in ("/api/prepared", "/api/queue/next"):
             if not self._origin_ok(allow_extension=True):
@@ -1038,12 +1142,29 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(HTTPStatus.NOT_FOUND, "This job has no tailored resume any more. "
                                  "Reload the queue to see where it stands.")
             return self._json(200, {"ok": True, "undo": done()})
-        if path == "/api/queue/tailor":
-            key = str(data.get("key", ""))
-            done = queue_undo([key], "the tailoring request")
-            if not PREP.force_tailor(key, str(data.get("instruction", ""))):
-                return self._err(HTTPStatus.CONFLICT, "This job is being prepared right now, or it's no longer in the queue. "
-                                 "Wait until it's ready, then try again.")
+        if path == "/api/account":
+            # The job sites' account password, typed into the Apply kit; empty removes it.
+            pw = str(data.get("password") or "")
+            if not pw:
+                ai.delete_key(ACCOUNT_SECRET)
+            else:
+                problem = account_password_problem(pw)
+                if problem:
+                    return self._err(HTTPStatus.BAD_REQUEST, problem)
+                ai.save_secret(ACCOUNT_SECRET, pw)
+            return self._json(200, ai.key_status(ACCOUNT_SECRET))
+        if path == "/api/tailored/use":
+            # A version from the Tailor dialog's list becomes the job's resume.
+            key, tid = str(data.get("key", ""))[:600], str(data.get("id", ""))[:40]
+            conn = db()
+            try:
+                ok = conn.execute("SELECT 1 FROM tailored WHERE id = ? AND job_key = ?", (tid, key)).fetchone()
+            finally:
+                conn.close()
+            if not ok:
+                return self._err(HTTPStatus.NOT_FOUND, "That version isn't stored any more")
+            done = queue_undo([key], "using that version")
+            PREP.use_tailored(key, tid)
             return self._json(200, {"ok": True, "undo": done()})
         if path == "/api/queue/retry":
             key = str(data.get("key", ""))
@@ -1079,6 +1200,14 @@ class Handler(BaseHTTPRequestHandler):
             if not SCHEDULER.run_now("dashboard"):
                 return self._err(HTTPStatus.CONFLICT, "A job search is already running")
             return self._json(202, app_payload())
+        if path == "/api/extension/install":
+            try:
+                install_in_firefox()
+            except LookupError as e:
+                return self._err(HTTPStatus.NOT_FOUND, str(e))
+            except Exception as e:      # OSError, or open timing out on macOS
+                return self._err(HTTPStatus.INTERNAL_SERVER_ERROR, f"Couldn't open Firefox: {e}")
+            return self._json(200, {"ok": True})
         if path == "/api/app/tectonic":
             # The user agreed in the dashboard to download Tectonic.
             if not texengine.tectonic_asset():
@@ -1138,19 +1267,20 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in ("/api/tailor", "/api/prompt"):
             role = str(data.get("role") or "")[:40]
-            if not master_path(role).exists():
-                return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume first")
             key = str(data.get("key", ""))
+            master = tailor_master(role, key)
+            if not master.exists():
+                return self._err(HTTPStatus.CONFLICT, "Upload your master .tex resume first")
             row = job_row(key) or {}
             jd = str(data.get("jd") or row.get("description") or "")
             params = {"key": key, "jd": jd, "company": row.get("company", data.get("company", "")),
                       "title": row.get("title", data.get("title", "")),
                       "backend": str(data.get("backend") or STORE.section("tailoring")["backend"]),
                       "answer": data.get("answer"), "instruction": tailor.clean_instruction(data.get("instruction")),
-                      "role": role, "level": tailor_level(data)}
+                      "master": str(master), "level": tailor_level(data)}
             if path == "/api/prompt":
                 try:
-                    prompt = tailor.build_manual_prompt(master_path(role).read_text(encoding="utf-8"), params, jd,
+                    prompt = tailor.build_manual_prompt(master.read_text(encoding="utf-8"), params, jd,
                                                         params["level"], confirmed=PREP.confirmed_skills())
                 except ValueError as e:
                     return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))

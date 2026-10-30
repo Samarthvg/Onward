@@ -210,6 +210,54 @@ await test("an application form itself is never taken for a confirmation", async
   expect("no false confirmations", helper.applied.length === 0, JSON.stringify(helper.applied));
 });
 
+// Workday's sign-in and create-account pages: the email and account password from the
+// app go in; the button, the agreement and any CAPTCHA stay the user's.
+const LOGIN = "https://mockco.wd5.myworkdayjobs.com/en-US/External/login";
+const accountPage = (create) => `<!doctype html><html><body><div data-automation-id="${create ? "createAccountPage" : "signInPage"}">
+  <h2>${create ? "Create Account" : "Sign In"}</h2>
+  <label for="em">Email Address</label><input id="em" type="text" data-automation-id="email">
+  <label for="pw">Password</label><input id="pw" type="password" data-automation-id="password">
+  ${create ? '<label for="pw2">Verify New Password</label><input id="pw2" type="password" data-automation-id="verifyPassword">' +
+    '<label><input id="agree" type="checkbox" data-automation-id="createAccountCheckbox"> I agree</label>' : ""}
+  <button id="go" type="button" data-automation-id="${create ? "createAccountSubmitButton" : "signInSubmitButton"}">${create ? "Create Account" : "Sign In"}</button>
+  </div><script>window.__pressed = 0; document.getElementById("go").addEventListener("click", () => window.__pressed++);</script></body></html>`;
+const ACCT = { email: "testy@example.com", password: "Correct-Horse-9" };
+const fields = (page) => page.evaluate(() => ({ email: document.getElementById("em").value, pw: document.getElementById("pw").value,
+  pw2: document.getElementById("pw2") ? document.getElementById("pw2").value : null,
+  agree: document.getElementById("agree") ? document.getElementById("agree").checked : null, pressed: window.__pressed }));
+
+async function accountTest(name, { create, saved }) {
+  await test(name, async (page) => {
+    const asked = [];
+    await env.ctx.route(/^http:\/\/127\.0\.0\.1:8765\/api\/account/, (route) => {
+      asked.push(new URL(route.request().url()).searchParams.get("url"));
+      return saved ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(ACCT) })
+        : route.fulfill({ status: 404, contentType: "application/json", body: '{"error":"No account password saved in the Apply kit"}' });
+    });
+    await env.ctx.route(LOGIN, (route) => route.fulfill({ status: 200, contentType: "text/html", body: accountPage(create) }));
+    try {
+      await page.goto(LOGIN);
+      await page.locator("#onward-autofill .panel .status").filter({ hasText: saved ? /email and account password|already in/ : /Job site accounts/ })
+        .waitFor({ timeout: 10000 });
+      const f = await fields(page), text = await panelText(page);
+      expect(`${name}: asked for this page only`, asked.length === 1 && asked[0] === LOGIN, JSON.stringify(asked));
+      if (saved) {
+        expect(`${name}: email and password typed`, f.email === ACCT.email && f.pw === ACCT.password && (!create || f.pw2 === ACCT.password), JSON.stringify(f));
+        expect(`${name}: tells which button is the user's`, new RegExp(create ? "press Create Account" : "press Sign In").test(text), text);
+      } else {
+        expect(`${name}: nothing typed`, !f.email && !f.pw, JSON.stringify(f));
+      }
+      expect(`${name}: never pressed the button or ticked the agreement`, f.pressed === 0 && f.agree !== true, JSON.stringify(f));
+    } finally {
+      await env.ctx.unroute(LOGIN);
+      await env.ctx.unroute(/^http:\/\/127\.0\.0\.1:8765\/api\/account/);
+    }
+  });
+}
+await accountTest("workday create account: filled, button left", { create: true, saved: true });
+await accountTest("workday sign in: filled, button left", { create: false, saved: true });
+await accountTest("workday sign in without a saved password: says where to save one", { create: false, saved: false });
+
 await env.close();
 const { failures, passes } = results();
 console.log(`\n${passes} checks passed, ${failures} failed`);

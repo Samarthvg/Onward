@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS prep (
     answers     TEXT NOT NULL DEFAULT '[]',
     error       TEXT NOT NULL DEFAULT '',
     instruction TEXT NOT NULL DEFAULT '',  -- the user's "adjust" request for the next tailoring
+    own         INTEGER NOT NULL DEFAULT 0,  -- the user tailored it themselves: it stays until they're done with it
     attempts    INTEGER NOT NULL DEFAULT 0,
     notified    REAL,
     applied     REAL
@@ -58,7 +59,7 @@ CREATE TABLE IF NOT EXISTS prep_usage (
 """
 
 # Columns added after the first release of the queue.
-MIGRATIONS = {"instruction": "TEXT NOT NULL DEFAULT ''"}
+MIGRATIONS = {"instruction": "TEXT NOT NULL DEFAULT ''", "own": "INTEGER NOT NULL DEFAULT 0"}
 
 
 def migrate(conn) -> None:
@@ -335,7 +336,7 @@ class Preparer:
                              "AND job_key NOT IN (SELECT key FROM jobs)", (now,))
                 # Postings now older than the queue takes: they leave it, prepared or not.
                 conn.execute("UPDATE prep SET state = 'expired', updated = ? WHERE state IN ('queued', 'ready', 'error', 'parked') "
-                             "AND job_key IN (SELECT key FROM jobs WHERE COALESCE(posted_at, first_seen) < ?)",
+                             "AND own = 0 AND job_key IN (SELECT key FROM jobs WHERE COALESCE(posted_at, first_seen) < ?)",
                              (now, now - s["max_age_days"] * 86400))
                 # Rescore what's in the queue (the resume or keyword weights may have changed),
                 # so it always shows the dashboard's number.
@@ -345,8 +346,8 @@ class Preparer:
                     sc = match.score_job(j, resume, skill_w, term_w, weights)
                     conn.execute("UPDATE prep SET score = ? WHERE job_key = ?", (sc["pct"], j["key"]))
                     if not self.wanted(sc, s) or self.eligible(j, s):
-                        conn.execute("DELETE FROM prep WHERE job_key = ? AND state = 'queued'", (j["key"],))
-                        conn.execute("UPDATE prep SET state = 'expired', updated = ? WHERE job_key = ? AND state = 'parked'",
+                        conn.execute("DELETE FROM prep WHERE job_key = ? AND state = 'queued' AND own = 0", (j["key"],))
+                        conn.execute("UPDATE prep SET state = 'expired', updated = ? WHERE job_key = ? AND state = 'parked' AND own = 0",
                                      (now, j["key"]))
                 # Only jobs one of the user's roles wants.
                 rows = conn.execute(
@@ -387,9 +388,11 @@ class Preparer:
     def _fill(cls, conn, new: list[tuple[dict, dict]], cap: int, now: float) -> list[tuple[dict, dict]]:
         """Parks or brings back queue rows so the best `cap` are in the queue,
         and returns the new jobs that make the cut, best first."""
-        held = conn.execute("SELECT job_key, state, score FROM prep WHERE state IN "
+        held = conn.execute("SELECT job_key, state, score, own FROM prep WHERE state IN "
                             "('working', 'ready', 'error', 'queued', 'parked')").fetchall()
-        pool = [(key, st, sc or 0) for key, st, sc in held] + [(j["key"], "new", sc["pct"] or 0) for j, sc in new]
+        # Jobs the user tailored themselves always stay, on top of the cap.
+        own = {key for key, _, _, mine in held if mine}
+        pool = [(key, st, sc or 0) for key, st, sc, mine in held if not mine] + [(j["key"], "new", sc["pct"] or 0) for j, sc in new]
         # A job being prepared right now always stays; then best match first, and
         # on equal scores what's already prepared ahead of what isn't.
         pool.sort(key=lambda x: (x[1] != "working", -x[2], cls.RANK[x[1]]))
@@ -401,6 +404,8 @@ class Preparer:
                 conn.execute("UPDATE prep SET state = 'parked', updated = ? WHERE job_key = ?", (now, key))
             elif key not in keep and st in ("queued", "error"):
                 conn.execute("DELETE FROM prep WHERE job_key = ? AND state IN ('queued', 'error')", (key,))
+        for key in own:
+            conn.execute("UPDATE prep SET state = 'ready', updated = ? WHERE job_key = ? AND state = 'parked'", (now, key))
         return sorted(((j, sc) for j, sc in new if j["key"] in keep), key=lambda x: -(x[1]["pct"] or 0))
 
     # ------------------------------------------------------------ usage cap
@@ -455,22 +460,23 @@ class Preparer:
         try:
             roles = "j.roles" if self._tagged(conn) else "'[]'"
             row = conn.execute("SELECT j.company, j.title, j.description, j.apply_url, p.decision, p.attempts, p.answers, "
-                               f"p.instruction, {roles} FROM prep p JOIN jobs j ON j.key = p.job_key "
+                               f"p.instruction, p.tailored_id, p.choice, {roles} FROM prep p JOIN jobs j ON j.key = p.job_key "
                                "WHERE p.job_key = ?", (key,)).fetchone()
             if not row:
                 return "done"
-            company, title, jd, apply_url, decision, attempts, drafted, instruction, tags = row
+            company, title, jd, apply_url, decision, attempts, drafted, instruction, had, chose, tags = row
             self._update(conn, key, state="working", error="")
             master = self.master_for(json.loads(tags or "[]")).read_text(encoding="utf-8")
             meta = {"company": company, "title": title, "instruction": instruction}
-            tailored_id, notes = "", []
+            # Only drafting answers: a resume the user tailored themselves stays.
+            tailored_id, choice, notes = had or "", chose or "master", []
             if decision == "tailor":
                 if not self.reserve(conn, s["daily_cap"]):
                     self._update(conn, key, when="working", state="queued",
                                  error=f"Waiting: today's {s['daily_cap']} model runs are used up. Continues tomorrow.")
                     return "requeued"
                 result = tailor.tailor(master, meta, jd, s["backend"], self.out_dir, confirmed=self.confirmed_skills())
-                tailored_id = uuid.uuid4().hex[:12]
+                tailored_id, choice = uuid.uuid4().hex[:12], "tailored"
                 with conn:
                     conn.execute("INSERT INTO tailored (id, job_key, created, backend, model, pdf, tex, result) "
                                  "VALUES (?,?,?,?,?,?,?,?)", (tailored_id, key, time.time(), s["backend"],
@@ -480,7 +486,7 @@ class Preparer:
             if not answers and s["draft_answers"]:
                 answers = self._draft(conn, s, master, meta, jd, apply_url, notes)
             self._update(conn, key, when="working", state="ready", tailored_id=tailored_id,
-                         choice="tailored" if tailored_id else "master", answers=json.dumps(answers),
+                         choice=choice, answers=json.dumps(answers),
                          error="; ".join(notes))
             self.log(f"prep: ready {company} / {title} ({'tailored' if tailored_id else 'master'}, {len(answers)} answers)")
             return "done"
@@ -703,23 +709,28 @@ class Preparer:
         finally:
             conn.close()
 
-    def force_tailor(self, key: str, instruction: str = "") -> bool:
-        """Tailor a job the skip rule sent to the master resume, or, with an
-        instruction ("emphasize backend more"), tailor it again. The earlier
-        version stays in the tailored history."""
-        instruction = tailor.clean_instruction(instruction)
-        reason = f"Re-tailoring: {instruction}" if instruction else "You asked for a tailored resume."
+    def use_tailored(self, key: str, tailored_id: str) -> None:
+        """A version the user tailored or picked in the Tailor dialog becomes
+        the job's resume, and the job joins the queue to be applied to (its
+        answers still drafted), for as long as the user keeps it there."""
+        now = time.time()
         conn = self.connect()
         try:
             with conn:
-                cur = conn.execute("UPDATE prep SET decision = 'tailor', state = 'queued', attempts = 0, error = '', "
-                                   "reason = ?, instruction = ?, reviewed = 0, updated = ? WHERE job_key = ? "
-                                   "AND (tailored_id = '' OR ? != '') AND state IN ('ready', 'error', 'queued')",
-                                   (reason, instruction, time.time(), key, instruction))
-            return cur.rowcount > 0
+                conn.execute("INSERT INTO prep (job_key, state, created, updated, decision, reason) "
+                             "VALUES (?, 'queued', ?, ?, 'master', ?) ON CONFLICT(job_key) DO NOTHING",
+                             (key, now, now, "You tailored it yourself."))
+                conn.execute(
+                    "UPDATE prep SET tailored_id = ?, choice = 'tailored', reviewed = 1, own = 1, updated = ?, "
+                    # Waiting to be tailored: only its answers are left to draft now.
+                    "decision = CASE WHEN state IN ('queued', 'error') THEN 'master' ELSE decision END, "
+                    "error = CASE WHEN state = 'error' THEN '' ELSE error END, "
+                    "state = CASE WHEN state = 'error' THEN 'queued' "
+                    "WHEN state IN ('parked', 'expired') THEN 'ready' ELSE state END "
+                    "WHERE job_key = ?", (tailored_id, now, key))
         finally:
             conn.close()
-            self.wake.set()
+        self.wake.set()
 
     def retry(self, key: str) -> None:
         conn = self.connect()
@@ -738,7 +749,7 @@ class Preparer:
         try:
             rows = conn.execute(
                 "SELECT p.job_key, p.state, p.score, p.decision, p.reason, p.choice, p.reviewed, p.answers, p.error, "
-                "p.created, p.updated, p.applied, p.instruction, j.company, j.title, j.location, j.url, j.apply_url, j.remote, "
+                "p.created, p.updated, p.applied, p.instruction, p.own, j.company, j.title, j.location, j.url, j.apply_url, j.remote, "
                 "t.id, t.pdf, t.result FROM prep p JOIN jobs j ON j.key = p.job_key "
                 "LEFT JOIN tailored t ON t.id = p.tailored_id AND p.tailored_id != '' "
                 f"WHERE p.state IN ({','.join('?' * len(states))}) AND p.updated >= ? "
@@ -747,13 +758,13 @@ class Preparer:
         finally:
             conn.close()
         cols = ("key", "state", "score", "decision", "reason", "choice", "reviewed", "answers", "note", "created",
-                "updated", "applied", "instruction", "company", "title", "location", "url", "apply_url", "remote",
+                "updated", "applied", "instruction", "own", "company", "title", "location", "url", "apply_url", "remote",
                 "tailored_id", "pdf", "result")
         out = []
         for r in rows:
             it = dict(zip(cols, r))
             result = it.pop("result")
-            it.update(reviewed=bool(it["reviewed"]), remote=bool(it["remote"]), answers=len(json.loads(it["answers"] or "[]")),
+            it.update(reviewed=bool(it["reviewed"]), own=bool(it["own"]), remote=bool(it["remote"]), answers=len(json.loads(it["answers"] or "[]")),
                       apply_url=it["apply_url"] or it["url"], tailored_id=it["tailored_id"] or "", pdf=it["pdf"] or "",
                       changes=change_summary(json.loads(result)) if result else None)
             out.append(it)
@@ -763,16 +774,16 @@ class Preparer:
         """What the extension needs for one job's form."""
         conn = self.connect()
         try:
-            row = conn.execute("SELECT p.state, p.choice, p.answers, t.pdf FROM prep p "
+            row = conn.execute("SELECT p.state, p.choice, p.answers, t.pdf, t.id FROM prep p "
                                "LEFT JOIN tailored t ON t.id = p.tailored_id AND p.tailored_id != '' "
                                "WHERE p.job_key = ?", (key,)).fetchone()
         finally:
             conn.close()
         if not row:
             return None
-        state, choice, answers, pdf = row
+        state, choice, answers, pdf, tailored_id = row
         pdf_path = self.out_dir / pdf if pdf and choice == "tailored" else None
-        return {"state": state, "choice": choice or "master",
+        return {"state": state, "choice": choice or "master", "tailored_id": tailored_id or "",
                 "pdf": pdf_path if pdf_path and pdf_path.exists() else None,
                 "answers": json.loads(answers or "[]") if state in ("ready", "applied") else []}
 
