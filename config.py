@@ -326,8 +326,7 @@ QUEUE = Obj({
     "needs_sponsorship": Bool(True),            # leave out postings that say no sponsorship or no OPT
     "locations": List(WORD, [], 30),            # substrings of the job location; empty means anywhere
     "remote_ok": Bool(True),                    # remote jobs pass the location filter
-    "lookback_hours": Int(48, 1, 24 * 14),      # how far back "newly seen" reaches
-    "max_age_days": Int(7, 1, 60),              # only postings this recent are prepared, however new to the radar
+    "max_age_days": Int(7, 1, 60),              # only postings this recent are in the queue, however new to the radar
     "max_active": Int(15, 1, 500),              # jobs in the queue at most: the best matches; the rest wait their turn
     "draft_answers": Bool(True),
     "notify_desktop": Bool(True),

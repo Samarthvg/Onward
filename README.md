@@ -48,7 +48,7 @@ experience counted. Every score says what you have and what's missing, so you ca
 ### Today's picks and the Apply queue
 
 The Apply queue opens on the few best new fits of the day. Behind them it prepares your best matches from the
-last 7 days, 15 at a time to start: a tailored resume where that helps, and drafted answers for the form's own
+last 7 days, newer postings ahead of slightly better older ones, 15 at a time to start: a tailored resume where that helps, and drafted answers for the form's own
 questions, so opening an application is the last step, not the first.
 
 ### Honest tailoring

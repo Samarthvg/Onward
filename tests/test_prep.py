@@ -573,6 +573,43 @@ class QueueAgeTests(Base):
         self.assertNotIn("Coveredco", it)
         self.assertIn("Tailorco", it)
 
+    def test_a_posting_that_missed_a_crowded_day_gets_a_free_place_later(self):
+        self.prep.save_settings({"max_active": 1})
+        self.prep.scan(self.now)
+        first = [i["company"] for i in self.prep.items(("queued", "ready", "working"))]
+        self.assertEqual(len(first), 1)
+        # Days later, long after either was new to the radar but still recent enough,
+        # the user applies to the one in the queue: the other gets its place.
+        later = self.now + 3 * 86400
+        conn = sqlite3.connect(self.db_path)
+        with conn:
+            conn.execute("UPDATE jobs SET last_seen = ?", (later,))
+        conn.close()
+        self.prep.mark(self.items()[first[0]]["key"], "applied")
+        self.prep.scan(later)
+        now_in = [i["company"] for i in self.prep.items(("queued", "ready", "working"))]
+        self.assertEqual(len(now_in), 1)
+        self.assertNotEqual(now_in, first)
+
+    def test_fresh_postings_outrank_slightly_better_stale_ones(self):
+        conn = sqlite3.connect(":memory:")
+        conn.executescript(prep.SCHEMA + "CREATE TABLE jobs (key TEXT PRIMARY KEY, posted_at REAL, first_seen REAL);")
+        now = self.now
+        with conn:
+            conn.execute("INSERT INTO jobs VALUES ('stale', ?, ?)", (now - 6 * 86400, now - 6 * 86400))
+            conn.execute("INSERT INTO prep (job_key, state, score, created, updated) VALUES ('stale', 'ready', 82, ?, ?)",
+                         (now, now))
+        fresh = ({"key": "fresh", "posted": now - 3600}, {"pct": 78})
+        # 82 six days on is about 73: the posting from an hour ago at 78 takes the place.
+        self.assertEqual([j["key"] for j, _ in prep.Preparer._fill(conn, [fresh], 1, now)], ["fresh"])
+        self.assertEqual(conn.execute("SELECT state FROM prep WHERE job_key = 'stale'").fetchone()[0], "parked")
+        # A clearly better match still wins: 95 six days on is about 86.
+        with conn:
+            conn.execute("UPDATE prep SET state = 'ready', score = 95 WHERE job_key = 'stale'")
+        self.assertEqual(prep.Preparer._fill(conn, [fresh], 1, now), [])
+        self.assertEqual(conn.execute("SELECT state FROM prep WHERE job_key = 'stale'").fetchone()[0], "ready")
+        conn.close()
+
     def test_queued_and_ready_jobs_leave_once_too_old(self):
         self.prep.scan(self.now)
         self.assertIn("Coveredco", self.items())

@@ -72,6 +72,21 @@ def migrate(conn) -> None:
 # The queue's settings are settings.json "queue" (config.QUEUE has each one's
 # meaning and range); they used to live in resume/prep.json.
 STALE_AFTER = 2 * 86400          # radar.py's STALE_AFTER_DAYS: unseen this long means closed
+# Match points a posting gives up per day since it went up, when the queue
+# ranks jobs: early applicants do better, so a fresh posting beats a slightly
+# better stale one, and a clearly better match still wins.
+AGE_PENALTY = 1.5
+
+
+def rank_sql(now: float) -> str:
+    """The queue's ranking of a prep row (p) joined to its job (j), as SQL."""
+    return (f"(COALESCE(p.score, 0) - {AGE_PENALTY} * MAX(0, ({float(now)} - "
+            "COALESCE(j.posted_at, j.first_seen, p.created)) / 86400.0))")
+
+
+def rank(score: float | None, posted: float | None, now: float) -> float:
+    """rank_sql() for a job not yet in the queue."""
+    return (score or 0) - AGE_PENALTY * max(0.0, (now - (posted or now)) / 86400)
 MAX_ATTEMPTS = 2
 NOTIFY_EVERY = 30 * 60           # while the queue is still working, at most one toast per half hour
 BACKOFF = 15 * 60                # after the backend is unreachable or signed out
@@ -280,7 +295,7 @@ class Preparer:
 
     JOB_COLS = ("key", "company", "title", "location", "remote", "sponsorship", "no_opt", "min_yoe",
                 "entry_hint", "kw", "degree", "has_jd", "first_seen", "last_seen", "url", "apply_url", "source",
-                "roles")
+                "posted", "roles")
 
     def _job(self, row) -> dict:
         j = dict(zip(self.JOB_COLS, row))
@@ -298,7 +313,8 @@ class Preparer:
     def _select(self, conn) -> str:
         roles = "roles" if self._tagged(conn) else "'[]'"
         return ("SELECT key, company, title, location, remote, sponsorship, no_opt, min_yoe, entry_hint, kw, degree, "
-                f"length(description) > 200, first_seen, last_seen, url, apply_url, source, {roles} FROM jobs ")
+                f"length(description) > 200, first_seen, last_seen, url, apply_url, source, "
+                f"COALESCE(posted_at, first_seen), {roles} FROM jobs ")
 
     def scan(self, now: float | None = None) -> int:
         """Queue newly seen jobs that qualify. Returns how many were added."""
@@ -349,15 +365,16 @@ class Preparer:
                         conn.execute("DELETE FROM prep WHERE job_key = ? AND state = 'queued' AND own = 0", (j["key"],))
                         conn.execute("UPDATE prep SET state = 'expired', updated = ? WHERE job_key = ? AND state = 'parked' AND own = 0",
                                      (now, j["key"]))
-                # Only jobs one of the user's roles wants.
+                # Every open posting recent enough for the queue, that one of the user's
+                # roles wants, competes for a place: also one that didn't make it on a
+                # crowded day, now that a place is free. (By posting date: a board read
+                # for the first time lists postings that went up months ago.)
                 rows = conn.execute(
-                    # New to the radar and recently posted: a board read for the first
-                    # time lists postings that went up months ago.
-                    self._select(conn) + "WHERE kw != '' AND first_seen >= ? AND last_seen >= ? "
+                    self._select(conn) + "WHERE kw != '' AND last_seen >= ? "
                     "AND COALESCE(posted_at, first_seen) >= ? "
                     + ("AND roles != '[]' " if self._tagged(conn) else "")
                     + "AND key NOT IN (SELECT job_key FROM prep)",
-                    (now - s["lookback_hours"] * 3600, now - STALE_AFTER, now - s["max_age_days"] * 86400)).fetchall()
+                    (now - STALE_AFTER, now - s["max_age_days"] * 86400)).fetchall()
                 new = []
                 for row in rows:
                     j = self._job(row)
@@ -388,13 +405,15 @@ class Preparer:
     def _fill(cls, conn, new: list[tuple[dict, dict]], cap: int, now: float) -> list[tuple[dict, dict]]:
         """Parks or brings back queue rows so the best `cap` are in the queue,
         and returns the new jobs that make the cut, best first."""
-        held = conn.execute("SELECT job_key, state, score, own FROM prep WHERE state IN "
+        held = conn.execute(f"SELECT p.job_key, p.state, {rank_sql(now)}, p.own FROM prep p "
+                            "LEFT JOIN jobs j ON j.key = p.job_key WHERE p.state IN "
                             "('working', 'ready', 'error', 'queued', 'parked')").fetchall()
         # Jobs the user tailored themselves always stay, on top of the cap.
         own = {key for key, _, _, mine in held if mine}
-        pool = [(key, st, sc or 0) for key, st, sc, mine in held if not mine] + [(j["key"], "new", sc["pct"] or 0) for j, sc in new]
-        # A job being prepared right now always stays; then best match first, and
-        # on equal scores what's already prepared ahead of what isn't.
+        pool = [(key, st, r) for key, st, r, mine in held if not mine] + \
+            [(j["key"], "new", rank(sc["pct"], j.get("posted"), now)) for j, sc in new]
+        # A job being prepared right now always stays; then the best match for
+        # its age first, and on equal ranks what's already prepared ahead of what isn't.
         pool.sort(key=lambda x: (x[1] != "working", -x[2], cls.RANK[x[1]]))
         keep = {key for key, _, _ in pool[:cap]} | {key for key, st, _ in pool if st == "working"}
         for key, st, _ in pool:
@@ -406,7 +425,7 @@ class Preparer:
                 conn.execute("DELETE FROM prep WHERE job_key = ? AND state IN ('queued', 'error')", (key,))
         for key in own:
             conn.execute("UPDATE prep SET state = 'ready', updated = ? WHERE job_key = ? AND state = 'parked'", (now, key))
-        return sorted(((j, sc) for j, sc in new if j["key"] in keep), key=lambda x: -(x[1]["pct"] or 0))
+        return sorted(((j, sc) for j, sc in new if j["key"] in keep), key=lambda x: -rank(x[1]["pct"], x[0].get("posted"), now))
 
     # ------------------------------------------------------------ usage cap
 
@@ -447,10 +466,10 @@ class Preparer:
                          (*kw.values(), key, *([when] if when else [])))
 
     def next_job(self, conn, cap_left: bool) -> tuple[str, str] | None:
-        sql = "SELECT job_key, decision FROM prep WHERE state = 'queued'"
+        sql = "SELECT p.job_key, p.decision FROM prep p LEFT JOIN jobs j ON j.key = p.job_key WHERE p.state = 'queued'"
         if not cap_left:
-            sql += " AND decision = 'master'"      # these still get ready without a model run
-        return conn.execute(sql + " ORDER BY score DESC, created LIMIT 1").fetchone()
+            sql += " AND p.decision = 'master'"      # these still get ready without a model run
+        return conn.execute(sql + f" ORDER BY {rank_sql(time.time())} DESC, p.created LIMIT 1").fetchone()
 
     def process(self, key: str) -> str:
         """Prepare one queued job: "done", "requeued", or "stop" (backend down)."""
@@ -582,7 +601,7 @@ class Preparer:
         conn = self.connect()
         try:
             fresh = conn.execute("SELECT p.job_key, j.company FROM prep p JOIN jobs j ON j.key = p.job_key "
-                                 "WHERE p.state = 'ready' AND p.notified IS NULL ORDER BY p.score DESC").fetchall()
+                                 f"WHERE p.state = 'ready' AND p.notified IS NULL ORDER BY {rank_sql(time.time())} DESC").fetchall()
             if not fresh:
                 return False
             busy = conn.execute("SELECT COUNT(*) FROM prep WHERE state IN ('queued', 'working')").fetchone()[0]
@@ -754,7 +773,7 @@ class Preparer:
                 "LEFT JOIN tailored t ON t.id = p.tailored_id AND p.tailored_id != '' "
                 f"WHERE p.state IN ({','.join('?' * len(states))}) AND p.updated >= ? "
                 "ORDER BY CASE p.state WHEN 'ready' THEN 0 WHEN 'working' THEN 1 WHEN 'queued' THEN 2 ELSE 3 END, "
-                "p.score DESC LIMIT 300", (*states, since)).fetchall()
+                f"{rank_sql(time.time())} DESC LIMIT 300", (*states, since)).fetchall()
         finally:
             conn.close()
         cols = ("key", "state", "score", "decision", "reason", "choice", "reviewed", "answers", "note", "created",
