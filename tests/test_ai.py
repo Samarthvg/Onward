@@ -535,6 +535,23 @@ class StrictnessTests(unittest.TestCase):
 
 # --------------------------------------------------------------------------
 
+class QuestionKindTests(unittest.TestCase):
+    """Drafted answers answer the kind of question asked: a habit question
+    gets a routine, not the nearest project, and the company comes in only
+    when the question is about it."""
+
+    def test_both_drafting_prompts_read_the_question_first(self):
+        job = {"title": "Software Engineer", "company": "Mock Co"}
+        one, _ = tailor.draft_prompt(TEX, job, "How do you use AI in your day-to-day work?", "", "x" * 300)
+        many, _ = tailor.answers_prompt(TEX, job, {}, [{"id": "0", "question": "Why us?", "kind": "textarea", "options": []}], "x" * 300)
+        for name, prompt in (("draft", one), ("answers", many)):
+            self.assertNotIn("{kinds}", prompt, name)
+            self.assertIn('A habit or way of working ("day to day"', prompt, name)
+            self.assertIn("never say what the applicant hasn't done", prompt, name)
+            self.assertIn("Bring in the company or the role only when the question asks about them", prompt, name)
+            self.assertNotIn("for this company and role", prompt, name)
+
+
 class HumanVoiceTests(unittest.TestCase):
     """Tailored bullets read like the person wrote them."""
 

@@ -362,8 +362,8 @@ TONE_RULES = {
     "formal": "- Write in a polished, professional register: complete sentences, few contractions, courteous and precise. Still use plain words instead of corporate buzzwords, and keep it specific and personal. It should read like the applicant wrote it, not like a cover letter template.",
 }
 
-VOICE_BODY = """- Lead with an honest, personal reason when ABOUT THE APPLICANT gives one that fits (an interest, something they care about, how they use the product). Never invent interests, hobbies, feelings or stories that aren't written there.
-- Mention at most one or two things from the resume, described the way you'd tell a friend what you built ("I built a chatbot that remembers past conversations"), not as a resume line full of tool names. Name a tool only if the question or the job really cares about it.
+VOICE_BODY = """- Lead with something honest and personal from ABOUT THE APPLICANT when it fits the question (an interest, something they care about, how they use the product). Never invent interests, hobbies, feelings or stories that aren't written there.
+- Mention at most one or two things from the resume, and only where they answer the question, described the way you'd tell a friend what you built ("I built a chatbot that remembers past conversations"), not as a resume line full of tool names. Name a tool only if the question or the job really cares about it.
 - Don't restate the company's mission or the posting back to them, and don't explain what their product does."""
 
 # The wording the default banned-phrase list is written into the prompt
@@ -536,11 +536,21 @@ def humanize(items: list[dict], backend: str, company: str = "", costs: list[flo
 # --------------------------------------------------------------------------
 # Drafting answers to application questions ("Why this company?")
 
+# What both drafting prompts say about reading the question: a question about
+# habits ("day to day") wants a routine, not the nearest project write-up.
+QUESTION_KINDS = """Before writing, work out what kind of answer the question wants, and give that kind:
+   - A habit or way of working ("day to day", "how do you usually", "your approach to", "how do you stay current"): what the applicant does regularly and how, in the present tense, with the tools and steps of that routine. A project may appear as a one-line example of the habit, never as the answer itself.
+   - A past example ("tell us about a time", "describe a project"): one specific story: the situation, what they did, how it went.
+   - Why this company or this role: their honest reasons.
+   - An opinion or a preference: their view and why they hold it.
+   A question that asks several of these gets a short answer to each part. When the resume and ABOUT THE APPLICANT don't say enough for that kind of answer, give what they do support in a shorter answer instead of filling it with unrelated projects, and never say what the applicant hasn't done, doesn't have or can't claim.
+   Bring in the company or the role only when the question asks about them, and never end with a line about what the applicant would do, learn or build at the company unless the question asks."""
+
 DRAFT_RULES = """You draft one answer to a question on a job application, written as the applicant, using their resume and the job posting. The applicant reviews and edits it before sending.
 
 Rules
 1. Use only facts from the resume and from ABOUT THE APPLICANT. Never invent employers, projects, numbers, dates, skills, interests or personal details. If neither supports something the question asks about, answer honestly with what they do show instead of making something up.
-2. Answer the question that was asked, for this company and role.
+2. Answer the question that was asked. {kinds}
 3. First person. No greeting, sign-off or headings, and no bullet points unless the question asks for a list.
 4. Length: {length}.
 5. Put only the answer text in the "answer" field.
@@ -604,7 +614,7 @@ def draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: st
                      "support, use what they do support and invent nothing.")
     # .replace, not .format: only {length} is a placeholder, and the voice
     # rules (the user's own phrases among them) may contain braces.
-    return DRAFT_RULES.replace("{length}", length) + voice_rules(v), "\n\n".join(parts)
+    return DRAFT_RULES.replace("{length}", length).replace("{kinds}", QUESTION_KINDS) + voice_rules(v), "\n\n".join(parts)
 
 
 def build_draft_prompt(master_tex: str, job: dict, question: str, context: str, jd: str, max_chars: int = 0,
@@ -636,7 +646,7 @@ Rules
 1. Never invent experience, employers, projects, numbers, skills, awards, dates, interests or personal details. Use only what the resume, the profile and ABOUT THE APPLICANT say, plus plain inferences from them (someone living in Boston is not a California resident; a May 2026 graduate can start around June 2026; someone whose resume doesn't list this company has not worked there).
 2. If the answer depends on something only the applicant knows and the resume and profile don't settle it (offer deadlines, family ties to employees, consent to recordings or data sharing, legal declarations), return an empty answer so the applicant answers it.
 3. Choice questions: "answer" must be copied exactly from that question's options, or empty. For "multi" questions put every option that applies in "choices" (exact option text) and leave "answer" empty. Otherwise leave "choices" empty.
-4. Short text questions get short answers (a date, a year, a name, a few words). Open questions get a specific answer for this company and role: about 80 to 150 words unless the question asks for less, and never more than its character limit. First person; no greeting, no headings. Write open answers by the voice rules below.
+4. Short text questions get short answers (a date, a year, a name, a few words). Open questions get a specific answer: about 80 to 150 words unless the question asks for less, and never more than its character limit. First person; no greeting, no headings. Write open answers by the voice rules below. {kinds}
 5. Return one entry per question id.
 
 """
@@ -679,7 +689,7 @@ def answers_prompt(master_tex: str, job: dict, profile: dict, questions: list[di
     _entries_block(parts, entries)
     _about_and_samples(parts, v)
     parts.append("QUESTIONS\n" + "\n".join(qs))
-    return ANSWERS_RULES + voice_rules(v), "\n\n".join(parts)
+    return ANSWERS_RULES.replace("{kinds}", QUESTION_KINDS) + voice_rules(v), "\n\n".join(parts)
 
 
 def _total(costs: list[float]) -> float | None:
