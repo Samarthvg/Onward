@@ -168,6 +168,7 @@ class Bullet:
     span: Span          # text after "\item" up to the next \item / \end{itemize}
     tex: str
     fact: bool = False  # drawn in from the fact sheet (facts.py), not the resume's own
+    whole: Span | None = None   # the bullet with its command: "\item text" or "\resumeItem{text}"
 
 
 @dataclass
@@ -182,6 +183,7 @@ class Entry:
     bullets: list[Bullet]
     allowed: set[str]   # skills that may appear in this entry
     fact: bool = False  # drawn in from the fact sheet (facts.py), not the resume's own
+    items: Span | None = None   # its bullet list, from where it opens to where it closes
 
 
 @dataclass
@@ -213,9 +215,89 @@ class Resume:
 
 
 SECTION = re.compile(r"\\section\*?\{([^}]*)\}")
-ITEMIZE = re.compile(r"\\begin\{itemize\}(?:\[[^\]]*\])?(.*?)\\end\{itemize\}", re.S)
 ITEM = re.compile(r"\\item\b")
-TECH = re.compile(r"\|\s*\\textit\{")
+# A tool list after the name: "| \textit{Go, SQL}", or Jake's "$|$ \emph{Go, SQL}".
+TECH = re.compile(r"(?:\$\|\$|\|)\s*\\(?:textit|emph)\{")
+DEFINE = re.compile(r"\\(?:re)?newcommand\*?\s*\{?\s*\\([A-Za-z@]+)\s*\}?\s*(?:\[(\d)\])?\s*(?:\[[^\]]*\])?\s*(?=\{)")
+
+
+@dataclass
+class ListMacros:
+    """Commands a resume defines for its bullet lists, as Jake's template does:
+    \resumeItemListStart opens one, \resumeItemListEnd closes it, and
+    \resumeItem{..} (or \resumeSubItem{..}, which calls it) is one bullet."""
+    starts: set[str] = field(default_factory=set)
+    ends: set[str] = field(default_factory=set)
+    items: set[str] = field(default_factory=set)
+
+
+def list_macros(tex: str) -> ListMacros:
+    """A command whose body only opens an itemize opens a list, one that only
+    closes it closes one, and a one-argument command whose body is an \item
+    holding its argument, or calls such a command with it, is a bullet. A
+    command that draws a table (a heading) is none of these."""
+    defs = {}
+    for m in DEFINE.finditer(tex):
+        end = _brace_end(tex, m.end())
+        defs[m.group(1)] = (int(m.group(2) or 0), tex[m.end() + 1:end - 1])
+    out = ListMacros()
+    for name, (_, body) in defs.items():
+        opens, closes = "\\begin{itemize}" in body, "\\end{itemize}" in body
+        if opens and not closes:
+            out.starts.add(name)
+        elif closes and not opens:
+            out.ends.add(name)
+    grew = True
+    while grew:
+        grew = False
+        for name, (nargs, body) in defs.items():
+            if name in out.items or nargs != 1 or "#1" not in body or "tabular" in body:
+                continue
+            if ITEM.search(body) or any(re.search(rf"\\{re.escape(x)}(?![A-Za-z@])", body) for x in out.items):
+                out.items.add(name)
+                grew = True
+    return out
+
+
+def _commented(tex: str, pos: int) -> bool:
+    line = tex[tex.rfind("\n", 0, pos) + 1:pos]
+    return bool(re.search(r"(?<!\\)%", line))
+
+
+def bullet_lists(tex: str, start: int, end: int, macros: ListMacros) -> list[tuple[int, int, int, int]]:
+    """The innermost lists in tex[start:end] that hold bullets, as (where it
+    opens, where its content starts, where its content ends, where it
+    closes). A list of entries (Jake's \resumeSubHeadingListStart) holds
+    lists of its own, so it isn't one."""
+    names = lambda xs: "".join(rf"|\\{re.escape(x)}(?![A-Za-z@])" for x in sorted(xs, key=len, reverse=True))
+    token = re.compile(rf"(?P<open>\\begin\{{itemize\}}(?:\[[^\]]*\])?{names(macros.starts)})"
+                       rf"|(?P<close>\\end\{{itemize\}}{names(macros.ends)})")
+    stack: list[list] = []
+    out = []
+    for m in token.finditer(tex, start, end):
+        if _commented(tex, m.start()):
+            continue
+        if m.group("open"):
+            if stack:
+                stack[-1][2] = True                 # its parent holds a list: not innermost
+            stack.append([m.start(), m.end(), False])
+        elif stack:
+            opened, content, nested = stack.pop()
+            if not nested and _bullets_in(tex, content, m.start(), macros):
+                out.append((opened, content, m.start(), m.end()))
+    return sorted(out)
+
+
+def _bullets_in(tex: str, start: int, end: int, macros: ListMacros) -> list[tuple[int, int, bool]]:
+    """The bullets between start and end: (where the command starts, where
+    its text starts, whether it's a command taking the text as its argument)."""
+    names = "".join(rf"|\\{re.escape(x)}\s*\{{" for x in sorted(macros.items, key=len, reverse=True))
+    out = []
+    for m in re.finditer(rf"\\item\b{names}", tex[start:end]):
+        if _commented(tex, start + m.start()):
+            continue
+        out.append((start + m.start(), start + m.end(), not m.group(0).startswith("\\item")))
+    return out
 
 
 def _brace_end(tex: str, open_idx: int) -> int:
@@ -278,17 +360,26 @@ def parse(tex: str) -> Resume:
                 cur, start = title, e
         return cur, start
 
+    macros = list_macros(tex[:body_start])
+    opener = re.compile(r"\s*(?:\\begin\{itemize\}(?:\[[^\]]*\])?" + "".join(
+        rf"|\\{re.escape(x)}(?![A-Za-z@])" for x in macros.starts) + ")")
     b_n = e_n = 0
     prev_end = body_start
-    for m in ITEMIZE.finditer(tex, body_start, doc_end):
-        title, sec_start = section_at(m.start())
+    for opened, content, content_end, closed in bullet_lists(tex, body_start, doc_end, macros):
+        title, sec_start = section_at(opened)
         if re.search(r"skill", title, re.I):
             continue
         header_start = max(prev_end, sec_start)
-        # Header begins at the first non-blank line after the previous block.
-        while header_start < m.start() and tex[header_start] in " \t\r\n":
-            header_start += 1
-        header = tex[header_start:m.start()]
+        # Header begins at the first non-blank line after the previous block, past
+        # the opening of a list of entries (Jake's), which isn't this entry's.
+        while True:
+            while header_start < opened and tex[header_start] in " \t\r\n":
+                header_start += 1
+            om = opener.match(tex, header_start, opened)
+            if not om or om.end() == header_start:
+                break
+            header_start = om.end()
+        header = tex[header_start:opened]
         e_n += 1
         eid = f"E{e_n}"
 
@@ -300,32 +391,38 @@ def parse(tex: str) -> Resume:
             tech_span = Span(open_idx + 1, close - 1)
             tech_tex = tex[tech_span.start:tech_span.end]
 
-        inner_start = m.start(1)
-        inner = m.group(1)
-        starts = [inner_start + im.end() for im in ITEM.finditer(inner)]
+        found = _bullets_in(tex, content, content_end, macros)
         bullets = []
-        for i, s in enumerate(starts):
-            e = (starts[i + 1] - len("\\item")) if i + 1 < len(starts) else m.end(1)
-            raw = tex[s:e]
+        for i, (cmd, s, braced) in enumerate(found):
+            nxt = found[i + 1][0] if i + 1 < len(found) else content_end
+            if braced:
+                # \resumeItem{text}: the text is the argument; what follows it on its line may be a mark.
+                close = _brace_end(tex, s - 1)
+                raw, tail = tex[s:close - 1], tex[close:nxt]
+                whole_end = close
+            else:
+                raw, tail = tex[s:nxt], ""
             # A fact sheet bullet's mark stays in the file, outside the bullet's own text.
-            fact = FACT_MARK in raw
-            if fact:
+            fact = FACT_MARK in raw or FACT_MARK in tail.split("\n")[0]
+            if FACT_MARK in raw:
                 raw = raw[:raw.index(FACT_MARK)]
             lead = len(raw) - len(raw.lstrip())
             trail = len(raw) - len(raw.rstrip())
             span = Span(s + lead, s + len(raw) - trail)
             b_n += 1
-            bullets.append(Bullet(f"B{b_n}", span, tex[span.start:span.end], fact))
+            bullets.append(Bullet(f"B{b_n}", span, tex[span.start:span.end], fact,
+                                  Span(cmd, whole_end if braced else span.end)))
 
-        block = tex[header_start:m.end()]
+        block = tex[header_start:closed]
+        parts, is_call = header_parts(header)
         allowed = with_implied(find_skills(plain(block)) | tag_skills(block, "skills"))
         res.entries.append(Entry(
             id=eid, kind=_section_kind(title), section=title,
-            title=plain(header)[:140] or f"Entry {e_n}",
-            span=Span(header_start, m.end()), tech=tech_span, tech_tex=tech_tex,
-            bullets=bullets, allowed=allowed, fact=FACT_MARK in header,
+            title=(" | ".join(parts) if is_call else plain(header))[:140] or f"Entry {e_n}",
+            span=Span(header_start, closed), tech=tech_span, tech_tex=tech_tex,
+            bullets=bullets, allowed=allowed, fact=FACT_MARK in header, items=Span(opened, closed),
         ))
-        prev_end = m.end()
+        prev_end = closed
 
     # Skills rows: "\textbf{Label:} & content \\" or "\textbf{Label:} content \\"
     s_n = 0
@@ -336,6 +433,10 @@ def parse(tex: str) -> Resume:
         for rm in re.finditer(r"\\textbf\{([^}]*)\}\s*&?\s*(.+?)\s*(?:\\\\|$)", tex[e:end], re.M):
             content_start = e + rm.start(2)
             content_end = e + rm.end(2)
+            # Jake's "\textbf{Languages}{: Python, Go}": the items are what follows the colon.
+            jm = re.match(r"\{\s*:\s*", tex[content_start:content_end])
+            if jm and tex[content_end - 1] == "}":
+                content_start, content_end = content_start + jm.end(), content_end - 1
             content = tex[content_start:content_end]
             if not content.strip() or content.strip().startswith("\\end"):
                 continue
@@ -348,7 +449,8 @@ def parse(tex: str) -> Resume:
     res.inventory = with_implied(find_skills(everything) | tag_skills(tex, "skills") | tag_skills(tex, "inventory"))
     res.vocabulary = words(everything + " " + tags)
     if not res.entries:
-        raise ValueError("No itemize blocks found. Bullets need to be inside \\begin{itemize} ... \\end{itemize}.")
+        raise ValueError("No bullet lists found. Bullets need to be in lists, \\begin{itemize} with \\item, "
+                         "or commands the resume defines for them, like \\resumeItem.")
     return res
 
 
@@ -446,6 +548,38 @@ def _rows(header: str) -> list[list[str]]:
     return out
 
 
+BAR = re.compile(r"\s*(?:\\textbar\b(?:\{\})?|\$\|\$)\s*")
+FORMATTING = {"href", "hyperlink", "url", "textbf", "textit", "emph", "underline", "textsc", "small", "large",
+              "Large", "textcolor", "color", "mbox", "makebox"}
+
+
+def header_parts(header: str) -> tuple[list[str], bool]:
+    """An entry header's parts as plain text, and whether they're a command's
+    arguments: a table's cells, or the arguments of the one call the header
+    is, such as \\job{Acme -- Boston}{2024 -- 2025}{Engineer \\textbar{} Go}
+    or Jake's \\resumeSubheading{Engineer}{2024 -- 2025}{Acme}{Boston, MA}.
+    "|" separators come out as " | ", and LaTeX's -- and --- as dashes."""
+    h = strip_comments(header)
+    # The last call with two or more arguments is the entry's own header line;
+    # spacing macros and a section's intro may come before it.
+    call = []
+    for m in re.finditer(r"\\([A-Za-z]+)\*?\s*(?=\{)", h):
+        if m.group(1) in FORMATTING:         # \href{url}{Acme} is a link in a header, not the header
+            continue
+        args, at = [], m.end()
+        while at < len(h) and h[at] == "{":
+            end = _brace_end(h, at)
+            args.append(h[at + 1:end - 1])
+            at = end
+            while at < len(h) and h[at] in " \t\r\n":
+                at += 1
+        if len(args) >= 2 and not plain(h[at:]).strip():
+            call = args
+    raw = call or [c for row in _rows(header) for c in row]
+    cells = [re.sub(r"\s+", " ", plain(BAR.sub(" | ", c)).replace("---", "—").replace("--", "–")).strip() for c in raw]
+    return [c for c in cells if c], bool(call)
+
+
 def _name_and_place(cell: str) -> tuple[str, str]:
     """"\\href{..}{\\textbf{Company}} - Dallas, TX" -> ("Company", "Dallas, TX")."""
     bold = re.search(r"\\textbf\{", cell)
@@ -461,9 +595,83 @@ def _name_and_place(cell: str) -> tuple[str, str]:
 
 
 def _entry_header(res: Resume, e: Entry) -> str:
+    if e.items is not None:
+        return res.tex[e.span.start:e.items.start]
     block = res.tex[e.span.start:e.span.end]
     cut = block.find("\\begin{itemize}")
     return block[:cut] if cut >= 0 else block
+
+
+# What a header's parts are, told by how they read, for a header that's a
+# command's arguments in an order of its own (Jake's \resumeSubheading{Role}
+# {Dates}{Company}{Place}, \resumeSubheading{School}{Place}{Degree}{Dates}).
+_DATE_PART = rf"(?:(?:{_MON}|spring|summer|fall|autumn|winter)\s+)?(?:19|20)\d\d|present|current|now|ongoing"
+DATES_ONLY = re.compile(rf"\s*(?:expected\s+)?(?:{_DATE_PART}|{_MON})(?:\s*(?:-{{1,3}}|–|—|to)\s*(?:{_DATE_PART}))?\s*", re.I)
+# Between a name and its place in one part: "Acme - Dallas, TX".
+PART_DASH = r"\s+(?:-{1,3}|–|—)\s+"
+ROLE = re.compile(r"\b(?:engineer|developer|intern|internship|assistant|analyst|researcher|scientist|manager|"
+                  r"consultant|associate|lead|architect|designer|specialist|fellow|programmer|administrator|"
+                  r"coordinator|director|officer|technician|founder|co-founder|tutor|instructor|ta)\b", re.I)
+PLACE = re.compile(r"(?:remote|[A-Z][\w.'-]*(?: [A-Z][\w.'-]*)*, (?:[A-Z]{2}|USA|U\.S\.A?\.?|United States|India|Canada|UK|"
+                   r"United Kingdom|Germany|France|Ireland|Netherlands|Spain|Italy|China|Japan|Singapore|Australia|"
+                   r"Israel|Mexico|Brazil))(?:\s*\(remote\))?", re.I)
+SCHOOL = re.compile(r"universit|college|institut|school|academy|polytechnic", re.I)
+DEGREE = re.compile(r"\b(?:bachelor|master|doctor|ph\.?\s?d|b\.?\s?s|m\.?\s?s|b\.?\s?a|m\.?\s?a|b\.?\s?tech|m\.?\s?tech|"
+                    r"b\.?\s?e|m\.?\s?e|mba|associate|diploma|degree)\b", re.I)
+
+
+def is_dates(text: str) -> bool:
+    """A part that's only dates: "May 2024 - Aug 2024", "2024", "Feb - Apr 2026", "Spring 2025"."""
+    return bool(DATES_ONLY.fullmatch(text))
+
+
+def header_fields(parts: list[str], kind: str) -> dict[str, str]:
+    """{"name", "place", "title", "tools", "dates", "link"} of a header's
+    parts: dates, a link and a place by their look, for a job the part naming
+    a role, then the name (a job's "Acme - Dallas" gives both) and a comma
+    list of tools."""
+    f = dict.fromkeys(("name", "place", "title", "tools", "dates", "link"), "")
+    rest = []
+    for p in (x.strip() for c in parts for x in c.split(" | ")):
+        if not p:
+            continue
+        if not f["dates"] and is_dates(p):
+            f["dates"] = p
+        elif not f["link"] and re.match(r"https?://\S+$", p):
+            f["link"] = p
+        elif not f["place"] and PLACE.fullmatch(p):
+            f["place"] = p
+        elif kind == "experience" and not f["title"] and ROLE.search(p):
+            f["title"] = p
+        else:
+            rest.append(p)
+    if rest:
+        name = rest.pop(0)
+        if kind != "project" and not f["place"]:
+            name, *place = re.split(PART_DASH, name, maxsplit=1)
+            f["place"] = place[0].strip() if place else ""
+        f["name"] = name.strip()
+    for p in rest:
+        key = "tools" if not f["tools"] and "," in p else "title" if not f["title"] else "tools" if not f["tools"] else ""
+        if key:
+            f[key] = p
+    return f
+
+
+def _calls(text: str, least: int = 2):
+    """The arguments of each command call in `text` with at least `least` of them, as LaTeX."""
+    for m in re.finditer(r"\\([A-Za-z]+)\*?\s*(?=\{)", text):
+        if m.group(1) in FORMATTING:
+            continue
+        args, at = [], m.end()
+        while at < len(text) and text[at] == "{":
+            end = _brace_end(text, at)
+            args.append(text[at + 1:end - 1])
+            at = end
+            while at < len(text) and text[at] in " \t\r\n":
+                at += 1
+        if len(args) >= least:
+            yield m.start(), at, args
 
 
 def history(res: Resume) -> dict:
@@ -475,14 +683,21 @@ def history(res: Resume) -> dict:
     for e in res.entries:
         if e.kind != "experience":
             continue
-        rows = _rows(_entry_header(res, e))
+        header = _entry_header(res, e)
+        parts, is_call = header_parts(header)
         company, location, title = "", "", ""
-        if rows:
-            company, location = _name_and_place(rows[0][0])
-        if len(rows) > 1:
-            title = plain(rows[1][0].split("|")[0]).strip()
+        if is_call:
+            # A command's arguments in an order of its own: told apart by how they read.
+            f = header_fields(parts, "experience")
+            company, location, title = f["name"], f["place"], f["title"]
+        else:
+            rows = _rows(header)
+            if rows:
+                company, location = _name_and_place(rows[0][0])
+            if len(rows) > 1:
+                title = plain(rows[1][0].split("|")[0]).strip()
         work.append({"company": company, "location": location, "title": title,
-                     **_dates(plain(_entry_header(res, e))),
+                     **_dates(" ".join(parts) if is_call else plain(header)),
                      "bullets": [plain(b.tex) for b in e.bullets]})
 
     education = []
@@ -492,6 +707,9 @@ def history(res: Resume) -> dict:
         if not EDUCATION.search(title):
             continue
         end = sections[i + 1][0] if i + 1 < len(sections) else len(tex)
+        if not TABULAR.search(tex, e_, end):
+            education += _schools_from_calls(tex[e_:end])
+            continue
         for tm in TABULAR.finditer(tex, e_, end):
             rows = _rows(tm.group(0))
             if not rows:
@@ -515,7 +733,7 @@ def history(res: Resume) -> dict:
             continue
         header = _entry_header(res, e)
         name, _ = _name_and_place(header.split("|")[0])
-        tech = re.search(r"\\textit\{", header)
+        tech = TECH.search(header) or re.search(r"\\textit\{", header)
         link = re.search(r"\\href\{([^}]*)\}", header)
         span = _dates(plain(header))
         if not span["start"]:
@@ -528,6 +746,27 @@ def history(res: Resume) -> dict:
                          "bullets": [plain(b.tex) for b in e.bullets]})
     return {"work": work, "education": education, "projects": projects,
             "skills": skill_list(res), "certifications": certifications(res)}
+
+
+def _schools_from_calls(text: str) -> list[dict]:
+    """Schools written as commands (Jake's \\resumeSubheading{School}{Place}
+    {Degree}{Dates}): each call of three or more arguments naming a school,
+    its parts told apart by how they read."""
+    out = []
+    for _, _, args in _calls(text, 3):
+        parts = [re.sub(r"\s+", " ", plain(BAR.sub(" | ", a)).replace("--", "–")).strip() for a in args]
+        school = next((p for p in parts if SCHOOL.search(p)), "")
+        if not school:
+            continue
+        degree_text = next((p for p in parts if p != school and not PLACE.fullmatch(p) and DEGREE.search(p)), "")
+        place = next((p for p in parts if PLACE.fullmatch(p)), "")
+        dm = re.match(r"^(.*?)\s+in\s+(.+?)(?:,\s*minor.*)?$", degree_text, re.I)
+        degree, field_ = (dm.group(1), dm.group(2)) if dm else (degree_text, "")
+        gpa = re.search(r"GPA\s*:?\s*([0-9.]+)(?:\s*/\s*([0-9.]+))?", " ".join(parts), re.I)
+        out.append({"school": school, "school_full": school, "location": place, "degree": degree.strip(),
+                    "field": field_.strip(), "gpa": gpa.group(1) if gpa else "",
+                    "gpa_scale": (gpa.group(2) or "") if gpa else "", **_dates(" ".join(parts))})
+    return out
 
 
 CERT_SECTION = re.compile(r"certif|licen", re.I)
@@ -1053,9 +1292,8 @@ def _entry_spans(res: Resume, e: Entry, state: dict, changes: list[Change] | Non
         if i < len(texts):
             spans.append((slot.span, texts[i]))
         else:
-            # Remove the whole "\item ..." for surplus slots.
-            item_start = res.tex.rfind("\\item", 0, slot.span.start)
-            spans.append((Span(item_start, slot.span.end), ""))
+            # Remove the whole bullet, its command too ("\item ..." or "\resumeItem{...}").
+            spans.append((slot.whole, ""))
     return spans
 
 

@@ -115,14 +115,10 @@ def text_to_outline(text: str) -> str:
 
 
 _SPAN = rf"(?:{MONTH}\s+)?(?:19|20)\d\d|present|current|now"
-DATE_TAIL = re.compile(rf"\s*[|,]?\s*((?:expected\s+)?(?:{_SPAN})(?:\s*(?:-|–|—|to)\s*(?:{_SPAN}))?)\s*$", re.I)
+DATE_TAIL = re.compile(rf"\s*[|,]?\s*((?:expected\s+)?(?:{_SPAN})(?:\s*(?:-{{1,3}}|–|—|to)\s*(?:{_SPAN}))?)\s*$", re.I)
 
 
-def is_dates(text: str) -> bool:
-    """A part that's only dates: "May 2024 - Aug 2024", "2024", "Feb - Apr 2026", "Spring 2025"."""
-    return bool(DATE_TAIL.fullmatch(text) or re.fullmatch(
-        rf"\s*(?:{MONTH}\s*(?:-{{1,3}}|–|—|to)\s*{MONTH}|(?:spring|summer|fall|autumn|winter))\s+(?:19|20)\d\d\s*",
-        text, re.I))
+is_dates = rt.is_dates
 
 
 def split_date(line: str) -> tuple[str, str]:
@@ -192,30 +188,11 @@ def _entry_header(text: str, section: str) -> str:
 
 
 TAG_LINE = re.compile(r"^%\s*(?:skills|inventory)\s*:", re.I)
-BAR = re.compile(r"\s*(?:\\textbar\b(?:\{\})?|\$\|\$)\s*")
 
 
 def header_cells(header: str) -> list[str]:
-    """An entry header's parts as plain text: a table's cells, or a macro's
-    arguments when the header is one call such as
-    \\job{Acme -- Boston}{2024 -- 2025}{Engineer \\textbar{} Go, SQL}."""
-    h = rt.strip_comments(header)
-    # The last call with two or more arguments is the entry's own header line;
-    # spacing macros and a section's intro may come before it.
-    call = []
-    for m in re.finditer(r"\\[A-Za-z]+\*?\s*(?=\{)", h):
-        args, at = [], m.end()
-        while at < len(h) and h[at] == "{":
-            end = rt._brace_end(h, at)
-            args.append(h[at + 1:end - 1])
-            at = end
-            while at < len(h) and h[at] in " \t\r\n":
-                at += 1
-        if len(args) >= 2 and not rt.plain(h[at:]).strip():
-            call = args
-    raw = call or [c for row in rt._rows(header) for c in row]
-    cells = [_clean(rt.plain(BAR.sub(" | ", c)).replace("---", "—").replace("--", "–")) for c in raw]
-    return [c for c in cells if c]
+    """An entry header's parts as plain text (resume_tex.header_parts)."""
+    return rt.header_parts(header)[0]
 
 
 def tex_to_outline(tex: str) -> str:

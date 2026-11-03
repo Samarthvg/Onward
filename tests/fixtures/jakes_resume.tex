@@ -1,0 +1,156 @@
+%-------------------------
+% Resume in Latex, laid out like Jake Gutierrez's widely used template
+% (MIT license, github.com/jakegut/resume), with made-up content.
+%------------------------
+
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\addtolength{\oddsidemargin}{-0.5in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.5in}
+\addtolength{\textheight}{1.0in}
+
+\urlstyle{same}
+
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+\titleformat{\section}{
+  \vspace{-4pt}\scshape\raggedright\large
+}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeItem}[1]{
+  \item\small{
+    {#1 \vspace{-2pt}}
+  }
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & #2 \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & #2 \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-4pt}}
+
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.15in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-5pt}}
+
+%-------------------------------------------
+%%%%%%  RESUME STARTS HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\begin{document}
+
+\begin{center}
+    \textbf{\Huge \scshape Testy McTestface} \\ \vspace{1pt}
+    \small 555-0100 $|$ \href{mailto:testy@example.com}{\underline{testy@example.com}} $|$
+    \href{https://github.com/testy}{\underline{github.com/testy}}
+\end{center}
+
+
+%-----------EDUCATION-----------
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {Example State University}{Boston, MA}
+      {Master of Science in Computer Science}{Jan. 2024 -- May 2026}
+    \resumeSubheading
+      {Example Institute of Technology}{Austin, TX}
+      {Bachelor of Science in Computer Engineering}{Aug. 2019 -- May 2023}
+  \resumeSubHeadingListEnd
+
+
+%-----------EXPERIENCE-----------
+\section{Experience}
+  \resumeSubHeadingListStart
+
+    \resumeSubheading
+      {Software Engineer Intern}{June 2025 -- Aug. 2025}
+      {Example Labs}{Dallas, TX}
+      \resumeItemListStart
+        \resumeItem{Built a REST API in Python with FastAPI and PostgreSQL that serves 40 internal dashboards}
+        \resumeItem{Cut report generation time by 60\% by caching query results in Redis}
+        \resumeItem{Wrote unit tests with pytest that raised coverage of the billing module to 85\%}
+        \resumeItem{Reviewed pull requests and kept the CI pipeline on GitHub Actions green}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {Research Assistant}{Sep. 2023 -- May 2025}
+      {Example State University}{Boston, MA}
+      \resumeItemListStart
+        \resumeItem{Trained PyTorch models to classify bird songs from 12,000 field recordings}
+        \resumeItem{Built a data pipeline in Python that cleaned and labeled the recordings each night}
+        \resumeItem{Presented results at two lab meetings and wrote up the method for a workshop paper}
+      \resumeItemListEnd
+
+  \resumeSubHeadingListEnd
+
+
+%-----------PROJECTS-----------
+\section{Projects}
+    \resumeSubHeadingListStart
+      \resumeProjectHeading
+          {\textbf{Shelf Tracker} $|$ \emph{React, Node.js, MongoDB}}{Jan. 2025 -- Apr. 2025}
+          \resumeItemListStart
+            \resumeItem{Built a web app with React and Node.js for tracking a small library's books}
+            \resumeItem{Stored loans in MongoDB and sent reminder emails for overdue books}
+            \resumeItem{Deployed it on Render with a GitHub Actions workflow}
+          \resumeItemListEnd
+      \resumeProjectHeading
+          {\textbf{Edge Finder} $|$ \emph{C++, OpenCV}}{Sep. 2024 -- Dec. 2024}
+          \resumeItemListStart
+            \resumeItem{Wrote Sobel filters and gradient magnitude in C++ with OpenCV}
+            \resumeItem{Measured the filters on 200 images against OpenCV's own}
+            \resumeItem{Tuned kernel sizes for noisy webcam frames}
+          \resumeItemListEnd
+    \resumeSubHeadingListEnd
+
+
+%-----------TECHNICAL SKILLS-----------
+\section{Technical Skills}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+     \textbf{Languages}{: Python, C++, JavaScript, SQL} \\
+     \textbf{Frameworks}{: React, Node.js, FastAPI, PyTorch} \\
+     \textbf{Developer Tools}{: Git, Docker, GitHub Actions, Redis}
+    }}
+ \end{itemize}
+
+
+\end{document}

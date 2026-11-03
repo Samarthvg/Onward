@@ -133,8 +133,10 @@ Linux the menu opens the download page. The extension updates itself in Firefox.
   signed in once), your own OpenAI or Anthropic API key, or none: tailoring then gives you a prompt to paste
   into any chat. Searching, scoring and filling forms never need AI.
 - **Tailored PDFs:** Onward uses an installed TeX (MiKTeX, TeX Live, MacTeX), or offers to download
-  [Tectonic](https://tectonic-typesetting.github.io) for you. A `.tex` resume keeps its own layout; a PDF,
-  Word (`.docx`) or text resume becomes an outline you check once, laid out in a plain `.tex`.
+  [Tectonic](https://tectonic-typesetting.github.io) for you. A `.tex` resume keeps its own layout, whether
+  its bullets are plain `\item`s or commands it defines, as in Jake's Resume (`\resumeItem`,
+  `\resumeSubheading`); a PDF, Word (`.docx`) or text resume becomes an outline you check once, laid out in a
+  plain `.tex`.
 
 ## Using it
 

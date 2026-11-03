@@ -148,7 +148,7 @@ def from_sheet(tex: str) -> bool:
 # --------------------------------------------------------------------------
 # Drawing entries in the resume's own pattern
 
-DASH = r"\s+(?:-{1,3}|–|—)\s+"
+DASH = rt.PART_DASH
 
 
 def same_name(a: str, b: str) -> bool:
@@ -172,8 +172,17 @@ def _sections(tex: str) -> list[tuple[re.Match, int]]:
 
 
 def _name_of(res: rt.Resume, e: rt.Entry) -> str:
-    rows = rt._rows(rt._entry_header(res, e))
+    header = rt._entry_header(res, e) if e.items is None else res.tex[e.span.start:e.items.start]
+    parts, is_call = rt.header_parts(header)
+    if is_call:
+        return _fields(parts, e.kind).name
+    rows = rt._rows(header)
     return rt._name_and_place(rows[0][0])[0] if rows else ""
+
+
+def _fields(parts: list[str], kind: str) -> Fact:
+    """A header's parts as a Fact, told apart by how they read (rt.header_fields)."""
+    return Fact(section="", **rt.header_fields(parts, kind))
 
 
 def _date_in(cell: str) -> str:
@@ -303,7 +312,7 @@ def _fill_by_values(head: str, f: Fact, kind: str, budget: int = 0) -> str | Non
     cells = ri.header_cells(head)
     if not cells:
         return None
-    own = _header("Projects" if kind == "project" else "Work Experience", " | ".join(cells))
+    own = _fields(cells, kind)
     reps: list[tuple[int, int, str]] = []
     # Dates written with the resume's own dash ("Jan 2024 -- May 2026" or "Jan 2024 - May 2026").
     dash = " – " if re.search(r"–|—", own.dates) else " - "
@@ -338,24 +347,38 @@ def _fill_by_values(head: str, f: Fact, kind: str, budget: int = 0) -> str | Non
     return out
 
 
-def _items(items: str, f: Fact) -> str:
-    """The pattern's bullet list with the fact's bullets in it."""
-    first = re.search(r"\\item\b", items)
-    prefix = items[:first.start()] if first else "\\begin{itemize}\n  "
-    indent = prefix[prefix.rfind("\n") + 1:] if "\n" in prefix else "  "
-    head = prefix[:len(prefix) - len(indent)] if "\n" in prefix else prefix + "\n"
-    end = items.rfind("\\end{itemize}")
-    close_indent = items[items.rfind("\n", 0, end) + 1:end] if end > 0 else ""
-    lines = [indent + t for t in f.tags] + [f"{indent}\\item {ri.esc(b)} {MARK}" for b in f.bullets]
-    return head + "\n".join(lines) + "\n" + close_indent + "\\end{itemize}"
+def _bullet_form(res: rt.Resume, e: rt.Entry) -> tuple[str, str, str]:
+    """How the entry writes a bullet: what comes before its text ("\\item " or
+    Jake's "\\resumeItem{"), what after ("" or "}"), and the indent of its line."""
+    b = e.bullets[0]
+    line = res.tex.rfind("\n", 0, b.whole.start) + 1
+    indent = res.tex[line:b.whole.start]
+    return res.tex[b.whole.start:b.span.start], res.tex[b.span.end:b.whole.end], indent if not indent.strip() else "  "
 
 
-def _plain_entry(f: Fact) -> str:
-    """An entry in the built-in layout, for a resume whose own pattern can't be followed."""
+def _bullet_lines(res: rt.Resume, e: rt.Entry, f: Fact) -> list[str]:
+    before, after, indent = _bullet_form(res, e)
+    return [indent + t for t in f.tags] + [f"{indent}{before}{ri.esc(b)}{after} {MARK}" for b in f.bullets]
+
+
+def _items(res: rt.Resume, e: rt.Entry, f: Fact) -> str:
+    """The pattern entry's bullet list, opened and closed as it is, holding the fact's bullets."""
+    tex = res.tex
+    first, last = e.bullets[0].whole, e.bullets[-1].whole
+    opened = tex[e.items.start:tex.rfind("\n", 0, first.start) + 1]
+    closed = tex[tex.find("\n", last.end) if tex.find("\n", last.end, e.items.end) >= 0 else last.end:e.items.end]
+    return opened + "\n".join(_bullet_lines(res, e, f)) + closed
+
+
+def _plain_entry(res: rt.Resume, pattern: rt.Entry | None, f: Fact) -> str:
+    """An entry in the built-in layout, for a resume whose own header pattern
+    can't be followed; its bullets still in the resume's own list."""
     head = rf"\textbf{{{ri.esc(f.name)}}}" + (f" - {ri.esc(f.place)}" if f.place else "") \
         + (f", {ri.esc(f.title)}" if f.title else "") + (rf" | \textit{{{ri.esc(f.tools)}}}" if f.tools else "") \
         + (rf" \hfill {ri.esc(f.dates)}" if f.dates else "")
-    return head + "\n" + _items("\\begin{itemize}\n  \\item x\n\\end{itemize}", f)
+    if pattern is not None and pattern.items is not None and pattern.bullets:
+        return head + "\n" + _items(res, pattern, f)
+    return head + "\n\\begin{itemize}\n" + "\n".join(f"  \\item {ri.esc(b)} {MARK}" for b in f.bullets) + "\n\\end{itemize}"
 
 
 def _budget(res: rt.Resume, kind: str) -> int:
@@ -382,18 +405,21 @@ def _lead(res: rt.Resume, e: rt.Entry) -> str:
 def _draw(res: rt.Resume, pattern: rt.Entry | None, f: Fact, lead: str = "") -> str:
     """The fact as an entry: the pattern's LaTeX with the fact's fields and
     bullets, after `lead`, the spacing that goes between entries here."""
-    if pattern is not None:
-        block = res.tex[pattern.span.start + len(_lead(res, pattern)):pattern.span.end]
-        cut = block.find("\\begin{itemize}")
+    if pattern is not None and pattern.items is not None and pattern.bullets:
+        header = res.tex[pattern.span.start + len(_lead(res, pattern)):pattern.items.start]
         budget = _budget(res, pattern.kind)
-        head = _fill_header(block[:cut], f, budget) if re.search(r"\\textbf\{", block[:cut]) else None
+        # A header that's a command's arguments goes by its values; one in a table
+        # or on a line by where its name, place, title, tools and dates sit.
+        is_call = rt.header_parts(header)[1]
+        head = None if is_call or not re.search(r"\\textbf\{", header) else _fill_header(header, f, budget)
         if head is None:
-            head = _fill_by_values(block[:cut], f, pattern.kind, budget)
+            head = _fill_by_values(header, f, pattern.kind, budget)
         # Nothing of the pattern's own entry may be left in the copy.
-        if head is not None and not (_name_of(res, pattern) and _name_of(res, pattern) in rt.plain(head)
-                                     and _name_of(res, pattern) != f.name):
-            return f"{MARK}\n{lead}{head.rstrip()}\n{_items(block[cut:], f)}"
-    return f"{MARK}\n{lead}{_plain_entry(f)}"
+        own = _name_of(res, pattern)
+        if head is not None and not (own and own in rt.plain(head) and own != f.name):
+            gap = re.search(r"\s*$", header).group(0) or "\n"      # the header's own break before its list
+            return f"{MARK}\n{lead}{head.rstrip()}{gap}{_items(res, pattern, f)}"
+    return f"{MARK}\n{lead}{_plain_entry(res, pattern, f)}"
 
 
 def combine(tex: str, text: str, min_bullets: int = rt.MIN_BULLETS) -> tuple[str, dict]:
@@ -446,16 +472,11 @@ def combine(tex: str, text: str, min_bullets: int = rt.MIN_BULLETS) -> tuple[str
         if sec:
             mine = sorted((e for e in res.entries if in_section(e, *sec)), key=lambda e: e.span.start)
             hit = next((e for e in mine if same_name(_name_of(res, e), f.name)), None)
-            if hit:
-                block = tex[hit.span.start:hit.span.end]
-                end = hit.span.start + block.rfind("\\end{itemize}")
-                line_start = tex.rfind("\n", hit.span.start, end) + 1
-                indent = re.match(r"[ \t]*", tex[line_start:end]).group(0) or "  "
-                inner = re.search(r"\n([ \t]*)\\item\b", block)
-                item_indent = inner.group(1) if inner else indent + "  "
-                lines = "".join(f"{item_indent}{t}\n" for t in f.tags) \
-                    + "".join(f"{item_indent}\\item {ri.esc(b)} {MARK}\n" for b in f.bullets)
-                inserts.setdefault(line_start, []).append(lines)
+            if hit and hit.bullets:
+                last = hit.bullets[-1].whole.end
+                line_end = tex.find("\n", last, hit.items.end)
+                at = line_end if line_end >= 0 else last
+                inserts.setdefault(at, []).append("".join("\n" + line for line in _bullet_lines(res, hit, f)))
                 report["bullets"][_name_of(res, hit)] = report["bullets"].get(_name_of(res, hit), 0) + len(f.bullets)
                 continue
         # Drawn in all the same: tailoring leaves it out (tailor.bullet_limits).
