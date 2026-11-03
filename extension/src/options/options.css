@@ -1,42 +1,47 @@
+/* The dashboard's two worlds: the ledger in light, the terminal in dark. */
 :root {
-  --bg: #f5ecdd; --surface: #fffaf3; --surface-2: #fbf3e7; --text: #2b1b14; --muted: #6b5646;
-  --line: #e7d9c5; --accent: #a24a1a; --accent-ink: #ffffff; --accent-soft: #f6e2cc;
-  --warn: #a3261c; --warn-soft: #f8e0d9;
+  --bg: #f2f4f7; --surface: #ffffff; --surface-2: #ffffff; --text: #0a0a0a; --muted: #5d636e;
+  --line: #e3e6ea; --control: #d3d7dd; --accent: #141414; --accent-ink: #ffffff; --accent-soft: #eceef1; --focus: #1d5fbf;
+  --warn: #c4242a; --warn-soft: #ffedea; --ok: #2e7d32; --radius: 8px; --radius-ctl: 6px;
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #150c0c; --surface: #1f1512; --surface-2: #281c17; --text: #f2e7d9; --muted: #b9a594;
-    --line: #3a2a22; --accent: #e3a467; --accent-ink: #1d0f08; --accent-soft: #3d2817;
-    --warn: #ff9c87; --warn-soft: #3d1d18;
+    --bg: #171719; --surface: #131217; --surface-2: #0f0e12; --text: #ffffff; --muted: #8e9096;
+    --line: #252528; --control: #3a3a3e; --accent: #ffffff; --accent-ink: #000000; --accent-soft: #212023; --focus: #4a8ad6;
+    --warn: #ef6b82; --warn-soft: #2c1a20; --ok: #5fc39c; --radius: 6px; --radius-ctl: 999px;
+    color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #150c0c; --surface: #1f1512; --surface-2: #281c17; --text: #f2e7d9; --muted: #b9a594;
-  --line: #3a2a22; --accent: #e3a467; --accent-ink: #1d0f08; --accent-soft: #3d2817;
-  --warn: #ff9c87; --warn-soft: #3d1d18;
+  --bg: #171719; --surface: #131217; --surface-2: #0f0e12; --text: #ffffff; --muted: #8e9096;
+  --line: #252528; --control: #3a3a3e; --accent: #ffffff; --accent-ink: #000000; --accent-soft: #212023; --focus: #4a8ad6;
+  --warn: #ef6b82; --warn-soft: #2c1a20; --ok: #5fc39c; --radius: 6px; --radius-ctl: 999px;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; }
+::selection { background: var(--focus); color: #fff; }
 main { max-width: 860px; margin: 0 auto; padding: 28px 16px 64px; }
 header { position: relative; margin-bottom: 8px; }
 h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
 .lede { margin: 0; color: var(--muted); max-width: 64ch; }
-.saved { position: absolute; top: 4px; right: 0; font-size: 13px; color: var(--accent); }
-section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 16px; margin-top: 14px; }
+.saved { position: absolute; top: 4px; right: 0; font-size: 13px; color: var(--ok); }
+section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px 16px; margin-top: 14px; }
 h2 { font-size: 15px; margin: 0 0 6px; }
 .count { color: var(--muted); font-weight: 400; font-size: 13px; }
 .hint { color: var(--muted); font-size: 13px; margin: 0 0 10px; max-width: 72ch; }
 .hint:empty { display: none; }
 .muted { color: var(--muted); font-size: 13px; }
 input[type=text], input[type=email], input[type=tel], input[type=url], input[type=search], select, textarea {
-  font: inherit; font-size: 14px; color: var(--text); background: var(--surface-2); border: 1px solid var(--line);
-  border-radius: 7px; padding: 6px 8px; width: 100%; min-width: 0;
+  font: inherit; font-size: 14px; color: var(--text); background: var(--surface-2); border: 1px solid var(--control);
+  border-radius: 6px; padding: 6px 8px; width: 100%; min-width: 0;
 }
 textarea { resize: vertical; }
-input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 button, a.btn {
-  font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--surface); color: var(--text); display: inline-flex; align-items: center; gap: 6px;
+  font: inherit; font-size: 13px; padding: 6px 12px; border-radius: var(--radius-ctl); cursor: pointer;
+  border: 1px solid var(--control); background: var(--surface); color: var(--text); display: inline-flex; align-items: center; gap: 6px;
 }
 button:hover, a.btn:hover { border-color: var(--muted); }
 a.btn { text-decoration: none; }
@@ -47,7 +52,7 @@ button.danger { color: var(--warn); }
 .row input[type=search] { flex: 1 1 260px; }
 .check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; margin: 8px 0 0; }
 .check input { margin-top: 3px; }
-.banner { border-radius: 10px; padding: 10px 14px; margin-top: 14px; font-size: 14px; }
+.banner { border-radius: var(--radius); padding: 10px 14px; margin-top: 14px; font-size: 14px; }
 .banner.warn { background: var(--warn-soft); color: var(--warn); }
 .banner button { margin-left: 8px; }
 .mem { list-style: none; margin: 0; padding: 0; }
