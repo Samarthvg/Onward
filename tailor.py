@@ -52,23 +52,39 @@ def target_pages() -> int:
     return _tailoring("target_pages")
 
 
+def min_bullets() -> int:
+    return _tailoring("min_bullets")
+
+
+def bullet_limits(res: rt.Resume) -> tuple[int, dict[str, int]]:
+    """The fewest bullets a tailored entry shows (Settings) and the most, by
+    kind: what the resume's own entries of that kind show at most, so a
+    tailored version is as full as the resume it comes from, within
+    rt.MOST_BULLETS and never under the fewest."""
+    low = min_bullets()
+    own: dict[str, int] = {}
+    for e in res.entries:
+        if not e.fact and e.kind in ("experience", "project"):
+            own[e.kind] = max(own.get(e.kind, 0), len(e.bullets))
+    other = max(own.values(), default=4)
+    return low, {k: max(low, min(rt.MOST_BULLETS, own.get(k, other))) for k in ("experience", "project")}
+
+
 def strictness() -> str:
     return _tailoring("strictness")
 
-
-MAX_TRIM_STEPS = 15
 
 INSTRUCTIONS = """You tailor a software engineer's resume to one job description by proposing edits to numbered pieces of the resume. Your output is applied by a program and every edit is checked, so follow the rules exactly.
 
 Rules
 1. Truthfulness comes first. A skill may appear in an entry's bullets or tech line only if it is in that entry's VERIFIED SKILLS list. Skills-section rows may use only the VERIFIED INVENTORY. If the job wants something the resume doesn't support, report it as "missing" in jd_keywords and do not add it anywhere.
 2. Never add or change numbers, metrics, company names, job titles, dates or URLs.
-3. Keep what each bullet says the person did: the same work, scope, results and tools. Within that, you may rephrase a bullet freely: restructure the sentence, lead with the part that matters most for this job, pick different verbs, use the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs"), and name a verified skill for that entry explicitly.
+3. Keep what each bullet says the person did: the same work, scope, results and tools. Within that, you may rephrase a bullet freely: restructure the sentence, lead with the part that matters most for this job, pick different verbs, use the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs"), and name a verified skill for that entry explicitly. Shape each bullet you rewrite like a one-line STAR answer: the action, how it was done, then the result, with a result only where the original states one.
 4. Keep LaTeX exactly as it appears in the original bullet: \\textbf{...}, \\textit{...} and \\href{url}{text} stay as they are. Use no other LaTeX commands. Write & % $ # _ as \\& \\% \\$ \\# \\_.
 5. A rewritten bullet may grow a little, at most about a third longer than the original (one printed line is about 110 characters); shorter is better. Rewrite any bullet a rephrase makes clearly better for this job; leave the rest out of bullet_rewrites.
 6. tech_lines and skills_rows are comma-separated lists of the person's own tool names. Keep every existing item, spelled exactly as written (e.g. keep "React.js", "NumPy", "PouchDB"). You may only reorder items so the job's tools come first, and append a few items the job asks for that are in that entry's VERIFIED SKILLS (tech lines) or the VERIFIED INVENTORY (skills rows). Never replace a tool with a category name such as "Machine Learning", "Frontend" or "Full Stack". Only include a row or tech line in your output if you changed it.
 7. bullet_priority lists every bullet ID, most relevant to this job first. Projects are printed in this order too (by their most relevant bullet); work experience stays in date order.
-8. The result must fit on one page. Put the least relevant bullets in drop_bullets and, if needed, the least relevant projects in drop_entries. Never drop work experience entries. Keep at least two bullets per entry.
+8. The result must fit on one page, with at most four bullets per job and three per project; rank every bullet in bullet_priority, most relevant to this job first, since that decides which stay. Entries and bullets marked (fact sheet) are the applicant's own further work, as true as the rest: rank them above the resume's own where they fit this job better, below where they don't. Put the least relevant bullets in drop_bullets and, if needed, the least relevant projects in drop_entries. Never drop work experience entries. Keep at least three bullets per entry (all of them when it has fewer): drop a whole project rather than leave one with two.
 9. jd_keywords lists the 8-15 most important skills or terms in the job description, each with status "added" (you worked it in), "already_present", or "missing" (the resume has no verified evidence), and a short note.
 10. summary: two sentences on what you emphasized and why.
 11. Write like the person, not like a model. Match how their own bullets read: their kind of verbs, sentence length and punctuation, plain and specific. Prefer their own words to new ones. No em dashes. No clause tacked on to sound like impact (", ensuring ...", ", enabling ...", ", driving ..."). No stock resume words such as "spearheaded", "leveraged", "utilized", "orchestrated", "robust", "seamless", "cutting-edge", "innovative", "comprehensive", "pivotal", "fostered", "facilitated". Don't start bullets next to each other with the same verb. Edits that read as machine-written are sent back."""
@@ -109,7 +125,7 @@ SCHEMA = {
 # ones. The truthfulness rules (1, 2, 6) are the same at every level, and
 # resume_tex checks them in code.
 REWORD_RULES = (
-    """3. Keep what each bullet says the person did: the same work, scope, results and tools. Within that, you may rephrase a bullet freely: restructure the sentence, lead with the part that matters most for this job, pick different verbs, use the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs"), and name a verified skill for that entry explicitly.""",
+    """3. Keep what each bullet says the person did: the same work, scope, results and tools. Within that, you may rephrase a bullet freely: restructure the sentence, lead with the part that matters most for this job, pick different verbs, use the job description's terminology for things the bullet already describes (for example "REST endpoints" -> "RESTful APIs"), and name a verified skill for that entry explicitly. Shape each bullet you rewrite like a one-line STAR answer: the action, how it was done, then the result, with a result only where the original states one.""",
     """5. A rewritten bullet may grow a little, at most about a third longer than the original (one printed line is about 110 characters); shorter is better. Rewrite any bullet a rephrase makes clearly better for this job; leave the rest out of bullet_rewrites.""",
 )
 assert all(r in INSTRUCTIONS for r in REWORD_RULES)
@@ -124,7 +140,7 @@ NONE_RULES = (
 # facts from the rest of its entry (resume_tex checks it against the whole
 # entry); the truthfulness rules don't change.
 REWRITE_RULES = (
-    """3. Each bullet must stay true to its entry: everything it says has to come from that entry's own bullets, tech line or verified skills. Within that, you may rewrite a bullet from scratch: say what matters most for this job, combine details from the entry's other bullets (and put the bullet you took them from in drop_bullets if it would repeat them), pick a different angle on the same work, and use the job description's terminology for things the entry already describes. Never move work, tools or results from one entry to another.""",
+    """3. Each bullet must stay true to its entry: everything it says has to come from that entry's own bullets, tech line or verified skills. Within that, you may rewrite a bullet from scratch: say what matters most for this job, combine details from the entry's other bullets (and put the bullet you took them from in drop_bullets if it would repeat them), pick a different angle on the same work, and use the job description's terminology for things the entry already describes. Shape each bullet like a one-line STAR answer: the action, how it was done, then the result, with a result only where the entry states one. Never move work, tools or results from one entry to another.""",
     """5. A rewritten bullet may be up to about two thirds longer than the original (one printed line is about 110 characters), but a bullet that ends a few words into a new line is sent back, so aim for one or two full lines. Rewrite every bullet you can make clearly better for this job; leave the rest out of bullet_rewrites.""",
 )
 LEVEL_RULES = {"none": NONE_RULES, "rewrite": REWRITE_RULES}
@@ -846,7 +862,7 @@ def verify_keywords(claimed: list[dict], master_tex: str, final_tex: str) -> lis
 # items they added, last first; bullets are rewritten once to a length that
 # ends near a line's end; whatever still spills keeps the master's wording.
 
-MIN_FILL = 0.6          # the least share of the width a wrapped piece's last line may hold
+MIN_FILL = 0.7          # the least share of the width a wrapped piece's last line may hold
 SPILLED = "would leave a few words on a line of their own"
 
 REFIT_RULES = """You adjust resume bullets so each one ends close to the end of a printed line, instead of spilling a few words onto a line of their own.
@@ -1049,6 +1065,122 @@ def _slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_")[:40] or "job"
 
 
+SPILLED_OUT = "would leave a word or two on a line of its own, and its entry has others"
+FILLED = "reworded to end near the end of its line"
+
+
+def cap_bullets(res: rt.Resume, state: dict) -> set[str]:
+    """Drops the bullets beyond the most an entry of its kind shows
+    (state["max_bullets"]), the least relevant first (the model's suggestions,
+    then by rank; at equal rank the fact sheet's before the resume's own, then
+    the later ones). Returns their ids."""
+    rank, out = state["rank"], set()
+    for e in res.entries:
+        cap = state["max_bullets"].get(e.kind)
+        kept = [b for b in e.bullets if b.id not in state["drop_bullets"]]
+        if not cap or e.id in state["drop_entries"] or len(kept) <= cap:
+            continue
+        best_first = sorted(kept, key=lambda b: (b.id in state["suggest_bullets"], rank.get(b.id, 999),
+                                                 b.fact, e.bullets.index(b)))
+        out |= {b.id for b in best_first[cap:]}
+    state["drop_bullets"] |= out
+    return out
+
+
+def fit_page_lines(res: rt.Resume, state: dict, changes: list[rt.Change], layout: dict, measure,
+                   backend: str, jd: str, rules: Rules = Rules()) -> tuple[bool, float | None]:
+    """Every bullet on the page held to the rule edits are: its last line at
+    least MIN_FILL full, not a word or two on a line of its own. Each that
+    falls short is refitted like an edit (same checks), unless the strictness
+    keeps bullets' words; one that still does keeps the resume's wording, or,
+    from the fact sheet, is left out when its entry keeps the fewest others.
+    Returns whether any was left out, and what the model call cost.
+    `measure()` compiles into `layout`."""
+    def spilling() -> dict[str, rt.Fit]:
+        out = {}
+        for e in res.entries:
+            if e.id in state["drop_entries"]:
+                continue
+            for b in e.bullets:
+                fit = rt.line_fit(layout, b.id)
+                if b.id not in state["drop_bullets"] and fit and fit.lines > 1 and fit.fill < MIN_FILL:
+                    out[b.id] = fit
+        return out
+
+    bad = {bid: fit for bid, fit in spilling().items() if bid not in state["rewrites"]}
+    if not bad:
+        return False, None
+    new, cost = {}, None
+    if backend != "manual" and rules.level != "none":
+        for bid in bad:
+            state["rewrites"][bid] = res.bullet(bid)[1].tex
+        try:
+            new, cost = refit_bullets(res, state, bad, backend, jd, rules)
+        except BackendError:
+            new = {}
+        for bid in bad:
+            state["rewrites"].pop(bid)
+    for bid, text in new.items():
+        e, b = res.bullet(bid)
+        if rt.plain(text) != rt.plain(b.tex):
+            state["rewrites"][bid] = text
+            changes.append(rt.Change("bullet", bid, e.title, rt.plain(b.tex), rt.plain(text), fact=b.fact, reason=FILLED))
+    measure()
+    left_out = False
+    for bid in spilling():
+        if bid not in bad:
+            continue
+        e, b = res.bullet(bid)
+        state["rewrites"].pop(bid, None)
+        changes[:] = [c for c in changes if not (c.target == bid and c.reason == FILLED)]
+        if b.fact and sum(x.id not in state["drop_bullets"] for x in e.bullets) > state["min_bullets"]:
+            state["drop_bullets"].add(bid)
+            state.setdefault("spilled", set()).add(bid)
+            left_out = True
+    measure()
+    return left_out, cost
+
+
+def trim_order(res: rt.Resume, state: dict) -> list[tuple[str, str]]:
+    """Everything that may go to fit the page, in the order it goes, as
+    ("bullet", id) and ("entry", id). The model's suggestions go first, then
+    the least relevant: a bullet while its entry keeps more than the fewest, or a
+    whole project (course projects included) once even its best bullet ranks
+    no higher than the weakest bullet left, so a project unrelated to the job
+    goes before a related entry loses its detail. Unranked pieces count as the
+    least relevant, the later in the resume the sooner; at equal rank the fact
+    sheet's pieces go before the resume's own. Work experience keeps every
+    entry; every entry keeps the fewest it may show (all it has, when fewer); other
+    sections stay as they are."""
+    rank, low = state["rank"], state.get("min_bullets", rt.MIN_BULLETS)
+    pos = {b.id: i for i, b in enumerate(b for e in res.entries for b in e.bullets)}
+    fact = {b.id: b.fact for e in res.entries for b in e.bullets} | {e.id: e.fact for e in res.entries}
+    suggested_b, suggested_e = set(state["suggest_bullets"]), set(state["suggest_entries"])
+    kept = {e.id: [b.id for b in e.bullets if b.id not in state["drop_bullets"]]
+            for e in res.entries if e.id not in state["drop_entries"] and e.kind in ("experience", "project")}
+    kinds = {e.id: e.kind for e in res.entries}
+    owner = {b.id: e.id for e in res.entries for b in e.bullets}
+    # Larger goes first: suggested, then by rank (999 unranked), the fact sheet's, then later in the resume.
+    weight = lambda bid: (bid in suggested_b, rank.get(bid, 999), fact[bid], pos[bid])
+    order = []
+    while True:
+        bullets = [bid for eid, bids in kept.items() if len(bids) > low for bid in bids]
+        projects = [eid for eid in kept if kinds[eid] == "project"]
+        bullet = max(bullets, key=weight, default=None)
+        # A project weighs as its best bullet, or as suggested when the model said so.
+        entry_weight = lambda eid: (eid in suggested_e, *min(
+            ((rank.get(b, 999), fact[eid], pos[b]) for b in kept[eid]), default=(999, fact[eid], 0)))
+        entry = max(projects, key=entry_weight, default=None)
+        if entry is not None and (bullet is None or entry_weight(entry) >= weight(bullet)):
+            order.append(("entry", entry))
+            del kept[entry]
+        elif bullet is not None:
+            order.append(("bullet", bullet))
+            kept[owner[bullet]].remove(bullet)
+        else:
+            return order
+
+
 def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
            manual_answer: str | None = None, level: str | None = None, confirmed=()) -> dict:
     """`level` is the strictness (config.STRICTNESS), the user's setting by default.
@@ -1085,7 +1217,7 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
     marks, last = [True], [0]
 
     def build(measure: bool) -> str:
-        tex = rt.apply(master_tex, rt.build_spans(res, {**state, "measure": measure}))
+        tex = rt.tidy(rt.apply(master_tex, rt.build_spans(res, {**state, "measure": measure})))
         return rt.with_marks(tex) if measure else tex
 
     def compile_now(out_pdf: Path | None = None) -> int:
@@ -1116,34 +1248,91 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
         cost = (cost or 0) + refit
     pages = last[0]
 
-    # Trim only while the PDF runs long. Order: the model's suggested bullets,
-    # then the least relevant bullet (entries keep 2), then suggested projects,
-    # then the least relevant project. Work experience is never removed.
-    rank = state["rank"]
-    for _ in range(MAX_TRIM_STEPS):
+    # Bullets per entry, whatever the page: no more than the resume's own entries
+    # of its kind show, and a fact sheet entry with fewer than the fewest stays out.
+    state["min_bullets"], state["max_bullets"] = bullet_limits(res)
+    short = {e.id for e in res.entries if e.fact and len(e.bullets) < state["min_bullets"]}
+    state["drop_entries"] |= short
+    capped = cap_bullets(res, state)
+    if capped or short:
+        compile_now()
+
+    def fit_page() -> None:
+        """Trims while the PDF runs long: the shortest start of trim_order that
+        fits, found by halving (removing more never adds a page), so a long
+        master costs a handful of compiles rather than one per bullet. When
+        even everything that may go leaves it long, it aims for the fewest
+        pages it can reach, keeping as much as fits in them."""
+        pages = last[0]
         if pages <= target_pages():
-            break
-        droppable = []
-        for e in res.entries:
-            if e.id in state["drop_entries"]:
-                continue
-            kept = [b for b in e.bullets if b.id not in state["drop_bullets"]]
-            if len(kept) > 2:
-                droppable += kept
-        pick = next((bid for bid in state["suggest_bullets"]
-                     if bid in {b.id for b in droppable}), None)
-        if pick is None and droppable:
-            pick = max(droppable, key=lambda b: rank.get(b.id, 999)).id
-        if pick is not None:
-            state["drop_bullets"].add(pick)
+            return
+        order = trim_order(res, state)
+        if not order:
+            return
+        base = (set(state["drop_bullets"]), set(state["drop_entries"]))
+        at = [0]
+
+        def upto(n: int) -> int:
+            if at[0] == n:
+                return last[0]
+            at[0] = n
+            state["drop_bullets"], state["drop_entries"] = set(base[0]), set(base[1])
+            for kind, xid in order[:n]:
+                state["drop_bullets" if kind == "bullet" else "drop_entries"].add(xid)
+            return compile_now()
+
+        lo, hi = 0, len(order)
+        goal = max(target_pages(), upto(hi))
+        if goal < pages:
+            while hi - lo > 1:
+                mid = (lo + hi) // 2
+                if upto(mid) <= goal:
+                    hi = mid
+                else:
+                    lo = mid
         else:
-            projects = [e for e in res.entries if e.kind == "project" and e.id not in state["drop_entries"]]
-            if not projects:
+            hi = 0
+        upto(hi)
+        trimmed.extend(order[:hi])
+
+    def refill(misses: int = 4) -> None:
+        """Puts back what was trimmed while the page still holds it, the most
+        relevant first, until `misses` in a row don't fit: the halving stops at
+        the first cut that fits, and refitted lines free room too, so a smaller
+        piece further on often still has a place. Bullets come back only up to
+        what their entry may show."""
+        goal = max(target_pages(), last[0])
+        dirty = False
+        for kind, xid in reversed(trimmed):
+            if misses == 0:
                 break
-            victim = next((e for eid in state["suggest_entries"] for e in projects if e.id == eid), None) \
-                or max(projects, key=lambda e: min((rank.get(b.id, 999) for b in e.bullets), default=999))
-            state["drop_entries"].add(victim.id)
-        pages = compile_now()
+            key = "drop_bullets" if kind == "bullet" else "drop_entries"
+            if xid not in state[key]:
+                continue
+            if kind == "bullet":
+                e, _ = res.bullet(xid)
+                shown = sum(b.id not in state["drop_bullets"] for b in e.bullets)
+                if e.id in state["drop_entries"] or shown >= state["max_bullets"].get(e.kind, shown + 1):
+                    continue
+            state[key].discard(xid)
+            if compile_now() <= goal:
+                dirty = False
+                continue
+            state[key].add(xid)
+            dirty, misses = True, misses - 1
+        if dirty:
+            compile_now()
+
+    trimmed: list[tuple[str, str]] = []
+    fit_page()
+    # Every bullet on the page ends near the end of a line, as edits are made to;
+    # leaving a fact sheet one out can free room, so the page is fitted again after.
+    spill, refit = fit_page_lines(res, state, changes, layout, compile_now, backend, jd, rules)
+    if refit is not None:
+        cost = (cost or 0) + refit
+    if spill:
+        fit_page()
+    refill()
 
     name = f"{_slug(job.get('company', ''))}_{_slug(job.get('title', ''))}_{time.strftime('%Y%m%d-%H%M%S')}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1151,25 +1340,40 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
     pdf_path = out_dir / f"{name}.pdf"
     tex = build(False)
     tex_path.write_text(tex, encoding="utf-8")
-    compile_now(pdf_path)
+    pages = compile_now(pdf_path)
 
     # Drop and reorder entries are derived from the final state so the log
     # matches the PDF exactly.
     final_changes = [c for c in changes if c.kind in ("bullet", "tech", "skills")]
     log: list[rt.Change] = []
     rt.build_spans(res, state, log)
+    facts_of = {b.id for e in res.entries for b in e.bullets if b.fact} | {e.id for e in res.entries if e.fact}
+    spilled_ids = state.get("spilled", set())
     for c in log:
         if c.kind == "drop_bullet":
-            c.reason = "trimmed to fit one page"
+            c.fact = c.target in facts_of
+            c.reason = (SPILLED_OUT if c.target in spilled_ids
+                        else f"kept the {state['max_bullets'][res.bullet(c.target)[0].kind]} most relevant for this job"
+                        if c.target in capped else "trimmed to fit one page")
     final_changes += [rt.Change("drop_entry", eid, next(e.title for e in res.entries if e.id == eid),
-                                reason="trimmed to fit one page")
+                                reason="trimmed to fit one page", fact=eid in facts_of)
                       for eid in sorted(state["drop_entries"])] + log
+    # What the fact sheet put on the page: its entries, and its bullets in the resume's own entries.
+    for e in res.entries:
+        if e.id in state["drop_entries"]:
+            continue
+        if e.fact:
+            final_changes.append(rt.Change("fact_entry", e.id, e.title, fact=True))
+        else:
+            final_changes += [rt.Change("fact_bullet", b.id, e.title, before=rt.plain(b.tex), fact=True)
+                              for b in e.bullets if b.fact and b.id not in state["drop_bullets"]]
 
     return {
         "backend": backend,
         "model": model,
         "seconds": round(time.time() - started, 1),
         "pages": pages,
+        "target_pages": target_pages(),
         "tex": tex_path.name,
         "pdf": pdf_path.name,
         "summary": raw.get("summary", ""),

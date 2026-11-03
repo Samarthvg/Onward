@@ -527,9 +527,31 @@ class ResumeImportTests(TmpHome):
         with self.assertRaises(ValueError):
             resume_import.outline_to_tex("Jane\n# Experience\n## Intern\n")
 
-    def test_word_files_are_the_documented_next_reader(self):
-        self.assertIsNone(resume_import.READERS["docx"])
+    def test_word_files_are_read_in_the_browser(self):
+        self.assertEqual(resume_import.READERS["docx"], "browser")
         self.assertEqual(resume_import.READERS["pdf"], "browser")
+
+    def test_a_tex_master_becomes_an_outline_with_everything_in_it(self):
+        tex = (ROOT / "tests" / "fixtures" / "history_master.tex").read_text(encoding="utf-8")
+        before = rt.parse(tex)
+        outline = resume_import.tex_to_outline(tex)
+        self.assertIn("## Example Labs - Dallas, TX | Full Stack Developer Intern | Vue.js, Node.js, PouchDB, REST "
+                      "| Jul 2025 - Jan 2026 | https://example-labs.test/", outline,
+                      "dates after the rest, where the layout puts them flush right, then the link")
+        self.assertIn("Languages: Python, Java, TypeScript, JavaScript, SQL", outline)
+        self.assertIn("Courses: Algorithms, Database Systems, Machine Learning\n", outline, "a table's rows are lines")
+        self.assertNotIn("@{", outline)
+        after = rt.parse(resume_import.outline_to_tex(outline))
+        self.assertEqual([len(e.bullets) for e in after.entries], [len(e.bullets) for e in before.entries])
+        self.assertEqual([r.label for r in after.skill_rows], [r.label for r in before.skill_rows])
+
+    def test_hidden_skill_tags_survive_the_outline(self):
+        tex = resume_import.outline_to_tex("Jane Doe\n# Experience\n## Engineer | Acme | 2024\n% skills: Docker, Redis\n"
+                                           "- Built the billing API.\n- Ran the on-call rotation.\n")
+        res = rt.parse(tex)
+        self.assertLessEqual({"Docker", "Redis"}, rt.tag_skills(tex[res.entries[0].span.start:res.entries[0].span.end], "skills"))
+        self.assertNotIn("Docker", rt.plain(tex), "they don't print")
+        self.assertIn("% skills: Docker, Redis", resume_import.tex_to_outline(tex))
 
     @unittest.skipUnless(texengine.pick("pdflatex"), "needs a TeX engine")
     def test_converted_resume_compiles(self):
@@ -814,6 +836,26 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(code, 200, data)
         self.assertEqual(data["pages"], 1)
         self.assertTrue((self.home / "resume" / "master.tex").exists())
+
+        # The fact sheet adds to it: saved once it draws into the resume and compiles.
+        self.assertEqual(self.call("/api/facts")[1]["text"], "")
+        sheet = "# Projects\n## Edge Detector | C++, OpenCV | 2025\n- Wrote Sobel filters in C++ with OpenCV.\n"
+        code, data = self.call("/api/facts", {"text": sheet})
+        self.assertEqual(code, 200, data)
+        self.assertEqual(data["entries"], ["Edge Detector"])
+        self.assertEqual(self.call("/api/facts")[1]["text"], sheet)
+        self.assertEqual(self.call("/api/facts", origin=False)[0], 200, "same origin, no Origin header")
+        code, data = self.call("/api/facts", {"text": "# Projects\n## Broken | 2025\n- Uses \\undefinedcommand here.\n"})
+        self.assertEqual(code, 200, "plain text: a backslash is printed, not run")
+        self.assertEqual(self.call("/api/undo", {"id": data["undo"]})[0], 200)
+        self.assertEqual(self.call("/api/facts")[1]["text"], sheet, "undo puts the earlier sheet back")
+
+        # A longer resume's extras, for the fact sheet.
+        longer = SAMPLE + "\nPROJECTS\nTurbo Cache  2023\n• Wrote a Redis cache in Go that cut reads by 30% for the reporting service.\n"
+        code, data = self.call("/api/facts/import", {"text": longer})
+        self.assertEqual(code, 200, data)
+        self.assertIn("Turbo Cache", data["text"])
+        self.assertNotIn("Acme Corp", data["text"], "what the resume has stays out")
 
     def test_4_setup_progress_saves_without_rebuilding(self):
         code, data = self.call("/api/settings", {"settings": {"setup": {"step": "role"}}})

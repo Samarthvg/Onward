@@ -29,7 +29,7 @@ It runs on your own computer. Your resume, details and applications stay there; 
 
 ### Fresh postings, with proof
 
-Onward checks about 2,300 companies' own job boards every 30 minutes (Greenhouse, Lever, Ashby, Workday,
+Onward checks about 2,800 companies' own job boards every 30 minutes (Greenhouse, Lever, Ashby, Workday,
 SmartRecruiters, iCIMS, Oracle, Eightfold, and Amazon's, Google's and Microsoft's own sites), and finds more
 each day in public lists of new-grad and internship postings. Each posting shows when the company posted it,
 with a link to the raw record so you can check, how long it has been up, and whether it was reposted. Postings
@@ -38,18 +38,20 @@ older than 30 days are left out (60 for new-grad programs).
 ### Scores you can check
 
 A posting's required and nice-to-have skills are matched word for word against your resume, with your years of
-experience counted. Every score says what you have and what's missing, so you can see why it's 71% and not 90%.
+experience counted. Every score says what you have and what's missing, so you can see why it's 71% and not 90%,
+and which missing keywords would raise it the most.
 
 **Visa signals** come from two places: what the posting itself says ("no sponsorship", "U.S. citizens only",
 "no OPT"), and the company's H-1B approvals from USCIS's H-1B Employer Data Hub, refreshed automatically.
 
-![A posting's details: the skills you have and are missing, where its date comes from, and the company's H-1B approvals](docs/screenshots/details.png)
+![A posting's details: its match, pay and age, the skills you have and are missing, what would raise the score, where its date comes from, and the company's H-1B approvals](docs/screenshots/details.png)
 
 ### Today's picks and the Apply queue
 
 The Apply queue opens on the few best new fits of the day. Behind them it prepares your best matches from the
-last 7 days, newer postings ahead of slightly better older ones, 15 at a time to start: a tailored resume where that helps, and drafted answers for the form's own
-questions, so opening an application is the last step, not the first.
+last 7 days, newer postings ahead of slightly better older ones, 15 at a time to start: a tailored resume where
+that helps, and drafted answers for the form's own questions, so opening an application is the last step, not
+the first.
 
 ### Honest tailoring
 
@@ -60,10 +62,17 @@ Django means Python), plus skills you confirm under Review skills where the job 
 your layout, on one page, with no line left holding a word or two. You see every change, the job keywords
 found in the final PDF, and anything it refused to claim.
 
+Your resume is the reference, and a fact sheet under Settings holds what it has no room for: more projects,
+courses and jobs, and more bullets for entries it has, written as a plain outline. Each tailored version keeps
+your resume's layout and sections and swaps in what fits the job best, each fact sheet entry drawn in the
+pattern of one of your own. An entry shows as many bullets as your resume's own entries of its kind do, and at
+least three (set under Settings); a whole less relevant project goes before an entry drops below that. "Add
+from an older resume" fills the fact sheet with whatever a longer resume has that this one doesn't.
+
 You pick how much each run may change: only reorder and trim, Reword (bullets rephrased in the job's terms),
-or Rewrite (bullets rewritten from scratch from everything that entry says). The apply queue uses your last
-pick. Edits are
-held to your own voice: no em dashes, no "spearheaded" or "leveraged", no ", ensuring ..." tacked on. A bullet
+or Rewrite (bullets rewritten from scratch from everything that entry says). The Apply queue uses your last
+pick. Edits are held to your own voice: no em dashes, no "spearheaded" or "leveraged", no ", ensuring ..." tacked
+on. A bullet
 that reads machine-written gets one fix-up and is left as you wrote it if that fails. The claim checks can be
 turned off in Settings when you'd rather the model name what your work plainly involved. Tailored resumes are named
 `Firstname_Lastname_Company_Resume.pdf`.
@@ -74,8 +83,8 @@ turned off in Settings when you'd rather the model name what your work plainly i
 
 The Onward Autofill extension for Firefox fills Greenhouse, Lever, Ashby and Workday forms from the app: your
 Apply kit details, work history, education and projects, the prepared resume, and the standard questions you've
-answered once. There's nothing to copy into it; it reads the app on this computer. A form for a job the apply
-queue prepared fills itself as it opens, drafted answers included, which you can redraft with a note ("use my
+answered once. There's nothing to copy into it; it reads the app on this computer. A form for a job the
+Apply queue prepared fills itself as it opens, drafted answers included, which you can redraft with a note ("use my
 other project"). On Workday's sign-in and create-account pages it types your email and the one account password you
 saved in the Apply kit (kept in your system's keychain), and you press the button. It never presses Submit, Sign In or
 Create Account, and leaves sponsorship, salary and legal questions to
@@ -93,7 +102,8 @@ Every page follows your system's theme, or the one you pick.
 
 ![All jobs in dark mode, best matches first](docs/screenshots/jobs-dark.png)
 
-<sub>The screenshots use a made-up resume (Testy McTestface) against real postings from the shared feed.</sub>
+<sub>The screenshots use a made-up resume (Testy McTestface) against real postings from the shared feed; the
+autofill panel is shown on a mock Greenhouse form.</sub>
 
 ## Install
 
@@ -123,8 +133,8 @@ Linux the menu opens the download page. The extension updates itself in Firefox.
   signed in once), your own OpenAI or Anthropic API key, or none: tailoring then gives you a prompt to paste
   into any chat. Searching, scoring and filling forms never need AI.
 - **Tailored PDFs:** Onward uses an installed TeX (MiKTeX, TeX Live, MacTeX), or offers to download
-  [Tectonic](https://tectonic-typesetting.github.io) for you. A `.tex` resume keeps its own layout; a PDF or
-  text resume is turned into a plain `.tex` once, for you to check. Word files: save as PDF first.
+  [Tectonic](https://tectonic-typesetting.github.io) for you. A `.tex` resume keeps its own layout; a PDF,
+  Word (`.docx`) or text resume becomes an outline you check once, laid out in a plain `.tex`.
 
 ## Using it
 
@@ -134,7 +144,7 @@ The dashboard has four pages:
   answers ready. **Open application** opens the form, and the extension fills it.
 - **All jobs:** every posting, with filters and a count for each time range.
 - **How it works:** what scores, dates and badges mean.
-- **Settings:** your roles, companies, AI, the apply queue and the app.
+- **Settings:** your roles, companies, AI, the Apply queue and the app.
 
 **Apply kit**, at the top, holds what forms are filled with: your details, the standard questions (work
 authorization, sponsorship, relocation) and the voluntary self-identification answers. The extension reads it

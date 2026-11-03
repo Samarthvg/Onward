@@ -388,6 +388,8 @@ SCHEMA = Obj({
         "backend": Str("chatgpt", choices=TAILOR_BACKENDS),     # the tailor dialog's default
         "draft_backend": Str("chatgpt", choices=DRAFT_BACKENDS),
         "target_pages": Int(1, 1, 3),
+        # The fewest bullets a tailored entry shows; the most comes from the resume itself.
+        "min_bullets": Int(3, 1, 5),
         "strictness": Str("reword", choices=STRICTNESS),     # the last level picked in the Tailor dialog
         # Block edits that name a skill, number or job-only term the master
         # resume doesn't back (resume_tex.check_honesty).

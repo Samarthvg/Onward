@@ -1,21 +1,21 @@
 /* The dashboard's two worlds: the ledger in light, the terminal in dark. */
 :root {
   --bg: #f2f4f7; --surface: #ffffff; --surface-2: #ffffff; --text: #0a0a0a; --muted: #5d636e;
-  --line: #e3e6ea; --control: #d3d7dd; --accent: #141414; --accent-ink: #ffffff; --accent-soft: #eceef1; --focus: #1d5fbf;
+  --line: #e3e6ea; --control: #d3d7dd; --accent: #141414; --accent-ink: #ffffff; --accent-soft: #eceef1; --focus: #475569;
   --warn: #c4242a; --warn-soft: #ffedea; --ok: #2e7d32; --radius: 8px; --radius-ctl: 6px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #171719; --surface: #131217; --surface-2: #0f0e12; --text: #ffffff; --muted: #8e9096;
-    --line: #252528; --control: #3a3a3e; --accent: #ffffff; --accent-ink: #000000; --accent-soft: #212023; --focus: #4a8ad6;
+    --line: #252528; --control: #3a3a3e; --accent: #ffffff; --accent-ink: #000000; --accent-soft: #212023; --focus: #94a3b8;
     --warn: #ef6b82; --warn-soft: #2c1a20; --ok: #5fc39c; --radius: 6px; --radius-ctl: 999px;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #171719; --surface: #131217; --surface-2: #0f0e12; --text: #ffffff; --muted: #8e9096;
-  --line: #252528; --control: #3a3a3e; --accent: #ffffff; --accent-ink: #000000; --accent-soft: #212023; --focus: #4a8ad6;
+  --line: #252528; --control: #3a3a3e; --accent: #ffffff; --accent-ink: #000000; --accent-soft: #212023; --focus: #94a3b8;
   --warn: #ef6b82; --warn-soft: #2c1a20; --ok: #5fc39c; --radius: 6px; --radius-ctl: 999px;
   color-scheme: dark;
 }

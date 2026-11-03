@@ -12,9 +12,9 @@
        the terminal in dark (cards darker than the ground, a white primary). */
     .wrap {
       --bg: #ffffff; --head: #f2f4f7; --text: #0a0a0a; --muted: #5d636e; --line: #e3e6ea; --rule: #eef0f3;
-      --control: #d3d7dd; --hover: #f6f7f9; --primary: #141414; --primary-ink: #ffffff; --focus: #1d5fbf;
-      --chip: #eceef1; --chip-ink: #3b414b; --link: #1d5fbf;
-      --warn: #c4242a; --warn-soft: #ffedea; --caution: #92400e; --caution-soft: #fffbeb; --field: #ffffff;
+      --control: #d3d7dd; --hover: #f6f7f9; --primary: #141414; --primary-ink: #ffffff; --focus: #475569;
+      --chip: #eceef1; --chip-ink: #3b414b; --link: #475569;
+      --warn: #c4242a; --warn-soft: #ffedea; --caution: #3b414b; --caution-soft: #eceef1; --field: #ffffff;
       --radius-ctl: 6px;
       position: fixed; right: 16px; bottom: 16px; z-index: 2147483646;
       font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text);
@@ -22,9 +22,9 @@
     @media (prefers-color-scheme: dark) {
       .wrap {
         --bg: #131217; --head: #171719; --text: #ffffff; --muted: #8e9096; --line: #252528; --rule: #1d1c21;
-        --control: #3a3a3e; --hover: #1c1b20; --primary: #ffffff; --primary-ink: #000000; --focus: #4a8ad6;
-        --chip: #212023; --chip-ink: #c4c5c9; --link: #6ea3e4;
-        --warn: #ef6b82; --warn-soft: #2c1a20; --caution: #d9a441; --caution-soft: #2a2416; --field: #0f0e12;
+        --control: #3a3a3e; --hover: #1c1b20; --primary: #ffffff; --primary-ink: #000000; --focus: #94a3b8;
+        --chip: #212023; --chip-ink: #c4c5c9; --link: #cbd5e1;
+        --warn: #ef6b82; --warn-soft: #2c1a20; --caution: #c4c5c9; --caution-soft: #212023; --field: #0f0e12;
         --radius-ctl: 999px;
       }
     }

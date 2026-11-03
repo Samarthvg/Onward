@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Callable
 
 import config
+import facts
 import kit
 import match
 import notify
@@ -424,7 +425,7 @@ class Preparer:
             def master_of(j: dict) -> rt.Resume:
                 path = self.master_for(j["roles"])
                 if path not in masters:
-                    masters[path] = rt.parse(path.read_text(encoding="utf-8"))
+                    masters[path] = rt.parse(facts.source(path))
                 return masters[path]
             _, skill_w, term_w = corpus
             with conn:
@@ -568,7 +569,7 @@ class Preparer:
                 return "done"
             company, title, jd, apply_url, decision, attempts, drafted, instruction, had, chose, tags = row
             self._update(conn, key, state="working", error="")
-            master = self.master_for(json.loads(tags or "[]")).read_text(encoding="utf-8")
+            master = facts.source(self.master_for(json.loads(tags or "[]")))
             meta = {"company": company, "title": title, "instruction": instruction}
             # Only drafting answers: a resume the user tailored themselves stays.
             tailored_id, choice, notes = had or "", chose or "master", []

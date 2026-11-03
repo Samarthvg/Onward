@@ -39,6 +39,7 @@ import kit
 import prep
 import pricing
 import radar
+import facts
 import resume_import
 import resume_tex as rt
 import scheduler
@@ -53,6 +54,7 @@ DASHBOARD = STORE.path_for("dashboard")
 LOADING_PAGE = (radar.ROOT / "loading.html").read_text(encoding="utf-8")     # while the dashboard is rebuilt
 RESUME_DIR = STORE.path_for("resume_dir")
 MASTER = RESUME_DIR / "master.tex"
+FACTS = RESUME_DIR / facts.FILE
 OUT_DIR = RESUME_DIR / "tailored"
 DB_PATH = STORE.path_for("db")
 LOG_PATH = STORE.path_for("logs_dir") / "server.log"
@@ -260,7 +262,7 @@ def typical_costs() -> dict:
     if not MASTER.exists():
         return {}
     try:
-        tex = MASTER.read_text(encoding="utf-8")
+        tex = facts.source(MASTER)
         job = {"company": "", "title": ""}
         out = {}
         for backend in pricing.API_BACKENDS:
@@ -416,7 +418,7 @@ def kit_payload() -> dict:
         out["resume"] = attached(pdf, resume_file_name(""))
     if MASTER.exists():
         try:
-            out["history"] = rt.history(rt.parse(MASTER.read_text(encoding="utf-8")))
+            out["history"] = rt.history(rt.parse(facts.source(MASTER)))
         except ValueError:
             pass
     return out
@@ -763,7 +765,7 @@ def run_job(jid: str, params: dict) -> None:
 
     update(state="running", started=time.time())
     try:
-        master = Path(params["master"]).read_text(encoding="utf-8")
+        master = facts.source(Path(params["master"]))
         backend = params["backend"]
         meta = {"company": params.get("company", ""), "title": params.get("title", ""),
                 "instruction": params.get("instruction", "")}
@@ -800,7 +802,7 @@ def run_draft(jid: str, params: dict) -> None:
 
     update(state="running", started=time.time())
     try:
-        master = MASTER.read_text(encoding="utf-8")
+        master = facts.source(MASTER)
         job = {"company": params["company"], "title": params["title"]}
         if "questions" in params:
             call = lambda: tailor.answer_questions(master, job, params["profile"], params["questions"],
@@ -950,6 +952,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(HTTPStatus.NOT_FOUND, "No resume saved yet")
             return self._json(200, {**{k: s.get(k) for k in ("name", "text", "skills", "off", "added", "years")},
                                     "at": PREP.changed_at(s)})
+
+        if path == "/api/facts":
+            # The fact sheet, to edit; same origin only, like /api/scoring.
+            if self.headers.get("Origin") not in (None, *ORIGINS):
+                return self._err(HTTPStatus.FORBIDDEN, "Forbidden")
+            return self._json(200, {"text": FACTS.read_text(encoding="utf-8") if FACTS.exists() else ""})
 
         if path == "/api/settings":
             return self._json(200, settings_payload())
@@ -1244,6 +1252,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(HTTPStatus.BAD_REQUEST, "No resume text")
             return self._json(200, {"outline": resume_import.text_to_outline(text)})
 
+        if path == "/api/facts":
+            return self._save_facts(str(data.get("text", ""))[:200_000])
+
+        if path == "/api/facts/import":
+            # A longer or older resume, as fact sheet lines for what the master doesn't have.
+            if not MASTER.exists():
+                return self._err(HTTPStatus.CONFLICT, "Upload your resume first: the fact sheet adds to it")
+            try:
+                outline = resume_import.tex_to_outline(str(data["tex"])) if data.get("tex") \
+                    else resume_import.text_to_outline(str(data.get("text", ""))[:200_000])
+                return self._json(200, {"text": facts.extras(MASTER.read_text(encoding="utf-8"), outline)})
+            except (ValueError, KeyError) as e:
+                return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, f"Couldn't read that resume: {e}")
+
         if path == "/api/master":
             tex = str(data.get("tex", ""))
             if "outline" in data:
@@ -1302,7 +1324,7 @@ class Handler(BaseHTTPRequestHandler):
                       "master": str(master), "level": tailor_level(data)}
             if path == "/api/prompt":
                 try:
-                    prompt = tailor.build_manual_prompt(master.read_text(encoding="utf-8"), params, jd,
+                    prompt = tailor.build_manual_prompt(facts.source(master), params, jd,
                                                         params["level"], confirmed=PREP.confirmed_skills())
                 except ValueError as e:
                     return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
@@ -1336,6 +1358,26 @@ class Handler(BaseHTTPRequestHandler):
         if set(patch) - {"setup", "app", "ui"}:      # neither changes the job list
             schedule_render()
         return self._json(200, {**settings_payload(), "undo": uid})
+
+    def _save_facts(self, text: str):
+        """The fact sheet, checked against the resume it adds to: drawn into it
+        and compiled, so a sheet that would break tailoring isn't saved."""
+        report = {"entries": [], "bullets": {}, "skills": 0, "unused": facts.parse(text).unused, "short": []}
+        if MASTER.exists() and text.strip():
+            try:
+                tex, report = facts.combine(MASTER.read_text(encoding="utf-8"), text, tailor.min_bullets())
+                rt.compile_pdf(tex)
+            except (ValueError, rt.CompileError) as e:
+                return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, f"Couldn't add this fact sheet to your resume: {e}")
+        before = file_state(FACTS)
+        RESUME_DIR.mkdir(parents=True, exist_ok=True)
+        if text.strip():
+            FACTS.write_text(text, encoding="utf-8")
+        else:
+            FACTS.unlink(missing_ok=True)
+        uid = remember("files", "the fact sheet", {"files": before})
+        PREP.poke()
+        return self._json(200, {**report, "undo": uid})
 
     def _undo(self, uid: str):
         """Put back what an earlier change replaced (undo.py)."""
@@ -1425,7 +1467,7 @@ class Handler(BaseHTTPRequestHandler):
         job = {"company": row.get("company", data.get("company", "")), "title": row.get("title", data.get("title", "")),
                "instruction": tailor.clean_instruction(data.get("instruction"))}
         try:
-            est = tailor.estimate_tailor(master_path(role).read_text(encoding="utf-8"), job, jd, backend,
+            est = tailor.estimate_tailor(facts.source(master_path(role)), job, jd, backend,
                                          tailor_level(data), confirmed=PREP.confirmed_skills())
         except ValueError as e:
             return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
@@ -1545,14 +1587,14 @@ class Handler(BaseHTTPRequestHandler):
                   # The applicant's own entries relevant to this job, picked by the extension.
                   "entries": str(data.get("entries") or "")[:6000]}
         if backend == "manual":
-            prompt = tailor.build_draft_prompt(MASTER.read_text(encoding="utf-8"),
+            prompt = tailor.build_draft_prompt(facts.source(MASTER),
                                                {"company": params["company"], "title": params["title"]},
                                                question, params["context"], params["jd"], max_chars,
                                                params["note"], params["previous"], params["entries"])
             return self._json(200, {"prompt": prompt})
         est = None
         if backend in pricing.API_BACKENDS:
-            est = tailor.estimate_draft(MASTER.read_text(encoding="utf-8"), {"company": params["company"], "title": params["title"]},
+            est = tailor.estimate_draft(facts.source(MASTER), {"company": params["company"], "title": params["title"]},
                                         question, params["context"], params["jd"], backend, max_chars, exact=False,
                                         note=params["note"], previous=params["previous"], entries=params["entries"])
         return self._json(202, {"id": submit_draft(params), "estimate": est and est["cost"]})

@@ -17,22 +17,25 @@ has no source to edit, so it goes through two steps the user can check:
 2. outline_to_tex(): the outline becomes a .tex in one plain built-in layout,
    using only packages every TeX distribution and Tectonic have.
 
-READERS maps file types to how their text is read. PDF and text are read in
-the dashboard; Word files (.docx) are the next to add: read the document's
-paragraphs (and list items, as "- " lines) into text, then call
-text_to_outline() like the others.
+READERS maps file types to how their text is read. PDF, Word (.docx) and
+text are read in the dashboard (Word's list items as "- " lines), then go
+through text_to_outline() alike. The outline the person checked is kept
+beside the master (server.outline_path) as their full resume, edited under
+Settings and made into the .tex again on each save.
 """
 
 from __future__ import annotations
 
 import re
 
+import resume_tex as rt
+
 READERS = {
     "pdf": "browser",       # pdf.js in the dashboard, then text_to_outline
     "txt": "browser",
     "md": "browser",
     "tex": "as-is",         # already a master; tailored in place
-    "docx": None,           # not yet: see the module docstring
+    "docx": "browser",      # word/document.xml's paragraphs, in the dashboard
 }
 
 HEADINGS = re.compile(
@@ -115,6 +118,13 @@ _SPAN = rf"(?:{MONTH}\s+)?(?:19|20)\d\d|present|current|now"
 DATE_TAIL = re.compile(rf"\s*[|,]?\s*((?:expected\s+)?(?:{_SPAN})(?:\s*(?:-|–|—|to)\s*(?:{_SPAN}))?)\s*$", re.I)
 
 
+def is_dates(text: str) -> bool:
+    """A part that's only dates: "May 2024 - Aug 2024", "2024", "Feb - Apr 2026", "Spring 2025"."""
+    return bool(DATE_TAIL.fullmatch(text) or re.fullmatch(
+        rf"\s*(?:{MONTH}\s*(?:-{{1,3}}|–|—|to)\s*{MONTH}|(?:spring|summer|fall|autumn|winter))\s+(?:19|20)\d\d\s*",
+        text, re.I))
+
+
 def split_date(line: str) -> tuple[str, str]:
     """("Software Engineer Intern", "May 2024 - Aug 2024") from a line that ends in dates."""
     m = DATE_TAIL.search(line)
@@ -181,6 +191,80 @@ def _entry_header(text: str, section: str) -> str:
     return head + (rf" | \textit{{{esc(tech)}}}" if tech else "") + (rf" \hfill {esc(date)}" if date else "")
 
 
+TAG_LINE = re.compile(r"^%\s*(?:skills|inventory)\s*:", re.I)
+BAR = re.compile(r"\s*(?:\\textbar\b(?:\{\})?|\$\|\$)\s*")
+
+
+def header_cells(header: str) -> list[str]:
+    """An entry header's parts as plain text: a table's cells, or a macro's
+    arguments when the header is one call such as
+    \\job{Acme -- Boston}{2024 -- 2025}{Engineer \\textbar{} Go, SQL}."""
+    h = rt.strip_comments(header)
+    # The last call with two or more arguments is the entry's own header line;
+    # spacing macros and a section's intro may come before it.
+    call = []
+    for m in re.finditer(r"\\[A-Za-z]+\*?\s*(?=\{)", h):
+        args, at = [], m.end()
+        while at < len(h) and h[at] == "{":
+            end = rt._brace_end(h, at)
+            args.append(h[at + 1:end - 1])
+            at = end
+            while at < len(h) and h[at] in " \t\r\n":
+                at += 1
+        if len(args) >= 2 and not rt.plain(h[at:]).strip():
+            call = args
+    raw = call or [c for row in rt._rows(header) for c in row]
+    cells = [_clean(rt.plain(BAR.sub(" | ", c)).replace("---", "—").replace("--", "–")) for c in raw]
+    return [c for c in cells if c]
+
+
+def tex_to_outline(tex: str) -> str:
+    """A .tex master as an outline, so it can be kept and edited as the full
+    resume like one made from a PDF: every section, entry, bullet, skills row
+    and hidden skill tag comes across. The .tex layout doesn't; outline_to_tex
+    makes it again in the built-in one."""
+    res = rt.parse(tex)
+    start = tex.index("\\begin{document}") + len("\\begin{document}")
+    end = tex.find("\\end{document}")
+    end = end if end >= 0 else len(tex)
+    heads = list(rt.SECTION.finditer(tex, start, end))
+
+    def lines_of(chunk: str) -> list[str]:
+        tags = ["% " + m.group(0).lstrip("% ") for m in re.finditer(r"(?<!\\)%\s*(?:skills|inventory)\s*:.*", chunk, re.I)]
+        # A line per LaTeX line break, paragraph and table (education often sits in
+        # tables); a table's width and column spec ({\textwidth}{@{}l r@{}}) aren't text.
+        chunk = re.sub(r"\\begin\{tabular\*?\}(?:\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*|\\end\{tabular\*?\}",
+                       "\n\n", rt.strip_comments(chunk))
+        parts = re.split(r"(?<!\\)\\\\(?:\[[^\]]*\])?|\n\s*\n", chunk)
+        return [l for l in (_clean(rt.plain(p)) for p in parts) if l] + tags
+
+    out = lines_of(tex[start:heads[0].start() if heads else end])     # name and contact lines
+    for i, h in enumerate(heads):
+        stop = heads[i + 1].start() if i + 1 < len(heads) else end
+        out.append("# " + _clean(rt.plain(h.group(1))))
+        rows = [r for r in res.skill_rows if h.end() <= r.span.start < stop]
+        if rows:
+            out += [f"{r.label}: {_clean(rt.plain(r.tex))}" for r in rows]
+            continue
+        at = h.end()
+        for e in sorted((e for e in res.entries if h.end() <= e.span.start < stop), key=lambda e: e.span.start):
+            out += lines_of(tex[at:e.span.start])
+            header = rt._entry_header(res, e)
+            cells = header_cells(header)
+            # Dates after the rest, where outline_to_tex puts them flush right, then the link.
+            dated = [c for c in cells if is_dates(c)]
+            link = re.search(r"\\href\{([^}]*)\}", header)
+            link = [link.group(1)] if link and not link.group(1).startswith("mailto:") else []
+            out.append("## " + " | ".join([c for c in cells if c not in dated] + dated + link))
+            block = tex[e.span.start:e.span.end]
+            out += [l for l in lines_of(block[:block.find("\\begin{itemize}")]) if l.startswith("% ")]
+            out += ["- " + _clean(rt.plain(b.tex)) for b in e.bullets]
+            out += [l for l in lines_of(block[block.find("\\begin{itemize}"):]) if l.startswith("% ")]
+            at = e.span.end
+        out += lines_of(tex[at:stop])
+    return "\n".join(out) + "\n"
+
+
 def outline_to_tex(outline: str) -> str:
     """A .tex resume in the built-in layout. resume_tex.parse() reads it:
     each entry's bullets are one itemize block, skills rows are
@@ -211,6 +295,11 @@ def outline_to_tex(outline: str) -> str:
         if not section:
             head.append(line)
             continue
+        if TAG_LINE.match(line):
+            # Hidden skills ("% skills: Docker"): kept as a comment in the entry, so they
+            # count for matching without printing. Not a line break of their own.
+            body.append("% " + line.lstrip("% ").replace("\\", ""))
+            continue
         if line.startswith(("- ", "* ")):
             if not in_list:
                 body.append(r"\begin{itemize}")
@@ -240,5 +329,5 @@ def outline_to_tex(outline: str) -> str:
     top.append(r"\end{center}")
     # A "\\" right before a list or section has nothing to end; drop those.
     text = "\n".join(body)
-    text = re.sub(r" \\\\\n(?=\s*(?:\\begin\{itemize\}|\n|\\section))", "\n", text)
+    text = re.sub(r" \\\\\n(?=\s*(?:%[^\n]*\n\s*)*(?:\\begin\{itemize\}|\n|\\section))", "\n", text)
     return PREAMBLE + "\n" + "\n".join(t for t in top if t) + "\n" + text.strip() + "\n\\end{document}\n"

@@ -167,6 +167,7 @@ class Bullet:
     id: str
     span: Span          # text after "\item" up to the next \item / \end{itemize}
     tex: str
+    fact: bool = False  # drawn in from the fact sheet (facts.py), not the resume's own
 
 
 @dataclass
@@ -180,6 +181,7 @@ class Entry:
     tech_tex: str
     bullets: list[Bullet]
     allowed: set[str]   # skills that may appear in this entry
+    fact: bool = False  # drawn in from the fact sheet (facts.py), not the resume's own
 
 
 @dataclass
@@ -235,9 +237,25 @@ def _brace_end(tex: str, open_idx: int) -> int:
     raise ValueError("unbalanced braces")
 
 
+# What facts.combine() marks the entries and bullets it draws in with.
+FACT_MARK = "% from your fact sheet"
+
+# Bullets a tailored entry shows: at least the fewest (Settings, MIN_BULLETS
+# by default; all of them when the resume's own entry has fewer), at most what
+# the resume's own entries of its kind show, never more than MOST_BULLETS
+# (tailor.bullet_limits).
+MIN_BULLETS = 3
+MOST_BULLETS = 5
+
+
 def _section_kind(title: str) -> str:
     t = title.lower()
-    if re.search(r"experience|employment|work", t):
+    # Course projects are projects: they may be reordered and trimmed. "Work"
+    # counts only as a word, since "coursework" ends in it. A section of both
+    # jobs and projects stays experience, so no job is ever dropped.
+    if re.search(r"coursework|\bcourses?\b", t):
+        return "project"
+    if re.search(r"experience|employment|\bwork\b", t):
         return "experience"
     if re.search(r"project", t):
         return "project"
@@ -289,11 +307,15 @@ def parse(tex: str) -> Resume:
         for i, s in enumerate(starts):
             e = (starts[i + 1] - len("\\item")) if i + 1 < len(starts) else m.end(1)
             raw = tex[s:e]
+            # A fact sheet bullet's mark stays in the file, outside the bullet's own text.
+            fact = FACT_MARK in raw
+            if fact:
+                raw = raw[:raw.index(FACT_MARK)]
             lead = len(raw) - len(raw.lstrip())
             trail = len(raw) - len(raw.rstrip())
-            span = Span(s + lead, e - trail)
+            span = Span(s + lead, s + len(raw) - trail)
             b_n += 1
-            bullets.append(Bullet(f"B{b_n}", span, tex[span.start:span.end]))
+            bullets.append(Bullet(f"B{b_n}", span, tex[span.start:span.end], fact))
 
         block = tex[header_start:m.end()]
         allowed = with_implied(find_skills(plain(block)) | tag_skills(block, "skills"))
@@ -301,7 +323,7 @@ def parse(tex: str) -> Resume:
             id=eid, kind=_section_kind(title), section=title,
             title=plain(header)[:140] or f"Entry {e_n}",
             span=Span(header_start, m.end()), tech=tech_span, tech_tex=tech_tex,
-            bullets=bullets, allowed=allowed,
+            bullets=bullets, allowed=allowed, fact=FACT_MARK in header,
         ))
         prev_end = m.end()
 
@@ -351,12 +373,12 @@ def describe(res: Resume) -> str:
     """The annotated view the model sees: every editable piece with its ID."""
     out = []
     for e in res.entries:
-        out.append(f"ENTRY {e.id} [{e.kind}] {e.title}")
+        out.append(f"ENTRY {e.id} [{e.kind}]{' (fact sheet)' if e.fact else ''} {e.title}")
         if e.tech is not None:
             out.append(f"  TECH LINE {e.id}: {e.tech_tex}")
         out.append(f"  VERIFIED SKILLS FOR {e.id}: {', '.join(sorted(e.allowed)) or '(none detected)'}")
         for b in e.bullets:
-            out.append(f"  {b.id}: {b.tex}")
+            out.append(f"  {b.id}{' (fact sheet)' if b.fact and not e.fact else ''}: {b.tex}")
         out.append("")
     if res.skill_rows:
         out.append("SKILLS SECTION")
@@ -712,6 +734,7 @@ class Change:
     after: str = ""
     status: str = "applied"   # applied | rejected
     reason: str = ""
+    fact: bool = False        # about a piece from the fact sheet
 
 
 # How far a rewritten bullet may grow, per tailoring strictness: (factor,
@@ -903,15 +926,20 @@ def entry_rank(e: Entry, rank: dict[str, int]) -> int:
 
 def build_spans(res: Resume, state: dict, changes: list[Change] | None = None) -> list[tuple[Span, str]]:
     """Replacements for the current state. Bullets inside each kept entry are
-    reordered most-relevant first; each entry keeps at least two bullets.
+    reordered most-relevant first; each entry keeps at least the fewest it may show.
     Projects within a section are reordered by their most relevant bullet:
     each entry's text, with its own edits, moves into another entry's slot."""
     spans: list[tuple[Span, str]] = []
     rank = state["rank"]
     inner: dict[str, list[tuple[Span, str]]] = {}
+    whole = {e.id for _, _, mine in emptied_sections(res, state) for e in mine}
     for e in res.entries:
         if e.id in state["drop_entries"]:
-            spans.append((e.span, ""))
+            # A "%" in its place, so the lines either side of it don't meet in a blank
+            # line, which would start a paragraph and indent the next entry (tidy()).
+            # A section that goes whole takes the lines around it too (_layout_spans).
+            keep_apart = e.id not in whole and res.tex[e.span.end:e.span.end + 1] == "\n"
+            spans.append((e.span, DROPPED if keep_apart else ""))
             continue
         inner[e.id] = _entry_spans(res, e, state, changes)
 
@@ -934,6 +962,7 @@ def build_spans(res: Resume, state: dict, changes: list[Change] | None = None) -
     for eid, sp in inner.items():
         if eid not in moved:
             spans += sp
+    spans += _layout_spans(res, state)
 
     measure = state.get("measure")
     for row in res.skill_rows:
@@ -942,6 +971,58 @@ def build_spans(res: Resume, state: dict, changes: list[Change] | None = None) -
             text = row.tex if new is None else new
             spans.append((row.span, marked(row.id, text) if measure else text))
     return spans
+
+
+DROPPED = "%"
+_GAP = r"[ \t]*\\(?:vspace\*?\{[^}]*\}|[A-Za-z]*(?:gap|skip)\b)[^\n]*\n"
+
+
+def tidy(tex: str) -> str:
+    """A dropped entry's "%" with the spacing lines either side of it: one
+    gap, as between any two entries, rather than two."""
+    return re.sub(rf"({_GAP})(?:[ \t]*%[ \t]*\n(?:{_GAP})?)+", r"\1", tex)
+
+
+PAGE_BREAK = re.compile(r"\\(?:clearpage|newpage|pagebreak)\b(?:\[[^\]]*\])?")
+
+
+def _layout_spans(res: Resume, state: dict) -> list[tuple[Span, str]]:
+    """Forced page breaks between entries go: a master's breaks fall where its
+    own length put them, and after trimming they'd start a page early. A
+    section whose entries were all dropped goes whole: its heading and any
+    text of its own, which was about those entries."""
+    tex = res.tex
+    body = tex.find("\\begin{document}")
+    end = tex.find("\\end{document}")
+    end = end if end >= 0 else len(tex)
+    spans: list[tuple[Span, str]] = []
+    for start, stop, mine in emptied_sections(res, state):
+        # Entries' own spans are emptied already; the gaps around them go here.
+        at = start
+        for e in mine:
+            spans.append((Span(at, e.span.start), ""))
+            at = e.span.end
+        spans.append((Span(at, stop), ""))
+    gone = lambda pos: (any(sp.start <= pos < sp.end for sp, _ in spans)
+                        or any(e.span.start <= pos < e.span.end for e in res.entries))
+    spans += [(Span(m.start(), m.end()), "") for m in PAGE_BREAK.finditer(tex, body, end) if not gone(m.start())]
+    return spans
+
+
+def emptied_sections(res: Resume, state: dict) -> list[tuple[int, int, list[Entry]]]:
+    """Sections whose entries were all dropped: (heading start, section end, its entries)."""
+    tex = res.tex
+    body = tex.find("\\begin{document}")
+    end = tex.find("\\end{document}")
+    end = end if end >= 0 else len(tex)
+    heads = list(SECTION.finditer(tex, body, end))
+    out = []
+    for i, h in enumerate(heads):
+        stop = heads[i + 1].start() if i + 1 < len(heads) else end
+        mine = sorted((e for e in res.entries if h.end() <= e.span.start < stop), key=lambda e: e.span.start)
+        if mine and all(e.id in state["drop_entries"] for e in mine):
+            out.append((h.start(), stop, mine))
+    return out
 
 
 def _entry_spans(res: Resume, e: Entry, state: dict, changes: list[Change] | None) -> list[tuple[Span, str]]:
@@ -953,8 +1034,9 @@ def _entry_spans(res: Resume, e: Entry, state: dict, changes: list[Change] | Non
         text = state["tech"].get(e.id, e.tech_tex)
         spans.append((e.tech, marked(e.id, text) if measure else text))
     kept = [b for b in e.bullets if b.id not in state["drop_bullets"]]
-    if len(kept) < min(2, len(e.bullets)):
-        kept = sorted(e.bullets, key=lambda b: rank.get(b.id, 999))[:min(2, len(e.bullets))]
+    low = min(state.get("min_bullets", MIN_BULLETS), len(e.bullets))
+    if len(kept) < low:
+        kept = sorted(e.bullets, key=lambda b: rank.get(b.id, 999))[:low]
     ordered = sorted(kept, key=lambda b: (rank.get(b.id, 999), e.bullets.index(b)))
     if changes is not None:
         for b in e.bullets:

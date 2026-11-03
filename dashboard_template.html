@@ -18,12 +18,12 @@
     --bg: #f2f4f7; --surface: #ffffff; --surface-2: #f6f7f9; --text: #0a0a0a; --muted: #5d636e;
     --line: #e3e6ea; --rule: #eef0f3; --control: #d3d7dd;
     --accent: #141414; --accent-ink: #ffffff; --accent-soft: #eceef1;
-    --data: #1d5fbf; --data-soft: #e6eefa; --track: #e6e9ee;
-    --sel-bg: #e7e9ed; --sel-line: transparent; --sel-border: #0a0a0a; --focus: #1d5fbf;
+    --data: #475569; --data-soft: #eef1f5; --track: #e6e9ee;
+    --sel-bg: #e7e9ed; --sel-line: transparent; --sel-border: #0a0a0a; --focus: #475569;
     --warn: #c4242a; --warn-soft: #ffedea; --ok: #2e7d32; --ok-soft: #dcfae5;
-    --new: #1d5fbf; --new-soft: #eceef1; --chip: #eceef1;
+    --new: #475569; --new-soft: #eceef1; --chip: #eceef1;
     --h1b: #23272e; --h1b-soft: #eceef1;
-    --hi: #1d5fbf; --mid: #0a0a0a; --lo: #5d636e;
+    --hi: #475569; --mid: #0a0a0a; --lo: #5d636e;
     /* Information badges: one quiet chip, told apart by their words. */
     --teal: #3b414b; --teal-soft: #eceef1; --amber: #3b414b; --amber-soft: #eceef1;
     --slate: #3b414b; --slate-soft: #eceef1; --rose: #3b414b; --rose-soft: #eceef1;
@@ -36,12 +36,12 @@
       --bg: #171719; --surface: #131217; --surface-2: #1c1b20; --text: #ffffff; --muted: #8e9096;
       --line: #252528; --rule: #1d1c21; --control: #3a3a3e;
       --accent: #ffffff; --accent-ink: #000000; --accent-soft: #212023;
-      --data: #4a8ad6; --data-soft: #17212e; --track: #26252a;
-      --sel-bg: transparent; --sel-line: #4a8ad6; --sel-border: #4a8ad6; --focus: #4a8ad6;
+      --data: #94a3b8; --data-soft: #1f2329; --track: #26252a;
+      --sel-bg: #1f1e24; --sel-line: #94a3b8; --sel-border: #94a3b8; --focus: #94a3b8;
       --warn: #ef6b82; --warn-soft: #2c1a20; --ok: #5fc39c; --ok-soft: #1b2828;
-      --new: #4a8ad6; --new-soft: #212023; --chip: #212023;
+      --new: #94a3b8; --new-soft: #212023; --chip: #212023;
       --h1b: #e4e4e6; --h1b-soft: #212023;
-      --hi: #6ea3e4; --mid: #ffffff; --lo: #8e9096;
+      --hi: #cbd5e1; --mid: #ffffff; --lo: #8e9096;
       --teal: #c4c5c9; --teal-soft: #212023; --amber: #c4c5c9; --amber-soft: #212023;
       --slate: #c4c5c9; --slate-soft: #212023; --rose: #c4c5c9; --rose-soft: #212023;
       --radius: 6px; --radius-ctl: 999px;
@@ -53,12 +53,12 @@
     --bg: #171719; --surface: #131217; --surface-2: #1c1b20; --text: #ffffff; --muted: #8e9096;
     --line: #252528; --rule: #1d1c21; --control: #3a3a3e;
     --accent: #ffffff; --accent-ink: #000000; --accent-soft: #212023;
-    --data: #4a8ad6; --data-soft: #17212e; --track: #26252a;
-    --sel-bg: transparent; --sel-line: #4a8ad6; --sel-border: #4a8ad6; --focus: #4a8ad6;
+    --data: #94a3b8; --data-soft: #1f2329; --track: #26252a;
+    --sel-bg: #1f1e24; --sel-line: #94a3b8; --sel-border: #94a3b8; --focus: #94a3b8;
     --warn: #ef6b82; --warn-soft: #2c1a20; --ok: #5fc39c; --ok-soft: #1b2828;
-    --new: #4a8ad6; --new-soft: #212023; --chip: #212023;
+    --new: #94a3b8; --new-soft: #212023; --chip: #212023;
     --h1b: #e4e4e6; --h1b-soft: #212023;
-    --hi: #6ea3e4; --mid: #ffffff; --lo: #8e9096;
+    --hi: #cbd5e1; --mid: #ffffff; --lo: #8e9096;
     --teal: #c4c5c9; --teal-soft: #212023; --amber: #c4c5c9; --amber-soft: #212023;
     --slate: #c4c5c9; --slate-soft: #212023; --rose: #c4c5c9; --rose-soft: #212023;
     --radius: 6px; --radius-ctl: 999px;
@@ -276,7 +276,6 @@
   .badge.h1b { background: var(--h1b-soft); color: var(--h1b); font-weight: 600; }
   .badge.h1b.small { font-weight: 500; }
   .badge.remote { background: var(--teal-soft); color: var(--teal); }
-  .badge.pay { background: var(--amber-soft); color: var(--amber); }
   .badge.level { background: var(--slate-soft); color: var(--slate); }
   .badge.age { background: var(--rose-soft); color: var(--rose); }
   .skills-line { font-size: 13px; color: var(--muted); }
@@ -344,7 +343,7 @@
   .errbox { padding: 10px 12px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
   .kw { display: flex; flex-wrap: wrap; gap: 6px; }
   .kw .badge.added { background: var(--ok-soft); color: var(--ok); font-weight: 600; }
-  .kw .badge.missing { background: var(--warn-soft); color: var(--warn); }
+  .kw .badge.missing { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--control); }
   .kw .badge.cut { text-decoration: line-through; }
   .changes { display: grid; gap: 8px; }
   .chg { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; background: var(--surface-2); }
@@ -359,12 +358,14 @@
   .qline b { color: var(--text); font-weight: 600; }
   .qline .added { color: var(--ok); }
   .score-line { margin: 0; }
-  .raise { display: grid; gap: 4px; }
-  .raise-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; font-size: 13px; }
+  .raise { display: grid; gap: 8px; }
+  .raise-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; font-size: 13px; }
   .raise-row .added { color: var(--ok); font-weight: 600; }
-  .raise-row button { margin-left: auto; padding: 2px 10px; font-size: 12px; }
+  .raise-row .raise-why { font-size: 12.5px; margin-top: 1px; }
+  .raise-row button { padding: 2px 10px; font-size: 12px; }
   .score-line .added { color: var(--ok); font-weight: 600; }
   .score-line .warnline { color: var(--warn); }
+  #tailorResult > .warnline { color: var(--warn); margin: 0; }
   .qline .warnline { color: var(--warn); }
   .prefs { display: grid; grid-template-columns: max-content 1fr; gap: 8px 12px; align-items: center; font-size: 13px; }
   .prefs label { color: var(--muted); }
@@ -406,8 +407,7 @@
   .kw-guide code { font: 12px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--chip); padding: 1px 6px; border-radius: 4px; }
   .kw-guide ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--muted); }
   .kw-rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .kw-rule { display: grid; gap: 8px; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface-2); }
-  .kw-rule.drop { border-style: dashed; border-color: var(--control); }
+  .kw-rule { display: grid; gap: 10px; padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
   .kw-rule.hit { box-shadow: 0 0 0 2px var(--data); }
   .kw-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
   .kw-num { font-size: 12px; font-weight: 600; color: var(--muted); min-width: 1.5em; }
@@ -416,8 +416,11 @@
   .kw-tools button { padding: 2px 8px; font-size: 12px; }
   .kw-body { display: grid; gap: 6px; }
   .kw-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-  .kw-group .kw-add { flex: 1 1 140px; min-width: 120px; padding: 3px 8px; font-size: 13px; }
-  .kw-and { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .kw-group .kw-add { flex: 0 1 180px; min-width: 120px; padding: 3px 8px; font-size: 13px; }
+  /* Outlined, so the words stand off the card rather than blending into it. */
+  .kw-group .tag { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--control); }
+  .kw-and { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .kw-and::after { content: ""; flex: 1; border-top: 1px solid var(--rule); }
   .kw-try { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
   .kw-try input { flex: 1 1 240px; }
   .kw-verdict { font-size: 13px; flex-basis: 100%; }
@@ -797,7 +800,7 @@
   <div class="dlg-body" id="tailorBody"></div>
 </dialog>
 
-<input type="file" id="resumeFile" accept=".pdf,.tex,.txt,.md" hidden>
+<input type="file" id="resumeFile" accept=".pdf,.docx,.tex,.txt,.md" hidden>
 <div class="toast" id="toast" role="region" aria-label="Message" hidden><span id="toastMsg"></span><button type="button" id="toastUndo" aria-keyshortcuts="Control+Z" hidden>Undo</button><button type="button" class="x" id="toastClose" aria-label="Dismiss message">Close</button></div>
 
 <script src="/rules.js"></script>
@@ -1173,15 +1176,55 @@ function texText(src) {
     .replace(/[ \t]+/g, " ");
 }
 
-// How each kind of resume file becomes text. Word (.docx) is the next one:
-// read its paragraphs (list items as "- " lines) into text here, and
-// scoring, the setup steps and the tailoring outline work unchanged.
+// A Word file's text: its paragraphs one per line, list items as "- " lines,
+// so scoring, the setup steps and the tailoring outline read it like a text
+// resume. A .docx is a zip; the browser inflates word/document.xml itself.
+async function docxText(buf) {
+  const v = new DataView(buf), dec = new TextDecoder();
+  let end = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65557); i--) {
+    if (v.getUint32(i, true) === 0x06054b50) { end = i; break; }
+  }
+  if (end < 0) throw new Error("That Word file couldn't be opened. In Word, choose File, Save As, PDF, and upload that.");
+  let p = v.getUint32(end + 16, true);
+  for (let n = v.getUint16(end + 10, true); n > 0; n--) {
+    const method = v.getUint16(p + 10, true), size = v.getUint32(p + 20, true);
+    const nameLen = v.getUint16(p + 28, true), skip = v.getUint16(p + 30, true) + v.getUint16(p + 32, true);
+    if (dec.decode(new Uint8Array(buf, p + 46, nameLen)) === "word/document.xml") {
+      const local = v.getUint32(p + 42, true);
+      const raw = new Uint8Array(buf, local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true), size);
+      const xml = method === 0 ? raw : new Uint8Array(await new Response(
+        new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+      return docxParagraphs(dec.decode(xml));
+    }
+    p += 46 + nameLen + skip;
+  }
+  throw new Error("That file doesn't look like a Word document.");
+}
+
+function docxParagraphs(xml) {
+  const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  return [...doc.getElementsByTagNameNS(W, "p")].map((par) => {
+    let text = "";
+    for (const n of par.getElementsByTagNameNS(W, "*")) {
+      if (n.localName === "t") text += n.textContent;
+      else if (n.localName === "tab") text += " ";
+      else if (n.localName === "br") text += "\n";
+    }
+    if (!text.trim()) return "";
+    return (par.getElementsByTagNameNS(W, "numPr").length ? "- " : "") + text;
+  }).filter(Boolean).join("\n");
+}
+
+// How each kind of resume file becomes text; scoring, the setup steps and
+// the tailoring outline work the same from all of them.
 const RESUME_READERS = {
   pdf: async (f) => ({ text: await pdfText(await f.arrayBuffer()) }),
   tex: async (f) => { const rawTex = await f.text(); return { text: texText(rawTex), rawTex }; },
   txt: async (f) => ({ text: await f.text() }),
   md: async (f) => ({ text: await f.text() }),
-  docx: null,
+  docx: async (f) => ({ text: await docxText(await f.arrayBuffer()) }),
 };
 
 async function resumeFromFile(file) {
@@ -1189,8 +1232,8 @@ async function resumeFromFile(file) {
   const ext = name.split(".").pop().toLowerCase();
   const read = RESUME_READERS[ext];
   if (!read) {
-    throw new Error(ext === "docx" || ext === "doc" ? "Word files can't be read yet. In Word, choose File, Save As, PDF, and upload that."
-      : "Use a PDF, .tex or .txt file.");
+    throw new Error(ext === "doc" ? "Older Word files (.doc) can't be read. In Word, save it as .docx or PDF, and upload that."
+      : "Use a PDF, Word (.docx), .tex or .txt file.");
   }
   const { text, rawTex = null } = await read(file);
   if (text.replace(/\s/g, "").length < 200) {
@@ -1505,6 +1548,8 @@ function dayLabel(sec) {
   return days <= 0 ? "today" : days === 1 ? "yesterday" : days + " days ago";
 }
 
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
 function rawExplain(j) {
   if (!j.posted_raw) return null;
   if (j.posted_field === "createdAt") return `${j.posted_raw} (milliseconds since 1970)`;
@@ -1615,7 +1660,6 @@ function visaSignals(j, V) {
 function otherBadges(j, mark) {
   return [
     j.fresh ? el("span", { class: "badge new", text: "New this run" }) : null,
-    j.pay_min ? el("span", { class: "badge pay", text: "Pay " + payLabel(j) }) : null,
     j.remote ? el("span", { class: "badge remote", text: "Remote" }) : null,
     j.entry_hint ? el("span", { class: "badge level", text: "Entry level" }) : null,
     j.min_yoe != null ? el("span", { class: "badge level", text: j.min_yoe + "+ yrs" }) : null,
@@ -1903,7 +1947,8 @@ function renderDetail() {
     kpi("Match", pct != null ? pct + "%" : "—",
       tailored && tailored.after != null ? `${tailored.after}% with the tailored resume` : sc && sc.pct != null && sc.req.of ? `${sc.req.have} of ${sc.req.of} required skills` : sc && sc.noJd ? "No description to score" : "", "match"),
     kpi("Pay", j && j.pay_min ? "$" + payLabel(j) : "—", j && j.pay_min ? "Stated in the posting" : "Not stated"),
-    kpi("Posted", age ? age.text : "—", j ? (j.repost ? "Reposted · first up " + fmt(j.repost.first) : "Onward saw it " + ago(j.first_seen)) : ""));
+    kpi("Posted", !j ? "—" : dateOnly(j) ? cap(dayLabel(when(j))) : age.text,
+      j ? (j.repost ? "Reposted · first up " + fmt(j.repost.first) : (dateOnly(j) ? "Date only · " : "") + "Onward saw it " + ago(j.first_seen)) : ""));
 
   // Left: why the score; what would raise it. Right: the resume, visa, proof.
   const q = it ? queueParts(it) : null;
@@ -2170,7 +2215,7 @@ function renderResumeBar() {
     bar.replaceChildren(
       el("span", {}, el("b", { text: "Get match scores." }), " Drop your resume here or "),
       el("button", { type: "button", class: "primary", text: "Upload resume", onclick: () => $("resumeFile").click() }),
-      el("span", { class: "note", text: "PDF, .tex or .txt. A .tex also enables tailoring. It stays on your computer." }),
+      el("span", { class: "note", text: "PDF, Word, .tex or .txt. It stays on your computer." }),
       masterLine());
     return;
   }
@@ -2505,16 +2550,18 @@ function raiseBox(j, raise) {
             x.added = [...new Set([...(x.added || []), m.keyword])];
             x.off = (x.off || []).filter((y) => y !== m.keyword);
           });
-          line.replaceChildren(el("b", { text: m.keyword }), el("span", { class: "added", text: " confirmed" }),
-            el("span", { class: "note", text: " · tailor again to use it" }));
+          line.replaceChildren(el("div", {}, el("b", { text: m.keyword }), el("span", { class: "added", text: " confirmed" }),
+            el("span", { class: "note", text: " · tailor again to use it" })));
         } })
       : null;
+    // The keyword and its points on one line, why it may apply under it, the button beside both.
+    const why = m.related.length ? `You have ${m.related.join(", ")}, used for the same kind of work.`
+      : !m.skill ? "If you've done it, write it into an entry of your master resume." : "";
     const line = el("div", { class: "raise-row" },
-      el("b", { text: m.keyword }),
-      el("span", { class: "added", text: ` +${m.gain}` }),
-      el("span", { class: "note", text: ` · ${KIND_WORD[m.kind] || m.kind}` }),
-      m.related.length ? el("span", { class: "note", text: ` · you have ${m.related.join(", ")}, used for the same kind of work` }) : null,
-      !m.skill ? el("span", { class: "note", text: " · if you've done it, write it into an entry of your master resume" }) : null,
+      el("div", {},
+        el("div", {}, el("b", { text: m.keyword }), el("span", { class: "added", text: ` +${m.gain}` }),
+          el("span", { class: "note", text: ` · ${KIND_WORD[m.kind] || m.kind}` })),
+        why ? el("div", { class: "note raise-why", text: why }) : null),
       act);
     return line;
   };
@@ -2742,7 +2789,8 @@ function listDiff(before, after) {
   return el("div", {}, ...nodes, moved ? el("span", { class: "note", text: "  (reordered)" }) : null);
 }
 
-const KIND = { bullet: "Bullet", tech: "Tech line", skills: "Skills row", drop_bullet: "Bullet removed", drop_entry: "Section removed", reorder: "Reordered" };
+const KIND = { bullet: "Bullet", tech: "Tech line", skills: "Skills row", drop_bullet: "Bullet removed", drop_entry: "Section removed",
+  reorder: "Reordered", fact_entry: "Added", fact_bullet: "Bullet added" };
 
 // The "Adjust" box under a result: a short request, then tailoring runs again with it.
 function adjustBox(onAdjust, label = "Re-tailor", heading = true) {
@@ -2759,7 +2807,10 @@ function adjustBox(onAdjust, label = "Re-tailor", heading = true) {
 function renderResult(r, out, onAdjust) {
   const applied = r.changes.filter((c) => c.status === "applied" && ["bullet", "tech", "skills"].includes(c.kind));
   const rejected = r.changes.filter((c) => c.status === "rejected");
-  const removed = r.changes.filter((c) => c.kind === "drop_bullet" || c.kind === "drop_entry");
+  const dropped = r.changes.filter((c) => c.kind === "drop_bullet" || c.kind === "drop_entry");
+  const removed = dropped.filter((c) => !c.fact);
+  const factsUsed = r.changes.filter((c) => c.kind === "fact_entry" || c.kind === "fact_bullet");
+  const factsLeft = dropped.length - removed.length;
   const reordered = r.changes.filter((c) => c.kind === "reorder");
   const moved = r.changes.filter((c) => c.kind === "reorder_entries");
 
@@ -2768,7 +2819,8 @@ function renderResult(r, out, onAdjust) {
     el("div", { class: "lbl", text: `${KIND[c.kind]} · ${String(c.label).split(/ - | \| /)[0]}` }),
     c.status === "rejected"
       ? el("div", {}, el("div", { text: c.before }), el("div", { class: "after", text: c.after }))
-      : (c.kind === "drop_bullet" || c.kind === "drop_entry") ? el("div", { text: c.before || c.label })
+      : (c.kind === "drop_bullet" || c.kind === "drop_entry" || c.kind === "fact_bullet") ? el("div", { text: c.before || c.label })
+      : c.kind === "fact_entry" ? el("div", { text: c.label })
       : (c.kind === "tech" || c.kind === "skills") ? listDiff(c.before, c.after)
       : el("div", {}, ...wordDiff(c.before, c.after)),
     c.reason ? el("div", { class: "why", text: (c.status === "rejected" ? "Blocked because it " : "") + c.reason }) : null);
@@ -2788,6 +2840,9 @@ function renderResult(r, out, onAdjust) {
       el("a", { class: "btn primary", href: "/files/" + r.pdf, target: "_blank", rel: "noopener", text: "Open PDF ↗" }),
       el("a", { class: "btn", href: "/files/" + r.tex, download: r.tex, text: "Download .tex" })),
     scoreLine(r.score),
+    r.target_pages && r.pages > r.target_pages ? el("p", { class: "warnline", text: `Still ${r.pages} pages, over your `
+      + `${r.target_pages}-page limit, with everything that may go taken out: jobs keep three bullets each, and education, `
+      + "skills and certifications stay. Shorten those in your master resume, or raise Resume length in Settings (advanced)." }) : null,
     r.instruction ? el("p", { class: "note", text: `Your request: “${r.instruction}”` }) : null,
     // The model sometimes writes the resume's LaTeX escapes into its summary ("\&").
     r.summary ? el("p", { text: r.summary.replace(/\\([&%$#_{}])/g, "$1") }) : null,
@@ -2805,8 +2860,13 @@ function renderResult(r, out, onAdjust) {
     rejected.length ? el("p", { class: "section-h", text: `Not used (${rejected.length})` }) : null,
     rejected.length ? el("p", { class: "note", text: "The model suggested these, but each would have claimed something your master resume doesn't back or left a line mostly empty, so your original wording stays." }) : null,
     rejected.length ? el("div", { class: "changes" }, ...rejected.map(card)) : null,
-    removed.length ? el("p", { class: "section-h", text: `Removed to fit the page limit (${removed.length})` }) : null,
-    removed.length ? el("p", { class: "note", text: "The least relevant to this job went first. They're still in your master resume." }) : null,
+    factsUsed.length ? el("p", { class: "section-h", text: `From your fact sheet (${factsUsed.length})` }) : null,
+    factsUsed.length ? el("p", { class: "note", text: "Swapped in for this job, in your resume's own layout."
+      + (factsLeft ? ` ${factsLeft} more from it ${factsLeft === 1 ? "wasn't" : "weren't"} needed this time.` : "") }) : null,
+    factsUsed.length ? el("div", { class: "changes" }, ...factsUsed.map(card)) : null,
+    removed.length ? el("p", { class: "section-h", text: `Left out (${removed.length})` }) : null,
+    removed.length ? el("p", { class: "note", text: "To fit the page and keep three or four bullets an entry, the least relevant to this job "
+      + "went first. They're still on your resume." }) : null,
     removed.length ? el("div", { class: "changes" }, ...removed.map(card)) : null,
     reordered.length ? el("p", { class: "note", text: "Bullets reordered, most relevant first, in: " + reordered.map((c) => c.label.split(" | ")[0]).join("; ") }) : null,
     ...moved.map((c) => el("p", { class: "note", text: `${c.label} reordered, most relevant first: ${c.after}` })),
@@ -3375,7 +3435,7 @@ function renderSettings() {
       el("label", { class: "toggle", for: "advToggle" }, adv, "Show advanced settings")),
     d.warnings.length ? el("div", { class: "errbox", role: "status" }, "Some saved settings were invalid and fell back to their defaults: ",
       el("ul", { style: "margin:6px 0 0;padding-left:18px" }, ...d.warnings.slice(0, 8).map((w) => el("li", { text: humanError(w) })))) : null,
-    rolesCard(), companiesCard(), tailoringCard(), aiCard(), voiceCard(), appCard(),
+    rolesCard(), companiesCard(), factSheetCard(), tailoringCard(), aiCard(), voiceCard(), appCard(),
     advanced() ? scoringCard() : null, advanced() ? radarCard() : null, advanced() ? storageCard() : null,
     el("p", { class: "note", text: `Saved on this computer in ${d.file}. Nothing here leaves it.` })));
 }
@@ -3707,6 +3767,7 @@ function tailoringCard() {
   const backend = select(ch.backends.map((b) => [b, LABELS.backends[b] || b]), t.backend);
   const draft = select(ch.draft_backends.map((b) => [b, LABELS.backends[b] || b]), t.draft_backend);
   const pages = number(t.target_pages, 1, 3, 1);
+  const fewest = number(t.min_bullets, 1, 5, 1);
   const claims = el("input", { type: "checkbox" });
   claims.checked = t.check_claims;
   const adv = advanced();
@@ -3719,12 +3780,15 @@ function tailoringCard() {
         el("label", { class: "toggle" }, claims, "Block edits my resume doesn't back"),
         el("p", { class: "note", text: "On: an edit that adds a skill, a number or a job-only term your resume doesn't show is undone. "
           + "Off: the model may name what your work plainly involved, and nothing is undone. It's still told never to invent results, employers or dates, so read the changes before you send it." })),
+      field("Fewest bullets per entry", fewest, "Each job and project in a tailored resume shows at least this many "
+        + "(all it has, when your resume's own entry has fewer). The most comes from your resume: as many as its own entries of each kind show."),
       adv ? field("Resume length (pages)", pages) : null),
     el("div", { class: "rowline" },
       el("button", { type: "button", text: "Apply queue settings…", onclick: async () => { await loadQueue(); openPrefs(); } }),
       el("span", { class: "note", text: "Minimum match, daily model runs, notifications." })),
     saveBar("Save tailoring", () => postSettings({ tailoring: {
-      backend: backend.value, draft_backend: draft.value, check_claims: claims.checked, ...(adv ? { target_pages: +pages.value } : {}),
+      backend: backend.value, draft_backend: draft.value, check_claims: claims.checked, min_bullets: +fewest.value,
+      ...(adv ? { target_pages: +pages.value } : {}),
     } }, "the tailoring settings").then((data) => { SETTINGS.tailoring.backend = backend.value; SETTINGS.tailoring.check_claims = claims.checked; store.del("backend"); return data; }),
       "Saved the tailoring settings.", "the tailoring settings"));
 }
@@ -3800,6 +3864,76 @@ function aiCard() {
       "Saved the models and budgets.", "the AI model settings"),
     el("div", { class: "rowline" }, el("button", { type: "button", text: "Show usage", onclick: loadUsage })),
     usage);
+}
+
+// The fact sheet: what you've done that your resume has no room for. Your
+// resume stays the reference; each tailored version draws in what fits the
+// job, in the resume's own layout (facts.py).
+const FACTS_HELP = "Under a # heading (one of your resume's sections, or a new one), ## starts an entry: " +
+  "Name - Place | Title | Tools, more tools | Dates | link, every part but the name optional. - starts a bullet. " +
+  "An entry named like one on your resume adds its bullets there. Lines under # Skills are skills your skills rows may use.";
+const FACTS_EXAMPLE = "# Projects\n## Edge Detector | C++, OpenCV | Spring 2025 | github.com/you/edges\n" +
+  "- Wrote Sobel X/Y filters and gradient magnitude in C++ with OpenCV.\n\n# Work Experience\n## Acme\n" +
+  "- Another bullet for a job your resume already has.\n\n# Skills\nVision: OpenCV, Law's filters";
+
+function factSheetCard() {
+  const box = el("div", { style: "display:grid;gap:10px" });
+  drawFactSheet(box);
+  return el("section", { class: "card", "aria-labelledby": "factsH" },
+    el("h3", { id: "factsH", text: "Fact sheet" }),
+    el("p", { text: "Everything you've done that your resume has no room for: more projects, courses and jobs, and more bullets " +
+      "for entries it has. Your resume stays as it is. Each tailored version keeps its layout and swaps in what fits the job " +
+      "best, with as many bullets an entry as your resume's own show, and claims nothing that isn't here or on your resume." }),
+    box);
+}
+
+async function drawFactSheet(box) {
+  if (!HELPER) { box.replaceChildren(el("p", { class: "note", text: "The fact sheet needs the Onward app running." })); return; }
+  box.replaceChildren(progressLine("Loading your fact sheet…"));
+  let text;
+  try { text = (await api("/api/facts")).text; }
+  catch (e) { box.replaceChildren(el("div", { class: "errbox", text: e.message })); return; }
+  const area = el("textarea", { class: "jd", rows: "22", spellcheck: "false", "aria-label": "Your fact sheet", placeholder: FACTS_EXAMPLE });
+  area.value = text;
+  const out = el("div", { "aria-live": "polite" });
+  const save = el("button", { type: "button", class: "primary", text: "Save fact sheet", onclick: async () => {
+    save.disabled = true;
+    out.replaceChildren(progressLine("Checking it against your resume…"));
+    try {
+      const r = await api("/api/facts", { text: area.value });
+      const more = Object.values(r.bullets || {}).reduce((a, b) => a + b, 0);
+      const n = r.entries.length;
+      out.replaceChildren(el("span", { class: "okline", text: !area.value.trim() ? "Saved. Tailoring uses your resume alone."
+          : `Saved: ${n} entr${n === 1 ? "y" : "ies"}` + (more ? `, ${more} more bullet${more === 1 ? "" : "s"} for entries on your resume` : "")
+            + (r.skills ? `, ${r.skills} skills line${r.skills === 1 ? "" : "s"}` : "") + "." }),
+        r.short && r.short.length ? el("div", { class: "note", text: `Not swapped in until they have ${cfg.data.settings.tailoring.min_bullets} `
+          + "bullets, the fewest a tailored entry shows (Settings, Tailoring): " + r.short.slice(0, 8).join(" · ") }) : "",
+        r.unused && r.unused.length ? el("div", { class: "note", text: "Not used, since they aren't under an entry or a skills heading: "
+          + r.unused.slice(0, 5).join(" · ") }) : "");
+      if (r.undo) undoable("Saved your fact sheet. New tailored versions draw on it.", "the fact sheet change", async () => {
+        await serverUndo(r.undo)();
+        drawFactSheet(box);
+      });
+    } catch (e) { out.replaceChildren(problems(e)); }
+    finally { save.disabled = false; }
+  } });
+  const file = el("input", { type: "file", accept: ".tex,.pdf,.docx,.txt,.md", hidden: "" });
+  file.addEventListener("change", async () => {
+    const f = file.files[0];
+    file.value = "";
+    if (!f) return;
+    out.replaceChildren(progressLine(`Reading ${f.name}…`));
+    try {
+      const { text: t, rawTex } = await resumeFromFile(f);
+      const r = await api("/api/facts/import", rawTex !== null ? { tex: rawTex } : { text: t });
+      if (!r.text.trim()) { out.replaceChildren(el("span", { class: "note", text: `Everything in ${f.name} is on your resume already.` })); return; }
+      area.value = (area.value.trim() ? area.value.trimEnd() + "\n\n" : "") + r.text;
+      out.replaceChildren(el("span", { class: "note", text: `Added what ${f.name} has that your resume doesn't. Check it, then save.` }));
+    } catch (e) { out.replaceChildren(problems(e)); }
+  });
+  box.replaceChildren(el("p", { class: "note", text: FACTS_HELP }), area,
+    el("div", { class: "savebar" }, save,
+      el("button", { type: "button", text: "Add from an older resume…", onclick: () => file.click() }), file, out));
 }
 
 function voiceCard() {
@@ -4005,7 +4139,7 @@ const SETUP_RENDER = {
     const file = el("input", { type: "file", id: "setupFile", accept: ".pdf,.tex,.txt,.md,.docx" });
     const drop = el("label", { class: "drop", for: "setupFile" },
       el("b", { text: state.resume ? `Using ${state.resume.name}` : "Choose your resume" }),
-      el("span", { class: "note", text: state.resume ? "Choose or drop another file to replace it." : "PDF, LaTeX (.tex) or plain text. Or drop it here." }));
+      el("span", { class: "note", text: state.resume ? "Choose or drop another file to replace it." : "PDF, Word, LaTeX (.tex) or plain text. Or drop it here." }));
     const out = el("div", { class: "setup-out", "aria-live": "polite" });
     const tailoring = el("div", { class: "setup-out" });
     const go = nextButton("Next", next, { disabled: !state.resume });
@@ -4313,10 +4447,15 @@ function drawTailoring(box, r) {
   box.replaceChildren(el("div", { class: "found" },
     el("b", { text: "Tailored resumes (optional)" }),
     el("p", { style: "margin:0", text: "To make a version of this resume for each job, Onward needs it as a LaTeX file. " +
-      "It can make one with a plain, clean layout from what it read. You check it once." }),
+      "It can make one with a plain, clean layout from what it read. You check it once. What didn't fit on it goes in your " +
+      "fact sheet, under Settings: each tailored version swaps in what fits the job." }),
     tex && !tex.active ? texOffer(setup.app) : null,
     el("div", { class: "rowline" }, start, el("span", { class: "note", text: "You can skip this and do it later." }))));
 }
+
+const OUTLINE_HELP = "Lines starting with # are sections, ## are jobs or projects (title | company | dates), " +
+  "and - are bullet points. Other lines print as they are, like skills (Languages: Python, Go). " +
+  "A \"% skills: Docker, Redis\" line under an entry counts those skills for it without printing them.";
 
 function drawOutline(box, name) {
   const area = el("textarea", { class: "jd", rows: "18", spellcheck: "false", "aria-label": "What was read from your resume" });
@@ -4324,8 +4463,7 @@ function drawOutline(box, name) {
   area.addEventListener("input", () => { setup.outline = area.value; });
   box.replaceChildren(el("div", { class: "found" },
     el("b", { text: "Check what was read" }),
-    el("p", { style: "margin:0", text: "Lines starting with # are sections, ## are jobs or projects (title | company | dates), " +
-      "and - are bullet points. Fix anything out of place, then make the resume." }),
+    el("p", { style: "margin:0", text: OUTLINE_HELP + " Fix anything out of place, then make the resume." }),
     area,
     el("div", { class: "rowline" }, el("button", { type: "button", class: "primary", text: "Make my tailoring resume",
       onclick: () => saveMaster(box, { name, outline: area.value }) }))));
