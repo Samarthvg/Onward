@@ -4,64 +4,103 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Onward</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%23b8561f'/%3E%3Cpath d='M33 38h61M33 63.5h61M33 89h33' fill='none' stroke='%23fbf1e4' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23141414'/%3E%3Cpath d='M4 16.5h6.5c3.9 0 7-3.1 7-7V6.5' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3Cpath d='M14 9.2l3.5-3.5 3.5 3.5' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>try { const t = JSON.parse(localStorage.getItem("jr:theme")); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <style>
+  /* Two worlds on one structure. Light is the achromatic ledger: no colour
+     in the chrome, ink everywhere, the one blue on the match score, and small
+     green and red only where a state needs them. Dark is the data terminal:
+     cards darker than the ground, figures in mono, every selection one 1px
+     blue line. The token names are the page's own; the values are the worlds'. */
   :root {
-    --bg: #f5ecdd; --surface: #fffaf3; --surface-2: #fbf3e7; --text: #2b1b14; --muted: #6b5646;
-    --line: #e7d9c5; --accent: #a24a1a; --accent-ink: #ffffff; --accent-soft: #f6e2cc;
-    --warn: #a3261c; --warn-soft: #f8e0d9; --ok: #3d6b2e; --ok-soft: #e6eed8;
-    --new: #a24a1a; --new-soft: #f6e2cc; --chip: #f0e4d2;
-    --h1b: #2a5b8f; --h1b-soft: #e3eaf2;
-    --hi: #3d6b2e; --mid: #8a5a00; --lo: #76665a;
-    --control: #d5c3ab; --rule: #efe3d2;
-    /* Information badges, each its own tint: remote, pay, level, age. */
-    --teal: #1f6b5e; --teal-soft: #dceee6; --amber: #85510a; --amber-soft: #f5e6cc;
-    --slate: #405a7a; --slate-soft: #e5e9ee; --rose: #8e2f4c; --rose-soft: #f5e1e5;
+    --bg: #f2f4f7; --surface: #ffffff; --surface-2: #f6f7f9; --text: #0a0a0a; --muted: #5d636e;
+    --line: #e3e6ea; --rule: #eef0f3; --control: #d3d7dd;
+    --accent: #141414; --accent-ink: #ffffff; --accent-soft: #eceef1;
+    --data: #1d5fbf; --data-soft: #e6eefa; --track: #e6e9ee;
+    --sel-bg: #e7e9ed; --sel-line: transparent; --sel-border: #0a0a0a; --focus: #1d5fbf;
+    --warn: #c4242a; --warn-soft: #ffedea; --ok: #2e7d32; --ok-soft: #dcfae5;
+    --new: #1d5fbf; --new-soft: #eceef1; --chip: #eceef1;
+    --h1b: #23272e; --h1b-soft: #eceef1;
+    --hi: #1d5fbf; --mid: #0a0a0a; --lo: #5d636e;
+    /* Information badges: one quiet chip, told apart by their words. */
+    --teal: #3b414b; --teal-soft: #eceef1; --amber: #3b414b; --amber-soft: #eceef1;
+    --slate: #3b414b; --slate-soft: #eceef1; --rose: #3b414b; --rose-soft: #eceef1;
+    --radius: 8px; --radius-ctl: 6px;
+    --num: "Geist", system-ui, sans-serif;
+    color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #150c0c; --surface: #1f1512; --surface-2: #281c17; --text: #f2e7d9; --muted: #b9a594;
-      --line: #3a2a22; --accent: #e3a467; --accent-ink: #1d0f08; --accent-soft: #3d2817;
-      --warn: #ff9c87; --warn-soft: #3d1d18; --ok: #a3cf86; --ok-soft: #22301a;
-      --new: #e3a467; --new-soft: #3d2817; --chip: #2c1f19;
-      --h1b: #93bbea; --h1b-soft: #1d2a3b;
-      --hi: #a3cf86; --mid: #eab955; --lo: #a3948a;
-      --control: #5a4436; --rule: #2c1f19;
-      --teal: #7bd3c3; --teal-soft: #163330; --amber: #f2c06b; --amber-soft: #3a2c14;
-      --slate: #abc0dc; --slate-soft: #222a36; --rose: #f0a8be; --rose-soft: #3a1f28;
+      --bg: #171719; --surface: #131217; --surface-2: #1c1b20; --text: #ffffff; --muted: #8e9096;
+      --line: #252528; --rule: #1d1c21; --control: #3a3a3e;
+      --accent: #ffffff; --accent-ink: #000000; --accent-soft: #212023;
+      --data: #4a8ad6; --data-soft: #17212e; --track: #26252a;
+      --sel-bg: transparent; --sel-line: #4a8ad6; --sel-border: #4a8ad6; --focus: #4a8ad6;
+      --warn: #ef6b82; --warn-soft: #2c1a20; --ok: #5fc39c; --ok-soft: #1b2828;
+      --new: #4a8ad6; --new-soft: #212023; --chip: #212023;
+      --h1b: #e4e4e6; --h1b-soft: #212023;
+      --hi: #6ea3e4; --mid: #ffffff; --lo: #8e9096;
+      --teal: #c4c5c9; --teal-soft: #212023; --amber: #c4c5c9; --amber-soft: #212023;
+      --slate: #c4c5c9; --slate-soft: #212023; --rose: #c4c5c9; --rose-soft: #212023;
+      --radius: 6px; --radius-ctl: 999px;
+      --num: "Geist Mono", ui-monospace, monospace;
+      color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
-    --bg: #150c0c; --surface: #1f1512; --surface-2: #281c17; --text: #f2e7d9; --muted: #b9a594;
-    --line: #3a2a22; --accent: #e3a467; --accent-ink: #1d0f08; --accent-soft: #3d2817;
-    --warn: #ff9c87; --warn-soft: #3d1d18; --ok: #a3cf86; --ok-soft: #22301a;
-    --new: #e3a467; --new-soft: #3d2817; --chip: #2c1f19;
-    --h1b: #93bbea; --h1b-soft: #1d2a3b;
-    --hi: #a3cf86; --mid: #eab955; --lo: #a3948a;
-    --control: #5a4436; --rule: #2c1f19;
-    --teal: #7bd3c3; --teal-soft: #163330; --amber: #f2c06b; --amber-soft: #3a2c14;
-    --slate: #abc0dc; --slate-soft: #222a36; --rose: #f0a8be; --rose-soft: #3a1f28;
+    --bg: #171719; --surface: #131217; --surface-2: #1c1b20; --text: #ffffff; --muted: #8e9096;
+    --line: #252528; --rule: #1d1c21; --control: #3a3a3e;
+    --accent: #ffffff; --accent-ink: #000000; --accent-soft: #212023;
+    --data: #4a8ad6; --data-soft: #17212e; --track: #26252a;
+    --sel-bg: transparent; --sel-line: #4a8ad6; --sel-border: #4a8ad6; --focus: #4a8ad6;
+    --warn: #ef6b82; --warn-soft: #2c1a20; --ok: #5fc39c; --ok-soft: #1b2828;
+    --new: #4a8ad6; --new-soft: #212023; --chip: #212023;
+    --h1b: #e4e4e6; --h1b-soft: #212023;
+    --hi: #6ea3e4; --mid: #ffffff; --lo: #8e9096;
+    --teal: #c4c5c9; --teal-soft: #212023; --amber: #c4c5c9; --amber-soft: #212023;
+    --slate: #c4c5c9; --slate-soft: #212023; --rose: #c4c5c9; --rose-soft: #212023;
+    --radius: 6px; --radius-ctl: 999px;
+    --num: "Geist Mono", ui-monospace, monospace;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 14px/1.5 "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-variant-numeric: tabular-nums;
   }
-  .wrap { max-width: 1520px; margin: 0 auto; padding: 24px 24px 64px; }
-  /* Three columns on a wide screen: filters, the list, the resume and what's
-     ready. Below 1200px the rails stack above the list as before. */
-  .layout { display: grid; gap: 20px; align-items: start;
-    grid-template-columns: 232px minmax(0, 1fr) 300px; grid-template-areas: "left main right"; }
-  .rail-l { grid-area: left; } main { grid-area: main; min-width: 0; } .rail-r { grid-area: right; }
-  .rail { display: grid; gap: 12px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
-  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 12px; }
-  .panel-h { font-size: 13px; font-weight: 600; margin: 0; color: var(--text); }
-  .panel .note { margin: 0; }
-  body.view-settings .layout, body.view-help .layout, body.in-setup .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main"; }
-  body.view-settings .rail, body.view-help .rail, body.in-setup .rail { display: none; }
+  ::selection { background: var(--data); color: #fff; }
+  * { scrollbar-color: var(--control) transparent; scrollbar-width: thin; }
+  a { color: inherit; text-underline-offset: 3px; }
+  .num { font-family: var(--num); font-variant-numeric: tabular-nums; }
+
+  /* The top bar: the product, its pages, the last search and the tools. */
+  .topbar { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .topbar-in { max-width: 1520px; margin: 0 auto; padding: 0 24px; min-height: 52px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .brand .mark { flex: none; color: var(--text); }
+  h1 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  .hbtns { display: flex; gap: 8px 10px; flex-wrap: wrap; align-items: center; margin-left: auto; }
+  .topbar .status { margin: 0 6px 0 0; font-size: 12px; }
+
+  .wrap { max-width: 1520px; margin: 0 auto; padding: 16px 24px 48px; }
+  /* Jobs and the Apply queue: the list on the left, the opened job beside it. */
+  .layout { display: grid; gap: 16px; align-items: start; grid-template-columns: minmax(440px, 5fr) minmax(0, 6fr); }
+  main { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; }
+  .detail { position: sticky; top: 68px; max-height: calc(100vh - 84px); overflow: auto; background: var(--surface);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  .detail:focus { outline: none; }
+  body.view-settings .layout, body.view-help .layout, body.in-setup .layout { grid-template-columns: minmax(0, 1fr); }
+  body.view-settings .detail, body.view-help .detail, body.in-setup .detail,
+  body.view-settings #filters, body.view-help #filters, body.in-setup #filters,
+  body.view-settings #resumeBar, body.view-help #resumeBar { display: none; }
   body.view-settings main { width: 100%; max-width: 1120px; margin: 0 auto; }
   body.view-help main { width: 100%; max-width: 820px; margin: 0 auto; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 12px; }
+  .panel-h { font-size: 13px; font-weight: 600; margin: 0; color: var(--text); }
+  .panel .note { margin: 0; }
   .help { display: grid; gap: 20px; }
   .help h2 { font-size: 22px; margin: 0; }
   .help h3 { font-size: 16px; margin: 0 0 8px; }
@@ -73,57 +112,111 @@
   .help dt { font-weight: 600; }
   .help dd { margin: 0; }
   @media (max-width: 600px) { .help dl { grid-template-columns: 1fr; gap: 2px; } .help dd { margin-bottom: 8px; } }
-  body:not(.view-queue) #qhead, body.view-queue #filters { display: none; }
-  /* The Apply queue: today's picks first, outlined in the accent, then the rest of the queue. */
-  .picks { border: 1.5px solid var(--accent); border-radius: 10px; padding: 14px 14px 4px; margin-bottom: 20px; background: var(--accent-soft); }
-  .picks-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-bottom: 12px; }
-  .picks-head > div { margin-right: auto; }
-  .picks-head h2, .queue-h { font-size: 20px; margin: 0 0 2px; }
-  .picks-head .status { margin: 0; }
-  .picks-head select { width: auto; }
-  .picks .list { margin-bottom: 10px; }
-  .queue-h { margin: 0 0 10px; }
-  .status-r { margin: 0; font-size: 13px; color: var(--muted); }
-  .status-r b { color: var(--text); font-weight: 600; }
-  .searchbar { display: flex; gap: 8px; margin-bottom: 10px; }
-  .searchbar input { flex: 1 1 auto; min-height: 36px; }
-  .filter-group { display: grid; gap: 6px; }
-  .filter-label { font-size: 12px; color: var(--muted); }
-  .checks-v { gap: 8px; }
-  .checks-v:not(:has(label:not([hidden]))) { display: none; }
-  /* In the rail the filters have room, so they show in simple view too. */
-  @media (min-width: 1200px) {
-    body.simple .rail-l .adv-only:not([hidden]) { display: inline-flex !important; }
-    body.simple .rail-l select.adv-only:not([hidden]), body.simple .rail-l .filter-label.adv-only { display: block !important; }
-    .rail-l .seg { display: grid; grid-template-columns: 1fr; background: transparent; padding: 0; }
-    .rail-l .seg button { justify-content: space-between; min-height: 32px; }
-    .rail-l .seg button[aria-pressed="true"] { background: var(--chip); border-color: transparent; }
-    .rail-l .wn { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 400; }
-    .rail-l .ws { display: none; }
-    #status { display: none; }
-  }
-  @media (max-width: 1199px) {
-    .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "right" "left" "main"; gap: 12px; }
-    .rail { position: static; max-height: none; overflow: visible; }
-    .rail-r #radarPanel { display: none; }
-    .wn, .seg .ws + .wl { display: none; }
-    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-    .controls .panel-h, .controls .filter-label { display: none; }
-    .filter-group, .checks-v { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  }
-  /* The resume in the rail: what it is on top, its buttons under it. */
-  .rail-r .resume-bar > span:not(.spacer), .rail-r .resume-bar > .note { flex-basis: 100%; }
-  .rail-r .resume-bar .spacer { display: none; }
   #themeBtn svg { flex: none; }
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 6px; }
-  .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
-  .brand svg { flex: none; }
-  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-  .status { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+  /* Filters: the time ranges as count cards that filter the list, then the search and order. */
+  .controls { display: grid; gap: 10px; }
+  .seg.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; background: none; padding: 0; }
+  .seg.cards button { display: grid; justify-items: start; align-content: center; gap: 1px; min-height: 58px; padding: 9px 12px; text-align: left;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); color: var(--muted); font-size: 13px; }
+  .seg.cards button:hover { border-color: var(--control); background: var(--surface); color: var(--text); }
+  .seg.cards button[aria-pressed="true"] { border-color: var(--sel-border); color: var(--text); font-weight: 400; background: var(--surface); }
+  .seg.cards .ws { display: none; }
+  .seg.cards .wn { font-family: var(--num); font-size: 16px; font-weight: 600; color: var(--text); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+  .toolbar input[type=search] { flex: 1 1 220px; min-height: 36px; }
+  .toolbar select { min-height: 36px; }
+  .checks-v { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .checks-v:not(:has(label:not([hidden]))) { display: none; }
+  .filter-label { font-size: 12px; color: var(--muted); }
+  body.view-queue #filters, body:not(.view-queue) #qhead { display: none; }
+
+  /* The pages: plain links; the open one a grey pill on light, a 1px blue line under its label on dark. */
+  .viewtabs { display: flex; gap: 2px; flex-wrap: nowrap; background: none; padding: 0; }
+  .viewtabs button { border: 0; background: transparent; color: var(--muted); min-height: 32px; padding: 5px 11px; border-radius: 6px; font-weight: 500; }
+  .viewtabs button:hover { color: var(--text); background: transparent; }
+  .viewtabs button[aria-current="page"] { color: var(--text); background: var(--sel-bg); box-shadow: inset 0 -1px 0 var(--sel-line); border-radius: 6px; }
+  :root[data-theme="dark"] .viewtabs button[aria-current="page"] { border-radius: 0; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .viewtabs button[aria-current="page"] { border-radius: 0; } }
+  .qcount { font-size: 12px; font-weight: 600; padding: 0 6px; margin-left: 2px; border-radius: 999px; background: var(--chip); color: var(--text); font-family: var(--num); }
+
+  /* Rows: what and where, pay and age, visa and readiness, then the match. */
+  ul.list { list-style: none; margin: 0; padding: 4px 0; display: grid; gap: 0;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  li.job { border-top: 1px solid var(--rule); }
+  li.job:first-child { border-top: 0; }
+  .rowbtn { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: grid; align-items: center;
+    grid-template-columns: minmax(0, 1fr) 104px 120px 64px; gap: 4px 14px; padding: 10px 16px; min-height: 58px; }
+  .rowbtn:hover { background: var(--surface-2); }
+  .rowbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  li.job.sel .rowbtn { background: var(--sel-bg); box-shadow: inset 0 -1px 0 var(--sel-line); }
+  .r-main, .r-mid, .r-state { display: grid; gap: 1px; min-width: 0; }
+  .r-title { font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .r-sub, .r-age, .r-visa, .r-ready { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .r-mid { justify-items: end; text-align: right; }
+  .r-pay { font-size: 13px; color: var(--text); white-space: nowrap; }
+  .r-age.hot { color: var(--new); font-weight: 600; }
+  .r-visa.warn { color: var(--warn); }
+  .r-visa.good { color: var(--text); }
+  .r-ready.ready { color: var(--ok); }
+  .r-ready.error { color: var(--warn); }
+  .r-score { display: grid; justify-items: end; gap: 5px; }
+  .r-score b { font-size: 17px; font-weight: 600; color: var(--data); line-height: 1; }
+  .r-score .bar { display: block; position: relative; width: 52px; height: 3px; border-radius: 2px; background: var(--track); overflow: hidden; }
+  .r-score .bar::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--p); background: var(--data); }
+  li.job.done .r-title { color: var(--muted); }
+  li.job.done .r-score b { color: var(--muted); }
+  .empty { padding: 32px 16px; text-align: center; color: var(--muted); background: var(--surface); list-style: none; }
+
+  /* The Apply queue's lists. */
+  .picks { display: grid; gap: 10px; }
+  .picks-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
+  .picks-head > div { margin-right: auto; flex: 1 1 260px; min-width: 0; }
+  .picks-head > label, .picks-head > select { flex: none; }
+  .picks-head h2, .queue-h { font-size: 16px; margin: 0; }
+  .picks-head .status { margin: 2px 0 0; }
+  .picks-head select { width: auto; }
+  .queue-h { margin: 6px 0 -2px; }
+  .qhead { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 13px; color: var(--muted); }
+  .qhead b { color: var(--text); }
+  .qhead > button { margin-left: auto; }
+
+  /* The opened job. */
+  .d-head { padding: 18px 20px 14px; display: grid; gap: 8px; border-bottom: 1px solid var(--rule); }
+  .d-head h2 { font-size: 22px; line-height: 1.2; margin: 0; letter-spacing: -0.01em; }
+  .d-meta { margin: 0; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13px; }
+  .d-meta b { color: var(--text); font-weight: 600; }
+  .d-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .d-back { display: none; justify-self: start; }
+  .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--rule); }
+  .kpi { padding: 14px 20px; display: grid; gap: 2px; align-content: start; }
+  .kpi + .kpi { border-left: 1px solid var(--rule); }
+  .kpi-l { font-size: 12.5px; color: var(--muted); }
+  .kpi-v { font-size: 26px; font-weight: 600; line-height: 1.15; letter-spacing: -0.01em; }
+  .kpi.match .kpi-v { color: var(--data); }
+  .kpi-s { font-size: 12.5px; color: var(--muted); }
+  .d-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .d-col { display: grid; align-content: start; min-width: 0; }
+  .d-col + .d-col { border-left: 1px solid var(--rule); }
+  .dsec { padding: 14px 20px; display: grid; gap: 8px; border-bottom: 1px solid var(--rule); min-width: 0; }
+  .d-col .dsec:last-child { border-bottom: 0; }
+  .dsec h3 { font-size: 14px; margin: 0; }
+  .dsec p { margin: 0; }
+  .dsec .ev { margin: 0; padding: 0; background: none; border: 0; }
+  .dsec .why-head .section-h { display: none; }
+  .dsec .why-grid { grid-template-columns: max-content minmax(0, 1fr); }
+  .dsec .warnline { color: var(--warn); }
+  .d-empty { padding: 40px 24px; color: var(--muted); }
+  /* The section heading names it; the box's own heading and the master's score (in the figures above) aren't repeated. */
+  .raise-wrap .section-h { display: none; }
+  /* The resume: one line of what it is and its buttons, the tailoring line under it. */
+  .resume-bar { padding: 10px 14px; gap: 4px 10px; border-radius: var(--radius); }
+  .resume-bar .spacer { display: none; }
+  .resume-bar.has > span:first-child { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .resume-bar.has > button { flex: none; }
+  .status { color: var(--muted); font-size: 13px; margin: 0; }
   .status b { color: var(--text); font-weight: 600; }
-  .hbtns { display: flex; gap: 8px 12px; flex-wrap: wrap; align-items: center; }
   button, .btn {
-    font: inherit; font-size: 13px; min-height: 32px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    font: inherit; font-size: 13px; min-height: 32px; padding: 5px 12px; border-radius: var(--radius-ctl); cursor: pointer;
     border: 1px solid var(--control); background: var(--surface); color: var(--text); text-decoration: none;
     display: inline-flex; align-items: center; justify-content: center; gap: 6px; line-height: 1.3;
     transition: background-color .12s, border-color .12s;
@@ -131,11 +224,11 @@
   button:hover, .btn:hover { border-color: var(--muted); background: var(--surface-2); }
   button:active, .btn:active { transform: translateY(1px); }
   .btn.primary, button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
-  .btn.primary:hover, button.primary:hover { filter: brightness(1.06); background: var(--accent); }
+  .btn.primary:hover, button.primary:hover { opacity: .88; background: var(--accent); }
   button.ghost { background: transparent; color: var(--muted); border-color: transparent; }
   button:disabled { opacity: 0.55; cursor: not-allowed; filter: none; transform: none; }
   button.ghost:hover { color: var(--text); background: var(--chip); border-color: transparent; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
   .resume-bar {
     display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
@@ -153,7 +246,7 @@
   .seg button:hover { color: var(--text); background: transparent; border-color: transparent; }
   .seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); border-color: var(--control); font-weight: 600; }
   input[type=search], input[type=text], input[type=password], input[type=email], input[type=tel], input[type=url], input[type=number], input[type=time], select, textarea {
-    padding: 6px 10px; min-height: 32px; border: 1px solid var(--control); border-radius: 6px;
+    padding: 6px 10px; min-height: 32px; border: 1px solid var(--control); border-radius: var(--radius-ctl);
     background: var(--surface); color: var(--text); font: inherit; font-size: 14px; min-width: 0;
   }
   textarea { min-height: 0; }
@@ -172,35 +265,6 @@
   label.switch input:checked::after { transform: translateX(12px); }
   .count { font-size: 13px; color: var(--muted); margin: 0 2px 8px; }
 
-  /* Jobs are rows of one panel: the title and its company on the left, the
-     match score as the row's figure, then when it went up and what to do. */
-  ul.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0;
-    background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  li.job {
-    padding: 14px 16px; display: grid; gap: 4px 20px; align-items: start;
-    grid-template-columns: minmax(0, 1fr) 76px minmax(200px, auto);
-    border-top: 1px solid var(--rule); transition: background-color .12s;
-  }
-  li.job:first-child { border-top: 0; }
-  li.job:hover { background: var(--surface-2); }
-  li.job > .head { grid-column: 1; grid-row: 1; min-width: 0; }
-  li.job > .right { grid-column: 2; grid-row: 1; }
-  li.job > .side { grid-column: 3; grid-row: 1 / span 2; }
-  li.job > .reason, li.job > .qline { grid-column: 1 / 3; }
-  li.job.done .title { color: var(--muted); }
-  li.job.done .score { opacity: .6; }
-  .title { font-weight: 600; font-size: 15px; color: var(--text); text-decoration: none; }
-  .title:hover { text-decoration: underline; text-underline-offset: 2px; }
-  .meta { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 3px; }
-  .company { color: var(--text); font-weight: 500; }
-  .right { display: flex; flex-direction: column; align-items: flex-end; gap: 0; }
-  .side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-  .age { font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .age.hot { color: var(--accent); font-weight: 600; }
-  .score { display: grid; justify-items: end; line-height: 1.15; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .score b { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
-  .score span { font-size: 12px; color: var(--muted); }
-  .score.hi b { color: var(--hi); } .score.mid b { color: var(--mid); } .score.lo b { color: var(--lo); }
   .pill { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; flex: none; background: var(--chip); color: var(--muted); }
   .pill.ready { background: var(--ok-soft); color: var(--ok); }
   .pill.error { background: var(--warn-soft); color: var(--warn); }
@@ -219,8 +283,9 @@
   .skills-line .breakdown { flex-basis: 100%; }
   .kwlist { display: flex; flex-wrap: wrap; gap: 6px; }
   .kwi { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
-  .kwi.ok { background: var(--ok-soft); color: var(--ok); }
-  .kwi.miss { background: var(--warn-soft); color: var(--warn); }
+  /* What the resume has, in ink; what it lacks, an outline: no colour on a list of skills. */
+  .kwi.ok { background: var(--chip); color: var(--text); }
+  .kwi.miss { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--control); }
   .skills-line .breakdown b { color: var(--text); font-weight: 600; }
   .skills-line .hit { color: var(--ok); }
   .skills-line .miss { color: var(--warn); }
@@ -240,7 +305,6 @@
   .ev code { font: 12px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
   .ev .warnline { color: var(--warn); }
   .ev a { color: var(--accent); }
-  .empty { padding: 40px 16px; text-align: center; color: var(--muted); background: var(--surface); }
 
   dialog {
     border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(640px, calc(100vw - 32px));
@@ -291,16 +355,6 @@
   .chg del { color: var(--warn); }
   .chg.rejected .after { text-decoration: line-through; color: var(--muted); }
   .section-h { font-size: 13px; font-weight: 600; color: var(--text); margin: 0; }
-  .viewtabs { display: inline-flex; }
-  .viewtabs { gap: 8px; flex-wrap: wrap; }
-  .viewtabs { background: var(--chip); border-radius: 8px; padding: 2px; gap: 2px; flex-wrap: nowrap; }
-  .viewtabs button { border-color: transparent; background: transparent; color: var(--muted); min-height: 30px; }
-  .viewtabs button:hover { color: var(--text); background: transparent; border-color: transparent; }
-  .viewtabs button[aria-current="page"] { background: var(--surface); border-color: var(--control); color: var(--text); font-weight: 600; }
-  .qcount { font-size: 12px; font-weight: 600; padding: 0 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-variant-numeric: tabular-nums; }
-  .qhead { display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
-  .qhead > button { justify-self: start; }
-  .qhead b { color: var(--text); }
   .qline { grid-column: 1 / -1; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
   .qline b { color: var(--text); font-weight: 600; }
   .qline .added { color: var(--ok); }
@@ -352,9 +406,9 @@
   .kw-guide code { font: 12px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--chip); padding: 1px 6px; border-radius: 4px; }
   .kw-guide ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--muted); }
   .kw-rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .kw-rule { display: grid; gap: 8px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); border-left: 4px solid var(--ok, #4f8a5b); background: var(--surface-2); }
-  .kw-rule.drop { border-left-color: var(--warn, #c0712f); }
-  .kw-rule.hit { box-shadow: 0 0 0 2px var(--accent); }
+  .kw-rule { display: grid; gap: 8px; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface-2); }
+  .kw-rule.drop { border-style: dashed; border-color: var(--control); }
+  .kw-rule.hit { box-shadow: 0 0 0 2px var(--data); }
   .kw-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
   .kw-num { font-size: 12px; font-weight: 600; color: var(--muted); min-width: 1.5em; }
   .kw-head select { width: auto; }
@@ -478,17 +532,25 @@
   /* Short windows (or text zoomed to 200%) would lose most of the page to a sticky bar. */
   @media (max-height: 620px) { .rail { position: static; max-height: none; } }
 
+  @media (max-width: 1099px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .detail { position: fixed; inset: 0; top: 0; max-height: none; border-radius: 0; border: 0; z-index: 8; display: none; }
+    body.detail-open:is(.view-jobs, .view-queue) .detail { display: block; }
+    body.detail-open:is(.view-jobs, .view-queue) { overflow: hidden; }
+    .d-back { display: inline-flex; }
+  }
   @media (max-width: 760px) {
-    .wrap { padding: 16px 16px 48px; }
-    header { gap: 10px; }
-    .brand { flex: 1 1 100%; }
-    .viewtabs { overflow-x: auto; max-width: 100%; }
+    .wrap { padding: 12px 16px 48px; }
+    .topbar-in { padding: 8px 16px; }
+    .viewtabs { overflow-x: auto; max-width: 100%; order: 3; flex: 1 1 100%; }
     .viewtabs button { white-space: nowrap; }
-    li.job { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; }
-    li.job > .side { grid-column: 1 / -1; grid-row: auto; flex-direction: row-reverse; flex-wrap: wrap; justify-content: space-between; align-items: center; order: 1; }
-    /* Four buttons don't fit beside the age: they take a full row of their own, left to right. */
-    li.job > .side > .actions { flex: 1 1 auto; justify-content: flex-start; }
-    li.job > details.evidence { order: 2; }
+    .topbar .status { display: none; }
+    .rowbtn { grid-template-columns: minmax(0, 1fr) 56px; grid-template-areas: "main score" "mid score" "state score"; padding: 10px 14px; }
+    .r-main { grid-area: main; } .r-mid { grid-area: mid; } .r-state { grid-area: state; } .r-score { grid-area: score; }
+    .r-mid, .r-state { display: flex; gap: 10px; justify-items: start; text-align: left; }
+    .kpis, .d-cols { grid-template-columns: minmax(0, 1fr); }
+    .kpi + .kpi, .d-col + .d-col { border-left: 0; border-top: 1px solid var(--rule); }
+    .seg.cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     /* The master resume line is detail on a phone; it would push the first job down. */
     .resume-bar.has > .note { display: none; }
   }
@@ -510,67 +572,66 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="wrap">
-  <header>
+<header class="topbar">
+  <div class="topbar-in">
     <div class="brand">
-      <!-- The app's icon (extension/icons), drawn at this size. -->
-      <svg width="26" height="26" viewBox="0 0 128 128" aria-hidden="true"><rect width="128" height="128" rx="28" fill="#b8561f"/><path d="M33 38h61M33 63.5h61M33 89h33" fill="none" stroke="#fbf1e4" stroke-width="10" stroke-linecap="round"/></svg>
+      <svg class="mark" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.5h7.5c4.4 0 8-3.6 8-8V5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M14.5 8.6 18.5 4.6l4 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 21h9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity=".45"/></svg>
       <h1>Onward</h1>
     </div>
-    <div class="hbtns">
-      <select id="roleSel" aria-label="Role" hidden></select>
-      <nav class="viewtabs" id="viewTabs" aria-label="Pages" hidden>
+    <nav class="viewtabs" id="viewTabs" aria-label="Pages" hidden>
         <button type="button" data-view="queue" aria-current="page">Apply queue <span class="qcount" id="qcount" hidden></span></button>
         <button type="button" data-view="jobs">All jobs</button>
         <button type="button" data-view="help">How it works</button>
         <button type="button" data-view="settings">Settings</button>
       </nav>
+    <div class="hbtns">
+      <p class="status" id="status"></p>
+      <select id="roleSel" aria-label="Role" hidden></select>
       <button type="button" id="openKit">Apply kit</button>
       <button type="button" id="themeBtn" aria-label="Theme"></button>
-      <label class="switch" id="advLbl" title="Show every badge, filter and score detail"><input type="checkbox" id="advMode" role="switch"> Advanced</label>
+      <label class="switch" id="advLbl" title="Show every filter and score detail"><input type="checkbox" id="advMode" role="switch"> Advanced</label>
     </div>
-  </header>
-  <p class="status" id="status"></p>
-
+  </div>
+</header>
+<div class="wrap">
   <div class="layout">
-  <aside class="rail rail-l" aria-label="Filters">
-    <section class="panel controls" id="filters" aria-labelledby="filtersH">
-      <h2 class="panel-h" id="filtersH">Posted within</h2>
-      <div class="seg" id="window" role="group" aria-labelledby="filtersH">
-        <button type="button" data-h="1"><span class="ws">1h</span><span class="wl">Last hour</span><span class="wn" data-n="1"></span></button>
-        <button type="button" data-h="6"><span class="ws">6h</span><span class="wl">Last 6 hours</span><span class="wn" data-n="6"></span></button>
+  <main id="main" tabindex="-1">
+  <div id="notices" role="status"></div>
+  <div class="resume-bar" id="resumeBar"></div>
+  <section class="controls" id="filters" aria-label="Filters">
+    <h2 class="sr-only" id="filtersH">Posted within</h2>
+      <div class="seg cards" id="window" role="group" aria-labelledby="filtersH">
+        <button type="button" data-h="1" class="adv-only"><span class="ws">1h</span><span class="wl">Last hour</span><span class="wn" data-n="1"></span></button>
+        <button type="button" data-h="6" class="adv-only"><span class="ws">6h</span><span class="wl">Last 6 hours</span><span class="wn" data-n="6"></span></button>
         <button type="button" data-h="24"><span class="ws">24h</span><span class="wl">Last 24 hours</span><span class="wn" data-n="24"></span></button>
         <button type="button" data-h="72"><span class="ws">3d</span><span class="wl">Last 3 days</span><span class="wn" data-n="72"></span></button>
         <button type="button" data-h="168"><span class="ws">7d</span><span class="wl">Last 7 days</span><span class="wn" data-n="168"></span></button>
-        <button type="button" data-h="720"><span class="ws">30d</span><span class="wl">Last 30 days</span><span class="wn" data-n="720"></span></button>
+        <button type="button" data-h="720" class="adv-only"><span class="ws">30d</span><span class="wl">Last 30 days</span><span class="wn" data-n="720"></span></button>
         <button type="button" data-h="0" id="allOpen"><span class="wl">All open</span><span class="wn" data-n="0"></span></button>
       </div>
-      <div class="filter-group">
-        <label class="filter-label" for="sort">Order</label>
-        <select id="sort">
-          <option value="new">Newest first</option>
-          <option value="match">Best match first</option>
-        </select>
-        <label class="filter-label adv-only" for="minMatch">Match</label>
-        <select id="minMatch" class="adv-only">
-          <option value="0">Any match</option>
-          <option value="50">50%+ match</option>
-          <option value="65">65%+ match</option>
-          <option value="80">80%+ match</option>
-        </select>
-      </div>
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Search company, title, city, skill" aria-label="Search jobs">
+      <label class="sr-only" for="sort">Order</label>
+      <select id="sort">
+        <option value="new">Newest first</option>
+        <option value="match">Best match first</option>
+      </select>
+      <label class="sr-only adv-only" for="minMatch">Match</label>
+      <select id="minMatch" class="adv-only">
+        <option value="0">Any match</option>
+        <option value="50">50%+ match</option>
+        <option value="65">65%+ match</option>
+        <option value="80">80%+ match</option>
+      </select>
+    </div>
       <div class="filter-group checks-v">
         <label class="toggle adv-only" id="h1bOnlyLbl"><input type="checkbox" id="h1bOnly"> H-1B sponsors only</label>
         <label class="toggle adv-only" id="nospLbl"><input type="checkbox" id="nosp"> <span id="nospText">Hide no sponsorship / no OPT</span></label>
         <label class="toggle adv-only"><input type="checkbox" id="remote"> Remote only</label>
         <label class="toggle adv-only"><input type="checkbox" id="hidedone"> Hide applied/dismissed</label>
       </div>
-    </section>
-    <section class="panel qhead" id="qhead" aria-label="Queue"></section>
-  </aside>
-
-  <main id="main" tabindex="-1">
-  <div id="notices" role="status"></div>
+  </section>
+  <section class="qhead" id="qhead" aria-label="Queue"></section>
   <section id="queueView" hidden>
     <section class="picks" id="picksBox" aria-labelledby="picksTitle">
       <div class="picks-head">
@@ -654,22 +715,13 @@
   </section>
   <section id="setupView" hidden aria-labelledby="setupTitle"></section>
   <div id="jobsView">
-  <div class="searchbar">
-    <input type="search" id="q" placeholder="Filter by company, title, city, skill" aria-label="Filter">
-  </div>
   <div class="count" id="count" role="status"></div>
   <div class="hidden-note" id="hiddenNote" hidden></div>
   <ul class="list" id="list" aria-label="Jobs" tabindex="-1"></ul>
   </div>
   </main>
 
-  <aside class="rail rail-r" aria-label="Your resume and next applications">
-    <div class="resume-bar" id="resumeBar"></div>
-    <section class="panel" id="radarPanel" aria-labelledby="radarPanelH">
-      <h2 class="panel-h" id="radarPanelH">Last search</h2>
-      <p class="status-r" id="statusR"></p>
-    </section>
-  </aside>
+  <aside class="detail" id="detail" aria-label="The opened job"></aside>
   </div>
 </div>
 
@@ -1578,18 +1630,6 @@ function scoreFigure(pct, thin) {
     el("b", { text: pct + "%" + (thin ? "?" : "") }), el("span", { text: "match" }));
 }
 
-// A details element whose contents are built the first time it opens.
-function lazyDetails(summary, build, fk) {
-  const d = el("details", { class: "evidence" });
-  const fill = () => { if (d.childNodes.length === 1) d.append(...[].concat(build()).filter(Boolean)); };
-  // Built on the click that opens it, so the next Tab already finds the contents;
-  // "toggle" (which comes a moment later) covers opening it from code.
-  d.append(el("summary", { text: summary, "data-fk": fk, onclick: () => { if (!d.open) fill(); } }));
-  d.addEventListener("toggle", () => { if (d.open) fill(); });
-  d.fill = fill;
-  return d;
-}
-
 // Applied / Dismiss, each with Undo. Unmarking is a change too.
 // "Applied", opening the resume the application went out with when Onward kept one.
 function markBadge(j, mark) {
@@ -1640,98 +1680,245 @@ function markButtons(j, mark) {
   }));
 }
 
-function jobCard(j, now, V, hasResume) {
-  const mark = state.marks[j.url];
-  const sc = scores.get(j);
-  const adv = state.advanced;
-  const fk = (x) => `${j.key}:${x}`;
-  const signals = visaSignals(j, V);
+// ---------------------------------------------------------------- rows and the opened job
+//
+// Every list (All jobs, Today's picks, the rest of the queue) is rows of the
+// same shape; selecting one opens it in the detail pane beside the list,
+// with everything about it before applying: its match, pay and age, its visa
+// evidence, which resume goes on the form, what would raise the score, and
+// the actions. The opened job is kept by key across redraws.
 
-  const right = el("div", { class: "right" });
-  if (sc && sc.pct != null) right.append(scoreFigure(sc.pct, sc.thin));
-  const side = el("div", { class: "side" });
-  side.append(el("div", {
-    class: "age" + ((dateOnly(j) ? dayLabel(when(j)) === "today" : now - when(j) < 6 * 3600) ? " hot" : ""),
-    title: dateOnly(j) ? "The source gives the posting date only, not the time" : j.posted_exact ? "Posted " + fmt(when(j)) : "Source gave only an update time",
+// When a posting went up, as the row and the pane say it.
+function ageInfo(j, now) {
+  const fresh = dateOnly(j) ? dayLabel(when(j)) === "today" : now - when(j) < 6 * 3600;
+  return {
+    hot: fresh,
     text: dateOnly(j) ? "Posted " + dayLabel(when(j)) : (j.posted_exact ? "" : "~") + ago(when(j)),
-  }));
-
-  const actions = el("div", { class: "actions" });
-  side.append(actions);
-  actions.append(el("a", {
-    class: "btn apply", href: j.apply_url || j.url, target: "_blank", rel: "noopener", text: "Apply ↗",
-    "data-fk": fk("apply"), "aria-label": `Apply: ${j.title} at ${j.company} (opens the application form in a new tab)`,
-    onclick: () => { state.opened[j.url] = true; rememberApplyList(j.key); setTimeout(() => keepFocus(render), 0); },
-  }));
-  if (HELPER) actions.prepend(el("button", { type: "button", text: "Tailor", "data-fk": fk("tailor"),
-    title: "Tailor your resume to this posting",
-    "aria-label": `Tailor resume for ${j.title} at ${j.company}`, onclick: () => openTailor(j) }));
-
-  const meta = el("div", { class: "meta" }, el("span", { class: "company", text: j.company }), el("span", { text: j.location }));
-  const head = el("div", { class: "head" },
-    el("a", { class: "title", href: j.url, target: "_blank", rel: "noopener", text: j.title, "data-fk": fk("title") }), meta);
-  meta.append(...ageBadges(j, now));
-  if (readyKeys().has(j.key)) meta.append(el("span", { class: "badge yes", text: "Resume ready", title: "Prepared in the Apply queue" }));
-  const reason = hasResume ? scoreReason(sc, j, adv) : null;
-  const li = el("li", { class: "job" + (mark ? " done" : "") }, head, right, side, reason);
-
-
-  if (adv) {
-    // Advanced: everything on the card, as before, plus the reasons.
-    const badges = el("div", { class: "row" }, ...signals.map((s) => el("span", { class: s.cls, text: s.text })), ...otherBadges(j, mark));
-    let skillsRow = null;
-    if (sc && sc.pct != null) {
-      skillsRow = el("div", { class: "row skills-line" });
-      const counts = [sc.req.of ? `Required ${sc.req.have}/${sc.req.of}` : null,
-        sc.pref.of ? `Nice-to-have ${sc.pref.have}/${sc.pref.of}` : null].filter(Boolean);
-      const parts = [
-        ...counts.map((t, i) => i ? t : el("b", { text: t })),
-        el("span", { class: sc.exp.ok === false ? "miss" : "", text: "Experience: " + sc.exp.label }),
-        sc.degree ? el("span", { class: sc.degree.ok ? "" : "miss", text: "Degree: " + sc.degree.label }) : null,
-      ].filter(Boolean);
-      const line = el("span", { class: "breakdown" });
-      parts.forEach((x, i) => { if (i) line.append(" · "); line.append(x); });
-      skillsRow.append(line);
-      const missReq = sc.items.filter((i) => !i.ok && i.kind !== "pref").map((i) => i.k);
-      const missPref = sc.items.filter((i) => !i.ok && i.kind === "pref").map((i) => i.k);
-      if (missReq.length) skillsRow.append(el("span", {}, "Missing: ", el("span", { class: "miss", text: missReq.slice(0, 8).join(", ") + (missReq.length > 8 ? ` +${missReq.length - 8}` : "") })));
-      if (missPref.length) skillsRow.append(el("span", {}, "Nice-to-have missing: ", el("span", { text: missPref.slice(0, 5).join(", ") })));
-    }
-    actions.append(...markButtons(j, mark));
-    li.append(...[skillsRow, badges,
-      sc && sc.pct != null ? lazyDetails("Score and skills", () => scoreSection(sc, j), fk("kw")) : null,
-      lazyDetails(V.sponsor ? "Why is this new? Proof and H-1B details" : "Why is this new? Proof",
-        () => postingFacts(j, null, V), fk("proof"))].filter(Boolean));
-    return li;
-  }
-
-  // Simple: the one most telling visa badge, Apply and Tailor; the rest in Details.
-  const lead = signals.find((s) => s.warn) || signals[0];
-  if (lead) meta.append(el("span", { class: lead.cls, text: lead.text }));
-  if (mark) meta.append(markBadge(j, mark));
-  // Back from the application form: the one question worth asking.
-  if (state.opened[j.url] && !mark) {
-    actions.append(el("button", { type: "button", class: "nudge", text: "I applied", "data-fk": fk("applied"),
-      "aria-label": `I applied: ${j.title} at ${j.company}`, onclick: () => markJob(j, "applied") }));
-  }
-  li.append(lazyDetails("Details", () => [
-    el("div", { class: "row" }, ...otherBadges(j, mark), el("span", { class: "actions" }, ...markButtons(j, mark))),
-    ...postingFacts(j, sc, V),
-  ], fk("details")));
-  return li;
+    title: dateOnly(j) ? "The source gives the posting date only, not the time" : j.posted_exact ? "Posted " + fmt(when(j)) : "Source gave only an update time",
+  };
 }
 
-// A posting's own facts, the same in All jobs and the Apply queue: its score
-// and skills, then its date and visa evidence.
-function postingFacts(j, sc, V) {
-  // The H-1B badges' reasons are the approvals shown above them; the posting's own words need theirs.
-  const signals = visaSignals(j, V).filter((x) => !/\bh1b\b/.test(x.cls));
-  const ev = evidence(j, !(j.sponsor_note && signals.some((s) => String(s.why).includes(j.sponsor_note))));
-  if (signals.length) {
-    ev.append(el("div", { class: "why-box" }, el("p", { class: "section-h", text: "Why these visa badges" }),
-      ...signals.map((s) => el("p", {}, el("b", { text: s.text + ": " }), s.why))));
+// The queue's states in a word, for the row and the pane.
+const QSTATE = { ready: "Ready to apply", working: "Preparing", queued: "Waiting to prepare", error: "Couldn't prepare" };
+
+function queueByKey(key) {
+  return queue.data ? queue.data.items.find((i) => i.key === key) || null : null;
+}
+
+// A visa badge's words, short enough for a row.
+const shortVisa = (t) => t.split(" · ")[0].replace(" / clearance", "").replace("No STEM OPT / I-983", "No OPT")
+  .replace("Files H-1B, but not for this role", "Not for this role").replace("Posting says it sponsors", "Sponsors");
+
+// One row. `it` is the job's apply queue item, when it has one.
+function jobRow(j, it, now = Date.now() / 1000) {
+  const key = (j || it).key;
+  const sc = j ? scores.get(j) : null;
+  const pct = sc && sc.pct != null ? sc.pct : it ? it.score : null;
+  const mark = j ? state.marks[j.url] : null;
+  const V = visa();
+  const signals = j ? visaSignals(j, V) : [];
+  const lead = signals.find((s) => s.warn) || signals[0];
+  const age = j ? ageInfo(j, now) : null;
+  const status = mark ? (mark === "applied" ? "Applied" : "Dismissed")
+    : it ? QSTATE[it.state] || it.state : readyKeys().has(key) ? "Ready to apply" : "";
+  const title = j ? j.title : it.title, company = j ? j.company : it.company, where = j ? j.location : it.location;
+  const sel = state.sel === key;
+  const btn = el("button", {
+    type: "button", class: "rowbtn", "data-key": key, "data-fk": `row:${key}`, "aria-pressed": String(sel),
+    "aria-label": `${title} at ${company}${pct != null ? `, ${pct}% match` : ""}${status ? ", " + status.toLowerCase() : ""}`,
+    onclick: () => selectJob(key, { focus: "detail" }),
+  },
+  el("span", { class: "r-main" }, el("span", { class: "r-title", text: title }), el("span", { class: "r-sub", text: `${company} · ${where}` })),
+  el("span", { class: "r-mid" },
+    el("span", { class: "r-pay num", text: j && j.pay_min ? "$" + payLabel(j) : "—" }),
+    age ? el("span", { class: "r-age" + (age.hot ? " hot" : ""), title: age.title, text: age.text }) : null),
+  el("span", { class: "r-state" },
+    el("span", { class: "r-visa" + (lead && lead.warn ? " warn" : lead && /yes|h1b/.test(lead.cls) ? " good" : ""),
+      title: lead ? lead.text : null, text: lead ? shortVisa(lead.text) : V.sponsor ? "No H-1B record" : "" }),
+    el("span", { class: "r-ready" + (status === "Ready to apply" ? " ready" : it && it.state === "error" ? " error" : ""), text: status || "Not prepared" })),
+  el("span", { class: "r-score", title: sc && sc.thin ? "Few keywords to go on, so this score is rough" : null },
+    el("b", { class: "num", text: pct != null ? String(pct) + (sc && sc.thin ? "?" : "") : "—" }),
+    el("i", { class: "bar", style: `--p:${pct != null ? pct : 0}%`, "aria-hidden": "true" })));
+  return el("li", { class: "job" + (mark ? " done" : "") + (sel ? " sel" : "") + (it ? " q-" + it.state : "") }, btn);
+}
+
+function markSelected() {
+  for (const li of document.querySelectorAll("li.job")) {
+    const b = li.querySelector(".rowbtn");
+    const on = !!b && b.dataset.key === state.sel;
+    li.classList.toggle("sel", on);
+    if (b) b.setAttribute("aria-pressed", String(on));
   }
-  return [sc && sc.pct != null ? scoreSection(sc, j) : null, ev].filter(Boolean);
+}
+
+// Opening a job from a click or the arrow keys. On a narrow screen the pane
+// then covers the list, with a way back.
+function selectJob(key, { focus } = {}) {
+  state.sel = key;
+  markSelected();
+  document.body.classList.add("detail-open");
+  renderDetail();
+  if (focus === "detail" && matchMedia("(max-width: 1099px)").matches) $("detail").focus();
+}
+
+// The rows on screen in order, for Up and Down.
+function visibleRows() {
+  const view = state.view === "queue" ? $("queueView") : $("jobsView");
+  return view ? [...view.querySelectorAll("li.job .rowbtn")] : [];
+}
+
+document.addEventListener("keydown", (e) => {
+  const b = e.target.closest && e.target.closest(".rowbtn");
+  if (!b || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+  const rows = visibleRows();
+  const i = rows.indexOf(b) + (e.key === "ArrowDown" ? 1 : -1);
+  if (rows[i]) { e.preventDefault(); rows[i].focus(); selectJob(rows[i].dataset.key); }
+});
+
+// The first row opens when the opened job isn't on screen any more (without
+// covering the list on a narrow screen: that's only for a click).
+function ensureSelection() {
+  if (!["jobs", "queue"].includes(state.view)) return;
+  const rows = visibleRows();
+  if (rows.length && !rows.some((b) => b.dataset.key === state.sel)) { state.sel = rows[0].dataset.key; markSelected(); }
+  renderDetail();
+}
+
+// What the queue says about a job's resume, and its buttons, for the pane.
+function queueParts(it) {
+  const lines = [], actions = [];
+  const fk = (x) => `q:${it.key}:${x}`;
+  const name = `${it.title} at ${it.company}`;
+  const s = (queue.data && queue.data.settings) || {};
+  if (s.threshold != null && it.score < s.threshold) {
+    lines.push(el("p", { class: "note", text: "Below your minimum match, but the posting names too few skills to judge and you have the ones it requires." }));
+  }
+  if (it.state === "ready") {
+    if (it.choice === "tailored" && it.changes) {
+      lines.push(el("p", {}, el("b", { text: "Tailored resume" }), " · ", changeLine(it.changes), " ",
+        el("span", { class: "badge" + (it.reviewed ? " yes" : ""), text: it.reviewed ? "Approved" : "Not reviewed yet" })));
+      if (it.changes.summary) lines.push(el("p", { class: "note", text: it.changes.summary.replace(/\\([&%$#_{}])/g, "$1") }));
+    } else if (it.tailored_id) {
+      lines.push(el("p", {}, el("b", { text: "Your master resume" }), ", which you chose over the tailored one"));
+    } else {
+      lines.push(el("p", { title: it.reason || "" }, el("b", { text: "Your master resume" }), " · " + masterWhy(it.reason)));
+    }
+    lines.push(el("p", { class: "note", text: it.answers ? `${it.answers} form answer${it.answers === 1 ? "" : "s"} drafted; the extension fills them, marked "AI answer, check it".`
+      : "No form answers drafted: the extension drafts them on the form if it needs to." }));
+  } else if (it.state === "working") {
+    lines.push(progressLine(it.decision === "tailor" ? "Tailoring now…" : "Drafting answers now…"));
+  } else if (it.state === "queued") {
+    lines.push(el("p", { title: it.reason || "" }, el("b", { text: "Waiting" }), it.decision === "tailor" ? " to tailor" : " to draft answers"));
+  } else if (it.state === "error") {
+    lines.push(el("p", { class: "warnline", text: `Couldn't prepare this one: ${it.note}. Press Retry to try again, or open the application and fill it in yourself.` }));
+  }
+  if (it.note && it.state !== "error") {
+    lines.push(el("p", { class: "warnline", text: it.note.charAt(0).toUpperCase() + it.note.slice(1) + (/[.!?]$/.test(it.note) ? "" : ".") }));
+  }
+  if (it.state === "ready" && it.tailored_id) {
+    actions.push(el("a", { class: "btn", href: "/files/" + it.pdf, target: "_blank", rel: "noopener", text: "PDF", "aria-label": `Tailored resume PDF: ${name}` }));
+    if (it.choice !== "tailored" || !it.reviewed) {
+      actions.push(el("button", { type: "button", text: "Approve", "data-fk": fk("approve"), "aria-label": `Approve the tailored resume: ${name}`,
+        onclick: () => queueAction("/api/queue/choice", { key: it.key, choice: "tailored" },
+          `Approved the tailored resume for ${name}. The extension attaches it.`, "the approval") }));
+    }
+    if (it.choice === "tailored") {
+      actions.push(el("button", { type: "button", text: "Use master instead", "data-fk": fk("master"), "aria-label": `Use the master resume instead: ${name}`,
+        onclick: () => queueAction("/api/queue/choice", { key: it.key, choice: "master" },
+          `The extension will attach your master resume for ${name}.`, "using the master resume") }));
+    }
+  }
+  if (it.state === "error") actions.push(el("button", { type: "button", text: "Retry", "data-fk": fk("retry"), "aria-label": `Retry: ${name}`,
+    onclick: () => queueAction("/api/queue/retry", { key: it.key }, `Trying ${name} again.`, "the retry") }));
+  return { lines, actions };
+}
+
+// "What would raise this score", fetched once per job and kept for the session.
+const raiseCache = new Map();
+function raiseSection(j) {
+  const box = el("div", { class: "raise-wrap" });
+  if (!HELPER || !state.resume) return null;
+  const fill = (r) => {
+    const b = raiseBox(j, r);
+    box.replaceChildren(...(b ? [b] : [el("p", { class: "note", text: "Nothing on this posting's checklist is missing from your resume." })]));
+  };
+  if (raiseCache.has(j.key)) fill(raiseCache.get(j.key));
+  else {
+    box.append(progressLine("Working out what would raise it…"));
+    api("/api/raise?key=" + encodeURIComponent(j.key)).then((r) => { raiseCache.set(j.key, r); if (box.isConnected) fill(r); },
+      () => { raiseCache.set(j.key, null); if (box.isConnected) box.replaceChildren(); });
+  }
+  return box;
+}
+
+function section(title, ...kids) {
+  const body = kids.flat().filter(Boolean);
+  return body.length ? el("section", { class: "dsec" }, el("h3", { text: title }), ...body) : null;
+}
+
+// The opened job.
+function renderDetail() {
+  const pane = $("detail");
+  if (!pane || !["jobs", "queue"].includes(state.view)) return;
+  const key = state.sel;
+  const j = key ? jobByKey(key) : null, it = key ? queueByKey(key) : null;
+  if (!j && !it) {
+    pane.replaceChildren(el("div", { class: "d-empty" }, el("p", { text: "Pick a job to see everything about it before you apply: its match, pay, visa evidence and the resume that goes on the form." })));
+    return;
+  }
+  const now = Date.now() / 1000;
+  const V = visa();
+  const sc = j ? scores.get(j) : null;
+  const mark = j ? state.marks[j.url] : null;
+  const title = j ? j.title : it.title, company = j ? j.company : it.company;
+  const name = `${title} at ${company}`;
+  const fk = (x) => `d:${key}:${x}`;
+  const apply = (j && j.apply_url) || (it && it.apply_url) || (j && j.url) || it.url;
+
+  // Header: what and where, then the one primary action and the rest.
+  const meta = el("p", { class: "d-meta" }, el("b", { text: company }), " · ", j ? j.location : it.location,
+    ...(j ? otherBadges(j, mark).map((b) => [" ", b]).flat() : []), ...(j ? ageBadges(j, now).map((b) => [" ", b]).flat() : []));
+  const actions = el("div", { class: "d-actions" },
+    el("a", { class: "btn primary", href: apply, target: "_blank", rel: "noopener", "data-fk": fk("apply"),
+      text: it && it.state === "ready" ? "Open application ↗" : "Apply ↗",
+      "aria-label": `Apply: ${name} (opens the application form in a new tab)`,
+      title: it && it.state === "ready" ? "The extension attaches the prepared resume and fills the form. You review and submit." : null,
+      onclick: () => { if (j) state.opened[j.url] = true; rememberApplyList(state.view === "jobs" ? key : null); setTimeout(() => keepFocus(render), 0); } }),
+    HELPER ? el("button", { type: "button", "data-fk": fk("tailor"), text: it && it.tailored_id ? "Changes and versions" : "Tailor",
+      "aria-label": `${it && it.tailored_id ? "Resume changes and versions" : "Tailor resume"}: ${name}`,
+      onclick: () => openTailor(j || { key, title, company }) }) : null,
+    ...(j ? markButtons(j, mark) : []),
+    el("a", { class: "btn ghost", href: j ? j.url : it.url, target: "_blank", rel: "noopener", text: "Posting ↗", "aria-label": `The posting: ${name} (new tab)` }));
+  const head = el("div", { class: "d-head" },
+    el("button", { type: "button", class: "ghost d-back", text: "← Jobs", onclick: () => { document.body.classList.remove("detail-open"); const b = byFocusKey(`row:${key}`); if (b) b.focus(); } }),
+    el("h2", { id: "detailTitle", text: title }), meta, actions);
+
+  // The three figures that decide most applications.
+  const pct = sc && sc.pct != null ? sc.pct : it ? it.score : null;
+  const age = j ? ageInfo(j, now) : null;
+  const kpi = (label, value, sub, cls = "") => el("div", { class: "kpi " + cls }, el("span", { class: "kpi-l", text: label }),
+    el("b", { class: "kpi-v" + (/\d/.test(value) && !/[a-z]/.test(value) ? " num" : ""), text: value }), sub ? el("span", { class: "kpi-s", text: sub }) : null);
+  const tailored = it && it.changes && it.changes.score;
+  const kpis = el("div", { class: "kpis" },
+    kpi("Match", pct != null ? pct + "%" : "—",
+      tailored && tailored.after != null ? `${tailored.after}% with the tailored resume` : sc && sc.pct != null && sc.req.of ? `${sc.req.have} of ${sc.req.of} required skills` : sc && sc.noJd ? "No description to score" : "", "match"),
+    kpi("Pay", j && j.pay_min ? "$" + payLabel(j) : "—", j && j.pay_min ? "Stated in the posting" : "Not stated"),
+    kpi("Posted", age ? age.text : "—", j ? (j.repost ? "Reposted · first up " + fmt(j.repost.first) : "Onward saw it " + ago(j.first_seen)) : ""));
+
+  // Left: why the score; what would raise it. Right: the resume, visa, proof.
+  const q = it ? queueParts(it) : null;
+  const left = el("div", { class: "d-col" },
+    sc && sc.pct != null ? section("Skills", scoreSection(sc, j)) : sc ? section("Skills", scoreReason(sc, j)) : null,
+    j && sc && sc.pct != null ? section("What would raise this score", raiseSection(j)) : null);
+  const signals = j ? visaSignals(j, V) : [];
+  const right = el("div", { class: "d-col" },
+    section("Resume on the form", q ? [...q.lines, q.actions.length ? el("div", { class: "row" }, ...q.actions) : null]
+      : [el("p", {}, readyKeys().has(key) ? "Prepared in the Apply queue." : "Not in the Apply queue: the extension attaches your master resume. Tailor it to make one for this job.")]),
+    V.sponsor && j ? section("Visa", signals.length ? signals.map((s) => el("p", { class: s.warn ? "warnline" : "" }, el("b", { text: s.text }), " · " + s.why))
+      : [el("p", { class: "note", text: "Nothing in the posting or the company's H-1B history either way." })]) : null,
+    j ? section("When it went up, and the proof", evidence(j, !(j.sponsor_note && signals.some((s) => String(s.why).includes(j.sponsor_note))))) : null);
+  keepFocus(() => pane.replaceChildren(head, kpis, el("div", { class: "d-cols" }, left, right)));
+  pane.setAttribute("aria-labelledby", "detailTitle");
 }
 
 const readyKeys = () => new Set(queue.data ? queue.data.items.filter((i) => i.state === "ready").map((i) => i.key) : []);
@@ -1843,8 +2030,6 @@ function render() {
 
   keepFocus(() => {
     const list = $("list");
-    // Open Details stay open across the redraw (it runs every minute).
-    const open = new Set([...list.querySelectorAll("details[open] > summary")].map((x) => x.dataset.fk));
     list.replaceChildren();
     if (!jobs.length) {
       const opts = [
@@ -1859,10 +2044,9 @@ function render() {
         opts.length ? el("div", { class: "row" }, ...opts) : null));
     }
     shownOrder = jobs.map((j) => j.key);
-    for (const j of jobs) list.append(jobCard(j, now, V, hasResume));
-    // Filled now, not on "toggle", so focus can go back to a control inside.
-    if (open.size) for (const x of list.querySelectorAll("details > summary")) if (open.has(x.dataset.fk)) { x.parentNode.open = true; if (x.parentNode.fill) x.parentNode.fill(); }
+    for (const j of jobs) list.append(jobRow(j, queueByKey(j.key), now));
   });
+  if (state.view === "jobs") ensureSelection();
 
   const many = SETTINGS.roles.length > 1;
   const plural = jobs.length === 1 ? "" : "s";
@@ -1880,7 +2064,6 @@ function render() {
     m.new ? ` · ${m.new} new since last run` : "",
     m.failed ? ` · ${m.failed} boards unreachable` : ""];
   $("status").replaceChildren(...status());
-  $("statusR").replaceChildren(...status());
   for (const n of $("window").querySelectorAll(".wn")) {
     const h = +n.dataset.n;
     n.textContent = ages.filter((a) => !h || a <= h * 3600).length.toLocaleString();
@@ -1932,9 +2115,8 @@ function renderPicks() {
     : list.length ? `Your ${list.length} best new fit${list.length === 1 ? "" : "s"} from the last ${days} days` +
       (more ? `, of ${list.length + more} that qualify` : "") + ". Applied or dismissed ones drop off."
     : "No new postings from the last 7 days fit well enough yet. All jobs has everything.";
-  const V = visa();
   const inQueue = new Map((queue.data ? queue.data.items : []).map((i) => [i.key, i]));
-  keepFocus(() => $("picks").replaceChildren(...list.map((j) => inQueue.has(j.key) ? queueItem(inQueue.get(j.key)) : jobCard(j, now, V, true))));
+  keepFocus(() => $("picks").replaceChildren(...list.map((j) => jobRow(j, inQueue.get(j.key) || null, now))));
   return new Set(list.map((j) => j.key));
 }
 
@@ -1994,7 +2176,7 @@ function renderResumeBar() {
   }
   const have = resumeSkills();
   bar.replaceChildren(...[
-    el("span", {}, "Resume for match scores: ", el("b", { text: state.resume.name }), ` · ${have.size} skills found`),
+    el("span", {}, "Resume: ", el("b", { text: state.resume.name }), ` · ${have.size} skills`),
     el("button", { type: "button", class: "ghost", text: "Review skills", onclick: openSkills }),
     el("span", { class: "spacer" }),
     el("button", { type: "button", text: "Replace", onclick: () => $("resumeFile").click() }),
@@ -2750,96 +2932,6 @@ function masterWhy(reason) {
   return /every keyword/.test(r) ? "fits as is" : cov ? `covers ${cov[1]}% already` : /reorder|backs/.test(r) ? "nothing to add" : "fits";
 }
 
-function queueItem(it) {
-  // The posting as All jobs shows it, when this page has it: same score, same details.
-  const j = jobByKey(it.key), sc = j && scores.get(j);
-  const right = el("div", { class: "right" }, sc && sc.pct != null ? scoreFigure(sc.pct, sc.thin) : scoreFigure(it.score));
-  const STATE = { ready: ["Ready", "ready"], working: ["Preparing", ""], queued: ["Waiting", ""], error: ["Couldn't prepare", "error"] };
-  const [stLabel, stCls] = STATE[it.state] || [it.state, ""];
-  const lines = [];
-  const fk = (x) => `q:${it.key}:${x}`;
-  const name = `${it.title} at ${it.company}`;
-  const s = (queue.data && queue.data.settings) || {};
-  // Only what's particular to this job; how the queue works is on the How it works page.
-  if (s.threshold != null && it.score < s.threshold) {
-    lines.push(el("div", { class: "qline reason", text: "Below your minimum match, but the posting names too few skills to judge and you have the ones it requires." }));
-  }
-
-  if (it.state === "ready") {
-    if (it.choice === "tailored" && it.changes) {
-      lines.push(el("div", { class: "qline" }, el("b", { text: "Resume:" }), "tailored ·", changeLine(it.changes),
-        el("span", { class: "badge" + (it.reviewed ? " yes" : ""), text: it.reviewed ? "Approved" : "Not reviewed yet" })));
-    } else if (it.tailored_id) {
-      lines.push(el("div", { class: "qline" }, el("b", { text: "Resume:" }), "your master, which you chose over the tailored one"));
-    } else {
-      // A few words; the whole reason on hover. What's missing is under Details.
-      lines.push(el("div", { class: "qline", title: it.reason || "" }, el("b", { text: "Resume:" }), "master · " + masterWhy(it.reason)));
-    }
-    if (it.answers) lines.push(el("div", { class: "qline" }, el("b", { text: "Answers:" }), `${it.answers} drafted`));
-  } else if (it.state === "working") {
-    lines.push(el("div", { class: "qline" }, progressLine(it.decision === "tailor" ? "Tailoring now…" : "Drafting answers now…")));
-  } else if (it.state === "queued") {
-    lines.push(el("div", { class: "qline", title: it.reason || "" }, el("b", { text: "Waiting" }),
-      el("span", { text: it.decision === "tailor" ? " to tailor" : " to draft answers" })));
-  } else if (it.state === "error") {
-    lines.push(el("div", { class: "qline" }, el("span", { class: "warnline", text: `Couldn't prepare this one: ${it.note}. ` +
-      "Press Retry to try again, or open the application and fill it in yourself." })));
-  }
-  if (it.note && it.state !== "error") {
-    lines.push(el("div", { class: "qline" }, el("span", { class: "warnline", text: it.note.charAt(0).toUpperCase() + it.note.slice(1) + (/[.!?]$/.test(it.note) ? "" : ".") })));
-  }
-  if (j) lines.push(lazyDetails("Details", () => {
-    const badges = otherBadges(j, state.marks[j.url]);
-    return [badges.length ? el("div", { class: "row" }, ...badges) : null, ...postingFacts(j, sc, visa())].filter(Boolean);
-  }, fk("details")));
-
-  const actions = el("div", { class: "actions" });
-  if (it.state === "ready" || it.state === "queued" || it.state === "error") {
-    actions.append(el("a", { class: "btn apply", href: it.apply_url, target: "_blank", rel: "noopener", "data-fk": fk("open"),
-      onclick: () => rememberApplyList(null),
-      text: "Open application ↗", "aria-label": `Open application: ${name} (new tab)`,
-      title: "The extension attaches the prepared resume and fills the form. You review and submit." }));
-  }
-  // The same Tailor dialog as All jobs: model, how much to change, a request, every version.
-  if (it.state === "ready" || it.state === "error") {
-    actions.append(el("button", { type: "button", text: it.tailored_id ? "Changes and versions" : "Tailor", "data-fk": fk("tailor"),
-      "aria-label": `${it.tailored_id ? "Resume changes and versions" : "Tailor resume"}: ${name}`,
-      onclick: () => openTailor(jobByKey(it.key) || { key: it.key, title: it.title, company: it.company }) }));
-  }
-  if (it.state === "ready" && it.tailored_id) {
-    actions.append(el("a", { class: "btn", href: "/files/" + it.pdf, target: "_blank", rel: "noopener", text: "PDF", "aria-label": `Tailored resume PDF: ${name}` }));
-    if (it.choice !== "tailored" || !it.reviewed) {
-      actions.append(el("button", { type: "button", text: "Approve", "data-fk": fk("approve"), "aria-label": `Approve the tailored resume: ${name}`,
-        onclick: () => queueAction("/api/queue/choice", { key: it.key, choice: "tailored" },
-          `Approved the tailored resume for ${name}. The extension attaches it.`, "the approval") }));
-    }
-    if (it.choice === "tailored") {
-      actions.append(el("button", { type: "button", text: "Use master instead", "data-fk": fk("master"), "aria-label": `Use the master resume instead: ${name}`,
-        onclick: () => queueAction("/api/queue/choice", { key: it.key, choice: "master" },
-          `The extension will attach your master resume for ${name}.`, "using the master resume") }));
-    }
-  }
-  if (it.state === "error") actions.append(el("button", { type: "button", text: "Retry", "data-fk": fk("retry"), "aria-label": `Retry: ${name}`,
-    onclick: () => queueAction("/api/queue/retry", { key: it.key }, `Trying ${name} again.`, "the retry") }));
-  actions.append(el("button", { type: "button", class: "ghost", text: "Dismiss", "data-fk": fk("dismiss"), "aria-label": `Dismiss: ${name}`, onclick: () => {
-    const prev = state.marks[it.url] || null;
-    state.marks[it.url] = "dismissed"; store.set("marks", state.marks);
-    queueAction("/api/marks", { marks: { [it.key]: "dismissed" } }, `Dismissed ${name}. It won't come back to the queue.`, "the dismissal",
-      () => { if (prev) state.marks[it.url] = prev; else delete state.marks[it.url]; store.set("marks", state.marks); });
-  } }));
-
-  // The one most telling visa badge, as on the posting's own card.
-  const meta = el("div", { class: "meta" }, el("span", { class: "company", text: it.company }), el("span", { text: it.location }));
-  const signals = j ? visaSignals(j, visa()) : [];
-  const lead = signals.find((x) => x.warn) || signals[0];
-  if (lead) meta.append(el("span", { class: lead.cls, text: lead.text }));
-  return el("li", { class: "job q-" + it.state },
-    el("div", { class: "head" },
-      el("a", { class: "title", href: it.url, target: "_blank", rel: "noopener", text: it.title }), meta),
-    right, el("div", { class: "side" }, el("span", { class: "pill " + stCls, text: stLabel })),
-    ...lines, el("div", { class: "row" }, actions));
-}
-
 function renderQueue() {
   const d = queue.data;
   const ready = d ? d.items.filter((i) => i.state === "ready").length : 0;
@@ -2868,12 +2960,13 @@ function renderQueue() {
   ].filter(Boolean));
   const items = d.items.filter((i) => !picked.has(i.key));
   $("restTitle").hidden = !items.length && !!picked.size;
-  keepFocus(() => list.replaceChildren(...(items.length ? items.map(queueItem) : picked.size ? [] : [el("li", { class: "empty", text: !s.enabled
+  keepFocus(() => list.replaceChildren(...(items.length ? items.map((it) => jobRow(jobByKey(it.key), it)) : picked.size ? [] : [el("li", { class: "empty", text: !s.enabled
     ? "Preparing jobs is turned off. Press Settings above and turn on Prepare jobs to have good matches tailored here."
     : d.radar_updated
       ? `Nothing to apply to yet. New postings at ${s.threshold}%+ match are prepared here after each search.`
         + (state.resume ? "" : " Upload your resume on All jobs first: the queue only takes jobs it can score.")
       : "The queue starts after the next search." })])));
+  ensureSelection();
 }
 
 function openPrefs() {

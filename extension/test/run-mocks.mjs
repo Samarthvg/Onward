@@ -356,13 +356,17 @@ await test("dashboard: Apply remembers the list from that job down", async (page
   });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("http://127.0.0.1:8765/");
-  const apply = page.locator("#list a.btn.apply");
-  await apply.first().waitFor({ state: "attached", timeout: 10000 }).catch(() => {});
-  const n = await apply.count();
+  await page.goto("http://127.0.0.1:8765/#jobs");
+  // A row opens the job beside the list; its Apply sends the list from that row down.
+  const rows = page.locator("#list .rowbtn");
+  await rows.first().waitFor({ state: "attached", timeout: 10000 }).catch(() => {});
+  const n = await rows.count();
   if (!n) { console.log("  (skipped: no jobs listed)"); return; }
   const i = Math.min(1, n - 1);
-  await apply.nth(i).evaluate((a) => { a.addEventListener("click", (e) => e.preventDefault(), { once: true }); a.click(); });
+  await rows.nth(i).click();
+  const apply = page.locator("#detail a.btn.primary");
+  await apply.waitFor({ state: "attached", timeout: 5000 });
+  await apply.evaluate((a) => { a.addEventListener("click", (e) => e.preventDefault(), { once: true }); a.click(); });
   await sleep(500);
   expect("dashboard: list sent from that job down", !!sent && Array.isArray(sent.keys) && sent.keys.length === n - i, JSON.stringify(sent || {}).slice(0, 200));
   expect("dashboard: no page errors", !errors.length, errors.join("; "));

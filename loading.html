@@ -9,17 +9,18 @@
      rebuilt (after an update). Served by the helper, it asks /api/render how
      far the rebuild is and opens the dashboard when it's ready. -->
 <style>
-  :root { --bg: #f5ecdd; --surface: #fffaf3; --text: #2b1b14; --muted: #6b5646; --line: #e7d9c5;
-          --accent: #a24a1a; --track: #efe3d2; --warn: #a3261c; color-scheme: light dark; }
+  /* The dashboard's two worlds: the ledger in light, the terminal in dark. */
+  :root { --bg: #f2f4f7; --surface: #ffffff; --text: #0a0a0a; --muted: #5d636e; --line: #e3e6ea;
+          --accent: #1d5fbf; --track: #e6e9ee; --warn: #c4242a; color-scheme: light dark; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #150c0c; --surface: #1f1512; --text: #f2e7d9; --muted: #b9a594; --line: #3a2a22;
-            --accent: #e3a467; --track: #2c1f19; --warn: #ff9c87; }
+    :root { --bg: #171719; --surface: #131217; --text: #ffffff; --muted: #8e9096; --line: #252528;
+            --accent: #4a8ad6; --track: #26252a; --warn: #ef6b82; }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
-  body { background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  body { background: var(--bg); color: var(--text); font: 15px/1.5 "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
          display: grid; place-items: center; padding: 16px; }
-  .card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  .card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
           padding: 28px 28px 24px; text-align: center; }
   .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 22px; margin-bottom: 18px; }
   h1 { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
@@ -36,7 +37,7 @@
 <body>
   <main class="card" role="status" aria-live="polite">
     <div class="brand">
-      <svg width="30" height="30" viewBox="0 0 128 128" aria-hidden="true"><rect width="128" height="128" rx="28" fill="#b8561f"/><path d="M33 38h61M33 63.5h61M33 89h33" fill="none" stroke="#fbf1e4" stroke-width="10" stroke-linecap="round"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.5h7.5c4.4 0 8-3.6 8-8V5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M14.5 8.6 18.5 4.6l4 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 21h9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity=".45"/></svg>
       Onward
     </div>
     <h1 id="title">Starting Onward…</h1>
