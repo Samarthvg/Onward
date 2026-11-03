@@ -27,6 +27,7 @@ from pathlib import Path
 from unittest import mock
 
 import config
+import filters
 import kit
 import notify
 import prep
@@ -191,7 +192,14 @@ class Base(unittest.TestCase):
             p.start()
         self.prep = prep.Preparer(server.db, self.resume_dir, self.resume_dir / "tailored", log=lambda m: None,
                                   store=self.store)
-        self.prep.save_settings({"threshold": 40, "locations": ["Boston"], "remote_ok": True})
+        self.prep.save_settings({"threshold": 40})
+        # Where the jobs are is the role's to decide, as radar.py tags them.
+        roles = self.store.load()["roles"]
+        self.store.update({"roles": [{**roles[0], "cities": ["Boston"]}, *roles[1:]]})
+        for name, value in (("SETTINGS", self.store.load()), ("SEARCH", filters.Search(self.store.load()["roles"]))):
+            p = mock.patch.object(radar, name, value)
+            p.start()
+            self.patches.insert(-1, p)      # the quiet-hours patch stays last
         self.prep.save_scoring({"name": "resume.pdf", "text": RESUME_TEXT})
         kit.save("profile", {"firstName": "Testy", "school": "Example State University"}, 1)
         self.now = time.time()
@@ -642,6 +650,24 @@ def set_posted(db_path: Path, company: str, when: float) -> None:
     with conn:
         conn.execute("UPDATE jobs SET posted_at = ? WHERE company = ?", (when, company))
     conn.close()
+
+
+class WorkAuthorizationTests(unittest.TestCase):
+    """The queue leaves out what a job's role can't take: postings that rule
+    out sponsorship, or OPT for someone on it."""
+
+    def test_by_the_roles_status(self):
+        role = lambda rid, status: {"id": rid, "visa": {"status": status}}
+        job = lambda sponsorship="unknown", no_opt=0, roles=("r",): {"sponsorship": sponsorship, "no_opt": no_opt, "roles": list(roles)}
+        for status, posting, keeps in (("opt", job(), True), ("opt", job("no"), False), ("opt", job(no_opt=1), False),
+                                       ("sponsorship", job(no_opt=1), True), ("sponsorship", job("no"), False),
+                                       ("authorized", job("no", 1), True)):
+            got = prep.Preparer.eligible(posting, {"r": role("r", status)})
+            self.assertEqual(got is None, keeps, (status, posting))
+        # Wanted by two roles: either one taking it is enough.
+        both = {"a": role("a", "opt"), "b": role("b", "authorized")}
+        self.assertIsNone(prep.Preparer.eligible(job("no", roles=("a", "b")), both))
+        self.assertIsNotNone(prep.Preparer.eligible(job("no", roles=("a",)), both))
 
 
 class QueueAgeTests(Base):

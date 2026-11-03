@@ -222,10 +222,10 @@ class EndpointTests(unittest.TestCase):
         st, d = self.call("/api/settings", {"settings": {"roles": [{**data, "title_keywords": []}]}})
         self.assertEqual(st, 400, "a role needs title keywords")
         self.assertEqual(len(self.store.load()["roles"]), 2)
-        st, d = self.call("/api/settings", {"settings": {"queue": {"backend": "skynet"}, "radar": {"workers": "many"}}})
+        st, d = self.call("/api/settings", {"settings": {"queue": {"quiet_start": "99:99"}, "radar": {"workers": "many"}}})
         self.assertEqual(st, 400)
         self.assertEqual(len(d["errors"]), 2)
-        self.assertEqual(self.store.load()["queue"]["backend"], "chatgpt", "a rejected save changes nothing")
+        self.assertEqual(self.store.load()["queue"]["quiet_start"], "22:00", "a rejected save changes nothing")
         st, _ = self.call("/api/settings", {"settings": {"ui": {"advanced": True}}}, origin=False)
         self.assertEqual(st, 403, "only the dashboard may change settings")
 

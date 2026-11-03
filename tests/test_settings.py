@@ -44,8 +44,7 @@ class DefaultsTests(Tmp):
         self.assertEqual(d["paths"], {"db": "jobs.db", "resume_dir": "resume", "data_dir": "data",
                                       "dashboard": "dashboard.html", "logs_dir": ""})
         self.assertEqual(d["queue"], {
-            "enabled": True, "threshold": 60, "daily_cap": 25, "backend": "chatgpt", "skip_coverage": 85,
-            "needs_sponsorship": True, "locations": [], "remote_ok": True, "max_age_days": 7, "max_active": 15,
+            "enabled": True, "threshold": 60, "daily_cap": 25, "skip_coverage": 85, "max_age_days": 7, "max_active": 15,
             "draft_answers": True, "notify_desktop": True, "ntfy_server": "https://ntfy.sh", "ntfy_topic": "",
             "quiet_start": "22:00", "quiet_end": "08:00"})
         self.assertEqual(d["scoring"], {"experience_weight": 0.4, "prior_keywords": 3, "prior_credit": 0.5,
@@ -91,20 +90,20 @@ class DefaultsTests(Tmp):
 class ValidationTests(Tmp):
     def test_bad_values_fall_back_and_are_reported(self):
         self.write({"version": config.VERSION, "radar": {"dashboard_days": "lots", "workers": 999, "simplify_feed": "yes"},
-                    "queue": {"threshold": -5, "backend": "gpt-9", "quiet_start": "25:00"},
+                    "queue": {"threshold": -5, "ntfy_topic": "not a topic!", "quiet_start": "25:00"},
                     "tailoring": {"backend": "ollama"}, "nonsense": 1})
         s = self.store().load()
         self.assertEqual(s["radar"]["dashboard_days"], 30)           # wrong type: default
         self.assertEqual(s["radar"]["workers"], 64)                  # out of range: clamped
         self.assertTrue(s["radar"]["simplify_feed"])
         self.assertEqual(s["queue"]["threshold"], 0)
-        self.assertEqual(s["queue"]["backend"], "chatgpt")
+        self.assertEqual(s["queue"]["ntfy_topic"], "")
         self.assertEqual(s["queue"]["quiet_start"], "22:00")
         self.assertEqual(s["tailoring"]["backend"], "chatgpt", "a removed backend is not valid")
         self.assertNotIn("nonsense", s)
         st = self.store()
         st.load()
-        for key in ("radar.dashboard_days", "radar.simplify_feed", "queue.backend", "queue.quiet_start", "tailoring.backend"):
+        for key in ("radar.dashboard_days", "radar.simplify_feed", "queue.ntfy_topic", "queue.quiet_start", "tailoring.backend"):
             self.assertTrue(any(w.startswith(key) for w in st.warnings), (key, st.warnings))
 
     def test_unreadable_file_uses_defaults(self):
@@ -115,16 +114,17 @@ class ValidationTests(Tmp):
 
     def test_lists_from_text_and_dedupe(self):
         st = self.store()
-        st.update({"queue": {"locations": "Boston, , Seattle, Boston"}})
-        self.assertEqual(st.load()["queue"]["locations"], ["Boston", "Seattle"])
+        roles = st.load()["roles"]
+        st.update({"roles": [{**roles[0], "cities": "Boston, , Seattle, Boston"}]})
+        self.assertEqual(st.load()["roles"][0]["cities"], ["Boston", "Seattle"])
 
     def test_strict_update_rejects_and_keeps_the_file(self):
         st = self.store()
         st.update({"queue": {"threshold": 70}})
         before = self.path.read_text(encoding="utf-8")
         with self.assertRaises(config.SettingsError) as cm:
-            st.update({"queue": {"backend": "nope"}, "roles": [{"id": "Bad Id!"}]})
-        self.assertTrue(any("queue.backend" in e for e in cm.exception.errors))
+            st.update({"queue": {"quiet_start": "nope"}, "roles": [{"id": "Bad Id!"}]})
+        self.assertTrue(any("queue.quiet_start" in e for e in cm.exception.errors))
         self.assertTrue(any("roles[0].id" in e for e in cm.exception.errors))
         self.assertEqual(self.path.read_text(encoding="utf-8"), before)
 
@@ -171,8 +171,11 @@ class MigrationTests(Tmp):
         (self.dir / "resume" / "prep.json").write_text(json.dumps(
             {"threshold": 72, "daily_cap": 9, "locations": ["Boston"], "unknown": 1}), encoding="utf-8")
         st = self.store()
-        q = st.load()["queue"]
-        self.assertEqual((q["threshold"], q["daily_cap"], q["locations"]), (72, 9, ["Boston"]))
+        s = st.load()
+        self.assertEqual((s["queue"]["threshold"], s["queue"]["daily_cap"]), (72, 9))
+        # The queue's own locations became the cities of the role (_v9).
+        self.assertNotIn("locations", s["queue"])
+        self.assertEqual(s["roles"][0]["cities"], ["Boston"])
         self.assertFalse(self.path.exists(), "no file is created just by reading")
 
     def test_versionless_file_is_migrated_once(self):
@@ -228,8 +231,8 @@ class MigrationTests(Tmp):
                     "queue": {"backend": "ollama", "threshold": 70}})
         st = self.store()
         s = st.load()
-        self.assertEqual((s["tailoring"]["backend"], s["tailoring"]["draft_backend"], s["queue"]["backend"]),
-                         ("chatgpt", "chatgpt", "chatgpt"))
+        self.assertEqual((s["tailoring"]["backend"], s["tailoring"]["draft_backend"]), ("chatgpt", "chatgpt"))
+        self.assertNotIn("backend", s["queue"], "the queue tailors with Tailor with")
         self.assertNotIn("ollama_model", s["tailoring"])
         self.assertEqual(s["queue"]["threshold"], 70)
         (notice,) = s["notices"]
@@ -320,7 +323,8 @@ class QueueStoreTests(Tmp):
         st = self.store()
         q = prep.Preparer(lambda: None, self.dir / "resume", self.dir / "out", log=lambda m: None, store=st)
         s = q.save_settings({"threshold": 75, "daily_cap": 9999, "locations": "NYC, Boston"})
-        self.assertEqual((s["threshold"], s["daily_cap"], s["locations"]), (75, 200, ["NYC", "Boston"]))
+        self.assertEqual((s["threshold"], s["daily_cap"]), (75, 200))
+        self.assertNotIn("locations", s, "the roles say where")
         self.assertEqual(json.loads(self.path.read_text(encoding="utf-8"))["queue"]["threshold"], 75)
         self.assertEqual(q.settings(), s)
 

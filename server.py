@@ -1055,11 +1055,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(HTTPStatus.NOT_FOUND, "No account password saved in the Apply kit")
             return self._json(200, acct)
 
-        if path in ("/api/prepared", "/api/queue/next"):
+        if path == "/api/prepared":
             if not self._origin_ok(allow_extension=True):
                 return self._err(HTTPStatus.FORBIDDEN, "Only the Onward extension can ask for this")
-            if path == "/api/queue/next":
-                return self._json(200, {"next": PREP.next_ready((q.get("exclude") or [""])[0])})
             return self._prepared((q.get("url") or [""])[0][:2000])
 
         if path.startswith("/sent/"):

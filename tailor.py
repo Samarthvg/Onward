@@ -178,11 +178,25 @@ def _resume_block(res: rt.Resume) -> str:
     return "RESUME (edit by ID)\n\n" + rt.describe(res)
 
 
-MAX_INSTRUCTION = 500
+MAX_INSTRUCTION = 4000
 
 
 def clean_instruction(text) -> str:
-    return " ".join(str(text or "").split())[:MAX_INSTRUCTION]
+    """The applicant's request, its paragraphs kept, within MAX_INSTRUCTION."""
+    lines = "\n".join(" ".join(line.split()) for line in str(text or "").splitlines())
+    return re.sub(r"\n{3,}", "\n\n", lines).strip()[:MAX_INSTRUCTION]
+
+
+def read_resume(master_tex: str, job: dict, confirmed=()) -> rt.Resume:
+    """The master resume as tailoring checks against it: plus the skills the
+    person confirmed under Review skills, and what they say about their own
+    work in their request for this version (their word, like a confirmed
+    skill: the skills it names, where an entry shows that kind of work, and
+    its words)."""
+    said = clean_instruction(job.get("instruction"))
+    res = rt.confirm(rt.parse(master_tex), [*confirmed, *sorted(rt.find_skills(said))])
+    res.vocabulary |= rt.words(said)
+    return res
 
 
 def _job_block(job: dict, jd: str) -> str:
@@ -191,8 +205,10 @@ def _job_block(job: dict, jd: str) -> str:
     if note:
         # Every backend's prompt (manual paste included) ends with this block.
         block += ("\n\nTHE APPLICANT'S REQUEST FOR THIS VERSION\n" + note +
-                  "\nFollow it as far as the rules above allow. The rules win when they conflict; "
-                  "if that happens, say so in summary.")
+                  "\nFollow it as far as the rules above allow. What the applicant says here about their own work "
+                  "counts as backed, like the resume: use it in the entries that show that work. It can't add "
+                  "entries the resume doesn't have. The rules win when they conflict; if that happens, say so in "
+                  "summary, naming what to add to the master resume.")
     return block
 
 
@@ -304,14 +320,14 @@ def tailor_prompt(res: rt.Resume, job: dict, jd: str, level: str = "reword",
 
 def estimate_tailor(master_tex: str, job: dict, jd: str, backend: str, level: str | None = None,
                     exact: bool = True, confirmed=()) -> dict | None:
-    system, user = tailor_prompt(rt.confirm(rt.parse(master_tex), confirmed), job, jd, level or strictness(),
+    system, user = tailor_prompt(read_resume(master_tex, job, confirmed), job, jd, level or strictness(),
                                  check_claims())
     return estimate(backend, system, user, "tailor", exact=exact)
 
 
 def build_manual_prompt(master_tex: str, job: dict, jd: str, level: str | None = None, confirmed=()) -> str:
     """Everything a chat model needs, for pasting into ChatGPT or Claude by hand."""
-    res = rt.confirm(rt.parse(master_tex), confirmed)
+    res = read_resume(master_tex, job, confirmed)
     return "\n\n".join([
         instructions(level or strictness(), check_claims()),
         "Reply with a single JSON object and nothing else, matching this JSON Schema:\n"
@@ -952,7 +968,7 @@ def polish(res: rt.Resume, state: dict, changes: list[rt.Change], backend: str, 
         for item in raw.get("bullets") or []:
             bid = str(item.get("id", ""))
             new = accepted(res, bid, item.get("text"), jd, rules) if bid in bad else None
-            if new:
+            if new and not rt.repeated_opening(res, {**state["rewrites"], **fixed}, bid, new):
                 fixed[bid] = new
     for bid, problems in bad.items():
         if bid in fixed:
@@ -1045,7 +1061,7 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
     level = level or strictness()
     check = check_claims()
     started = time.time()
-    res = rt.confirm(rt.parse(master_tex), confirmed)
+    res = read_resume(master_tex, job, confirmed)
     cost = None
     if backend == "manual":
         raw, model = parse_manual_answer(manual_answer or ""), "pasted answer"

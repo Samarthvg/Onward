@@ -363,14 +363,17 @@ class Preparer:
             (sc["pct"] >= s["threshold"] or match.too_few_to_judge(sc))
 
     @staticmethod
-    def eligible(job: dict, s: dict) -> str | None:
-        """Why a job is filtered out, or None."""
-        if s["needs_sponsorship"] and (job["sponsorship"] == "no" or job["no_opt"]):
-            return "says no sponsorship or no OPT"
-        locs = [l.lower() for l in s["locations"]]
-        if locs and not (job["remote"] and s["remote_ok"]) and not any(l in job["location"].lower() for l in locs):
-            return "outside your locations"
-        return None
+    def eligible(job: dict, roles: dict[str, dict]) -> str | None:
+        """Why a job is filtered out, or None. Where it is and what kind of job
+        it is, its roles already decided (radar.py tags only jobs a role
+        wants); left is what the role's work authorization rules out. A job
+        any of its roles can take stays."""
+        mine = [roles[r] for r in job["roles"] if r in roles] or list(roles.values())
+        for r in mine:
+            status = r["visa"]["status"]
+            if status == "authorized" or job["sponsorship"] != "no" and not (status == "opt" and job["no_opt"]):
+                return None
+        return "says no sponsorship or no OPT"
 
     JOB_COLS = ("key", "company", "title", "location", "remote", "sponsorship", "no_opt", "min_yoe",
                 "entry_hint", "kw", "degree", "has_jd", "first_seen", "last_seen", "url", "apply_url", "source",
@@ -415,6 +418,7 @@ class Preparer:
                 return 0
             resume = self.resume()
             weights = self.weights()
+            roles = {r["id"]: r for r in self.store.load()["roles"]}
             masters: dict[Path, rt.Resume] = {}
 
             def master_of(j: dict) -> rt.Resume:
@@ -440,7 +444,7 @@ class Preparer:
                     j = self._job(row)
                     sc = match.score_job(j, resume, skill_w, term_w, weights)
                     conn.execute("UPDATE prep SET score = ? WHERE job_key = ?", (sc["pct"], j["key"]))
-                    if not self.wanted(sc, s) or self.eligible(j, s):
+                    if not self.wanted(sc, s) or self.eligible(j, roles):
                         conn.execute("DELETE FROM prep WHERE job_key = ? AND state = 'queued' AND own = 0", (j["key"],))
                         conn.execute("UPDATE prep SET state = 'expired', updated = ? WHERE job_key = ? AND state = 'parked' AND own = 0",
                                      (now, j["key"]))
@@ -458,7 +462,7 @@ class Preparer:
                 for row in rows:
                     j = self._job(row)
                     sc = match.score_job(j, resume, skill_w, term_w, weights)
-                    if self.wanted(sc, s) and not self.eligible(j, s):
+                    if self.wanted(sc, s) and not self.eligible(j, roles):
                         new.append((j, sc))
                 added = 0
                 for j, sc in self._fill(conn, new, s["max_active"], now):
@@ -568,17 +572,22 @@ class Preparer:
             meta = {"company": company, "title": title, "instruction": instruction}
             # Only drafting answers: a resume the user tailored themselves stays.
             tailored_id, choice, notes = had or "", chose or "master", []
-            if decision == "tailor":
+            backend = self.store.section("tailoring")["backend"]
+            if decision == "tailor" and backend == "manual":
+                # "Tailor with" is a chat the user pastes into: nothing to run here.
+                notes.append("“Tailor with” is set to paste into a chat, so this has your master resume. "
+                             "Tailor it from its Tailor button")
+            elif decision == "tailor":
                 if not self.reserve(conn, s["daily_cap"]):
                     self._update(conn, key, when="working", state="queued",
                                  error=f"Waiting: today's {s['daily_cap']} model runs are used up. Continues tomorrow.")
                     return "requeued"
-                result = tailor.tailor(master, meta, jd, s["backend"], self.out_dir, confirmed=self.confirmed_skills())
+                result = tailor.tailor(master, meta, jd, backend, self.out_dir, confirmed=self.confirmed_skills())
                 result["score"] = self.score_tailored(key, result["tex"])
                 tailored_id, choice = uuid.uuid4().hex[:12], "tailored"
                 with conn:
                     conn.execute("INSERT INTO tailored (id, job_key, created, backend, model, pdf, tex, result) "
-                                 "VALUES (?,?,?,?,?,?,?,?)", (tailored_id, key, time.time(), s["backend"],
+                                 "VALUES (?,?,?,?,?,?,?,?)", (tailored_id, key, time.time(), backend,
                                                              result["model"], result["pdf"], result["tex"], json.dumps(result)))
             # Answers drafted on an earlier pass (before "Tailor anyway") are kept.
             answers = json.loads(drafted or "[]")
@@ -624,7 +633,7 @@ class Preparer:
         # Short ids for the model; positions map them back.
         batch = [{**q, "id": str(i), "context": ""} for i, q in enumerate(qs)]
         try:
-            got = tailor.answer_questions(master, meta, prof, batch, jd, s["backend"])
+            got = tailor.answer_questions(master, meta, prof, batch, jd, self.store.section("tailoring")["draft_backend"])
         except tailor.BackendError as e:
             notes.append(f"drafting answers failed: {e}")
             return []

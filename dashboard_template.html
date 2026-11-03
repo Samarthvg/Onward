@@ -633,7 +633,7 @@
       <h3 id="helpQueue">Apply queue</h3>
       <dl>
         <dt>What goes in</dt>
-        <dd>New postings from the last 7 days at or above your minimum match (Queue settings), that pass the queue's sponsorship and location filters. One that names too few skills to judge goes in when you have the ones it requires. It holds your best matches up to a number you set (15 to start), with newer postings ahead: each day since a posting went up costs it 1.5 points of match in the queue's ranking, so a posting from today beats a slightly better one from last week, and a clearly better match still wins. A posting leaves once it's more than 7 days old. The others wait, and come in already prepared as you apply to or dismiss the ones before them, also ones that missed out on a crowded day.</dd>
+        <dd>New postings from the last 7 days at or above your minimum match (Queue settings), that one of your roles wants and whose work authorization rule (Settings, Roles) doesn't rule out: with OPT, postings that say no sponsorship or no OPT stay out. One that names too few skills to judge goes in when you have the ones it requires. It holds your best matches up to a number you set (15 to start), with newer postings ahead: each day since a posting went up costs it 1.5 points of match in the queue's ranking, so a posting from today beats a slightly better one from last week, and a clearly better match still wins. A posting leaves once it's more than 7 days old. The others wait, and come in already prepared as you apply to or dismiss the ones before them, also ones that missed out on a crowded day.</dd>
         <dt>Resume</dt>
         <dd>Your master resume when it already has what the posting asks for, or when tailoring could only reorder it. Otherwise a tailored copy: only skills your resume backs, no new numbers, still one page. Approve it, or choose the master instead.</dd>
         <dt>Answers</dt>
@@ -2266,7 +2266,6 @@ const BACKENDS = [
     ok: (b) => b.claude_api, setup: "Add an Anthropic key in Settings, under AI models" },
 ];
 const PAID = new Set(["openai-api", "claude-api"]);
-const backendName = (id) => (BACKENDS.find((b) => b.id === id) || { name: id }).name;
 
 function progressLine(text) {
   return el("div", { class: "progress" }, el("span", { class: "spin", "aria-hidden": "true" }), el("span", { text }));
@@ -2384,7 +2383,7 @@ function renderTailorForm(j, jd, history, raise) {
   jdBox.value = jd;
   jdBox.addEventListener("input", () => estimate());
 
-  const instr = el("input", { type: "text", id: "tailorInstr", maxlength: "500", style: "width:100%",
+  const instr = el("textarea", { id: "tailorInstr", maxlength: "4000", rows: "4", class: "jd", style: "min-height:6em",
     placeholder: "Optional, e.g. emphasize backend more, don't touch the Kanbas project" });
 
   const answer = el("textarea", { class: "jd", placeholder: "Paste the chat's JSON answer here.", "aria-label": "The chat's answer" });
@@ -2565,7 +2564,7 @@ const KIND = { bullet: "Bullet", tech: "Tech line", skills: "Skills row", drop_b
 
 // The "Adjust" box under a result: a short request, then tailoring runs again with it.
 function adjustBox(onAdjust, label = "Re-tailor", heading = true) {
-  const input = el("input", { type: "text", maxlength: "500", style: "flex:1;min-width:220px",
+  const input = el("input", { type: "text", maxlength: "4000", style: "flex:1;min-width:220px",
     placeholder: "e.g. emphasize backend more, keep the ML bullets", "aria-label": "What to change" });
   const go = () => { const v = input.value.trim(); if (!v) { toast("Say what to change first."); return; } onAdjust(v); };
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
@@ -2860,7 +2859,7 @@ function renderQueue() {
   head.replaceChildren(...[
     el("span", {}, el("b", { text: `${ready} ready` }), ` · ${(c.queued || 0) + (c.working || 0)} preparing`),
     c.parked ? el("span", { text: `${c.parked} more good match${c.parked === 1 ? "" : "es"} waiting for room (up to ${s.max_active} at a time)` }) : null,
-    el("span", { text: `${backendName(s.backend)} runs today ${d.runs_today}/${s.daily_cap}` }),
+    el("span", { text: `Model runs today ${d.runs_today}/${s.daily_cap}` }),
     appliedToday ? el("span", { text: `${appliedToday} applied today` }) : null,
     el("span", { text: `Prepares new jobs at ${s.threshold}%+ match` + (s.enabled ? "" : " (off)") }),
     d.status ? el("span", { class: "warnline", style: "color:var(--warn)", text: d.status }) : null,
@@ -2894,13 +2893,8 @@ function openPrefs() {
     row("threshold", "Minimum match", num("threshold", 0, 100), "New postings at or above this score are prepared."),
     row("max_age_days", "Posted within (days)", num("max_age_days", 1, 60), "Older postings aren't prepared, even when Onward has only just found them."),
     row("max_active", "Jobs in the queue at most", num("max_active", 1, 500), "Your best matches. Others wait their turn and come in, already prepared, as you apply or dismiss."),
-    row("backend", "Prepare with", select(["chatgpt", "claude-code", "openai-api", "claude-api"].map((b) => [b, LABELS.backends[b] || b]), s.backend),
-      "API keys are billed per use and stop at their monthly budget."),
     row("daily_cap", "Model runs a day", num("daily_cap", 0, 200), "Tailoring and drafting each count one. Keeps the queue inside your plan's limits."),
     row("skip_coverage", "Skip tailoring at", num("skip_coverage", 0, 100), "% of required keywords already on your master resume. Tailoring is also skipped when it could only reorder."),
-    row("needs_sponsorship", "Skip no-sponsorship jobs", chk("needs_sponsorship"), "Leaves out postings that rule out sponsorship or OPT."),
-    row("locations", "Locations", txt("locations", "e.g. Boston, New York, Seattle"), "Comma separated, matched against the job location. Empty means anywhere."),
-    row("remote_ok", "Include remote jobs", chk("remote_ok")),
     row("draft_answers", "Draft form answers", chk("draft_answers"), "Greenhouse, Lever and Ashby publish their questions. Sponsorship, demographic, salary and legal questions are never drafted."),
     row("notify_desktop", "Desktop notification", chk("notify_desktop")),
     row("ntfy_topic", "ntfy topic (optional)", txt("ntfy_topic", "a long random name"), "Also push “N jobs ready” with company names to your phone through ntfy."),
@@ -2919,7 +2913,9 @@ function openPrefs() {
       loadQueue();
     } catch (e) { fail(e); }
   } });
-  $("prefsBody").replaceChildren(el("p", { text: "The helper prepares jobs in the background, one at a time. It never applies: you open each job, check what was filled, and press Submit yourself." }), grid, el("div", {}, save));
+  $("prefsBody").replaceChildren(el("p", { text: "The helper prepares jobs in the background, one at a time. It never applies: you open each job, check what was filled, and press Submit yourself." }),
+    el("p", { class: "note", text: "Which jobs come in follows your roles (titles, level, where, work authorization), and they're tailored with “Tailor with” under Settings." }),
+    grid, el("div", {}, save));
   openDialog($("prefsDlg"));
 }
 
@@ -3624,7 +3620,7 @@ function tailoringCard() {
   return el("section", { class: "card", "aria-labelledby": "tailH" },
     el("h3", { id: "tailH", text: "Resume tailoring and the apply queue" }),
     el("div", { class: "fields" },
-      field("Tailor with", backend, "The model picked first in the Tailor resume dialog."),
+      field("Tailor with", backend, "Tailors the apply queue's jobs, and is picked first in the Tailor resume dialog."),
       field("Draft form answers with", draft, "Used by the browser extension when you don't pick one."),
       el("div", { class: "field wide" },
         el("label", { class: "toggle" }, claims, "Block edits my resume doesn't back"),

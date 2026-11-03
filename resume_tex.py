@@ -754,7 +754,30 @@ def style_problems(old: str, new: str, banned=()) -> list[str]:
     m = TACKED_ON.search(new_p)
     if m and not TACKED_ON.search(old_p):
         out.append(f'a tacked-on "{m.group(0).strip(", ")} ..." ending')
+    if new_p.count(";") > old_p.count(";"):
+        out.append("a semicolon joining two clauses")
     return out
+
+
+def _opening(text: str) -> str:
+    m = re.match(r"\s*([A-Za-z][A-Za-z-]*)", plain(text))
+    return m.group(1).lower() if m else ""
+
+
+def repeated_opening(res: Resume, rewrites: dict[str, str], bid: str, text: str) -> str | None:
+    """The word a reworded bullet opens with when another bullet of its entry
+    (as the entry stands with `rewrites`) opens with it too: two "Built ..."
+    in a row read as generated. None when the person's own bullet opened that
+    way already."""
+    found = res.bullet(bid)
+    w = _opening(text)
+    if not found or not w or w == _opening(found[1].tex):
+        return None
+    entry, _ = found
+    for o in entry.bullets:
+        if o.id != bid and _opening(rewrites.get(o.id, o.tex)) == w:
+            return plain(text).split()[0]
+    return None
 
 
 def match_ending(old: str, new: str) -> str:
@@ -803,6 +826,11 @@ def plan_edits(res: Resume, out: dict, jd: str, strictness: str = "reword",
             problems = style_problems(b.tex, new, banned)
             if problems:
                 style[b.id] = problems
+
+    for bid, new in rewrites.items():
+        word = repeated_opening(res, rewrites, bid, new)
+        if word:
+            style.setdefault(bid, []).append(f'opens with "{word}" like another bullet of this entry')
 
     tech_new: dict[str, str] = {}
     by_id = {e.id: e for e in res.entries}

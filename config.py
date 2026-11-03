@@ -42,7 +42,7 @@ import voice
 
 CODE_DIR = Path(__file__).resolve().parent
 SETTINGS_FILE = "settings.json"
-VERSION = 8
+VERSION = 9
 
 
 HOME_ENV = ("ONWARD_HOME", "JOBRADAR_HOME")     # the second is the name before the rename
@@ -321,11 +321,7 @@ QUEUE = Obj({
     "enabled": Bool(True),
     "threshold": Int(60, 0, 100),               # minimum match score to prepare a job
     "daily_cap": Int(25, 0, 200),               # model runs a day for the queue (tailoring and drafts each count one)
-    "backend": Str("chatgpt", choices=DRAFT_BACKENDS),
     "skip_coverage": Int(85, 0, 100),           # use the master when it already covers this % of required keywords
-    "needs_sponsorship": Bool(True),            # leave out postings that say no sponsorship or no OPT
-    "locations": List(WORD, [], 30),            # substrings of the job location; empty means anywhere
-    "remote_ok": Bool(True),                    # remote jobs pass the location filter
     "max_age_days": Int(7, 1, 60),              # only postings this recent are in the queue, however new to the radar
     "max_active": Int(15, 1, 500),              # jobs in the queue at most: the best matches; the rest wait their turn
     "draft_answers": Bool(True),
@@ -450,7 +446,8 @@ def _v1(data: dict, home: Path) -> dict:
         except (OSError, json.JSONDecodeError):
             raw = None
         if isinstance(raw, dict):
-            data["queue"] = {k: v for k, v in raw.items() if k in QUEUE.fields}
+            # Keys of that time too, which later migrations move (_v9).
+            data["queue"] = {k: v for k, v in raw.items() if k in QUEUE.fields or k in _V9_QUEUE_KEYS}
     return data
 
 
@@ -562,8 +559,31 @@ def _v8(data: dict, home: Path) -> dict:
     return data
 
 
+_V9_QUEUE_KEYS = ("locations", "needs_sponsorship", "remote_ok", "backend")
+
+
+def _v9(data: dict, home: Path) -> dict:
+    """The apply queue had filters of its own on top of each role's (where,
+    remote, sponsorship) and a model of its own on top of "Tailor with": it
+    follows the job's role and "Tailor with" now. Its locations, when set,
+    become the cities of roles that had none, so they still apply."""
+    q = data.get("queue")
+    if not isinstance(q, dict):
+        return data
+    locs = q.pop("locations", None)
+    for k in _V9_QUEUE_KEYS:
+        q.pop(k, None)
+    if isinstance(locs, list) and locs:
+        if not data.get("roles"):
+            data["roles"] = defaults()["roles"]      # never saved: the default role takes them
+        for r in data.get("roles") or []:
+            if isinstance(r, dict) and not r.get("cities"):
+                r["cities"] = list(locs)
+    return data
+
+
 MIGRATIONS: dict[int, Callable[[dict, Path], dict]] = {1: _v1, 2: _v2, 3: _v3, 4: _v4, 5: _v5, 6: _v6, 7: _v7,
-                                                       8: _v8}
+                                                       8: _v8, 9: _v9}
 
 
 def migrate(data: dict, home: Path) -> tuple[dict, bool]:

@@ -168,7 +168,7 @@ class InstructionTests(unittest.TestCase):
 
     def test_absent_without_instruction(self):
         self.assertNotIn("REQUEST", tailor._job_block({"company": "x", "title": "y"}, JD))
-        self.assertEqual(len(tailor.clean_instruction("x" * 2000)), tailor.MAX_INSTRUCTION)
+        self.assertEqual(len(tailor.clean_instruction("x" * (tailor.MAX_INSTRUCTION + 1000))), tailor.MAX_INSTRUCTION)
 
 
 class SkillsRowTests(unittest.TestCase):

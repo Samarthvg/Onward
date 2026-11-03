@@ -535,6 +535,49 @@ class StrictnessTests(unittest.TestCase):
 
 # --------------------------------------------------------------------------
 
+class BulletVoiceTests(unittest.TestCase):
+    """A reworded bullet reads like its neighbours were written by the same person."""
+
+    def setUp(self):
+        self.res = rt.parse(TEX)
+
+    def plan(self, rewrites):
+        out = {"bullet_rewrites": [{"id": k, "text": v} for k, v in rewrites.items()]}
+        return rt.plan_edits(self.res, out, JD, "reword")[2]["style"]
+
+    def test_two_bullets_dont_open_alike(self):
+        style = self.plan({"B2": r"Built Redis caching that cut p95 latency by 40\%."})
+        self.assertIn('opens with "Built" like another bullet of this entry', style.get("B2", []))
+        self.assertEqual(self.plan({"B1": r"Designed billing APIs in \textbf{Python} and FastAPI on AWS."}), {},
+                         "a different opening is fine")
+        rewrites = {"B2": r"Built Redis caching that cut p95 latency by 40\%."}
+        self.assertEqual(rt.repeated_opening(self.res, rewrites, "B2", rewrites["B2"]), "Built")
+        self.assertIsNone(rt.repeated_opening(self.res, {"B1": "Shipped billing APIs."}, "B2", rewrites["B2"]),
+                          "the other one was reworded away from it")
+
+    def test_no_semicolons_joining_clauses(self):
+        style = self.plan({"B2": r"Cut p95 latency by 40\% with Redis caching; kept APIs fast."})
+        self.assertIn("a semicolon joining two clauses", style.get("B2", []))
+
+
+class RequestEvidenceTests(unittest.TestCase):
+    """What the applicant says about their own work in a request counts as theirs."""
+
+    def test_the_request_backs_what_it_says(self):
+        job = {"title": "Engineer", "company": "Mock Co",
+               "instruction": "I ran these services on Kubernetes.\n\nI also shipped two features on ZetaFlow."}
+        plain = rt.parse(TEX)
+        said = tailor.read_resume(TEX, job)
+        self.assertNotIn("Kubernetes", plain.inventory)
+        self.assertIn("Kubernetes", said.inventory, "a skill the request names, like a confirmed one")
+        old = r"Built billing APIs in \textbf{Python} and FastAPI on AWS."
+        new = r"Built billing APIs in \textbf{Python} and FastAPI on AWS and ZetaFlow."
+        self.assertIsNotNone(rt.check_honesty(old, new, plain.entries[0].allowed, plain.vocabulary, JD))
+        self.assertIsNone(rt.check_honesty(old, new, said.entries[0].allowed, said.vocabulary, JD))
+        self.assertIn("\n\n", tailor.clean_instruction(job["instruction"]), "paragraphs kept")
+        self.assertEqual(len(tailor.clean_instruction("x" * 5000)), tailor.MAX_INSTRUCTION)
+
+
 class RelatedSkillTests(unittest.TestCase):
     """Tools used for the same kind of work, for "What would raise this score"."""
 
