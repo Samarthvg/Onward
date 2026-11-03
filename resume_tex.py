@@ -41,6 +41,33 @@ AREAS = {s["n"] for s in _TAXONOMY if s.get("area")}
 
 
 find_skills = skillset.find
+# The kinds of work a tool is used for, for telling which tools stand near
+# each other: the fields above (Machine Learning, Cloud, Frontend) and a few
+# groupings that aren't fields (SQL databases, message queues). Languages and
+# everyday tools (Python, Git) are left out: sharing Python doesn't make
+# Pandas and PyTorch the same kind of tool. So is DevOps, too wide a field:
+# Jenkins doesn't stand in for Kubernetes.
+FAMILIES = (AREAS - {"DevOps"}) | {"SQL", "NoSQL", "CI/CD", "Message Queues", "Testing", "Data Analysis",
+                    "Infrastructure as Code", "Build Systems"}
+EVERYDAY = {"Python", "JavaScript", "TypeScript", "Java", "Go", "C++", "C#", "C", "Rust", "Ruby", "PHP", "Kotlin",
+            "Swift", "Scala", "HTML/CSS", "Git", "Linux", "Bash", "SQL"} & set(SKILL_NAMES.values())
+
+
+def related(skill: str, have) -> list[str]:
+    """The skills in `have` used for the same kind of work as `skill`: one's
+    own field is in the other's chain (scikit-learn is Machine Learning,
+    which PyTorch's Deep Learning is part of), one runs on the other (Helm
+    on Kubernetes), or `have` names the field itself. Concrete tools first."""
+    up = with_implied({skill})
+    near = IMPLIES.get(skill, set()) & FAMILIES
+    out = []
+    for h in sorted(set(have) - {skill} - EVERYDAY):
+        if h in FAMILIES or h in AREAS:
+            if h in FAMILIES and h in up:
+                out.append(h)
+        elif h in IMPLIES.get(skill, ()) or skill in IMPLIES.get(h, ())                 or (IMPLIES.get(h, set()) & FAMILIES & up) or (near & with_implied({h})):
+            out.append(h)
+    return sorted(out, key=lambda h: h in FAMILIES)
 
 
 def with_implied(skills: set[str]) -> set[str]:

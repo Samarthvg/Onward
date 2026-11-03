@@ -535,6 +535,19 @@ class StrictnessTests(unittest.TestCase):
 
 # --------------------------------------------------------------------------
 
+class RelatedSkillTests(unittest.TestCase):
+    """Tools used for the same kind of work, for "What would raise this score"."""
+
+    def test_same_kind_of_work(self):
+        self.assertEqual(rt.related("PyTorch", {"scikit-learn", "Python", "Pandas", "React", "Machine Learning"}),
+                         ["scikit-learn", "Machine Learning"], "a concrete tool before the field; a shared language isn't enough")
+        self.assertEqual(rt.related("MySQL", {"PostgreSQL", "SQL"}), ["PostgreSQL"])
+        self.assertEqual(rt.related("GCP", {"AWS"}), ["AWS"])
+        self.assertEqual(rt.related("Vue", {"React"}), ["React"])
+        self.assertEqual(rt.related("Kubernetes", {"Docker", "Jenkins"}), ["Docker"], "DevOps alone is too wide")
+        self.assertEqual(rt.related("Pandas", {"PyTorch", "Python"}), [])
+
+
 class QuestionKindTests(unittest.TestCase):
     """Drafted answers answer the kind of question asked: a habit question
     gets a routine, not the nearest project, and the company comes in only

@@ -321,6 +321,65 @@ class QueueTests(Base):
         conn.close()
         self.prep.use_tailored(key, tid)
 
+    def test_a_tailored_version_is_scored_against_its_job(self):
+        self.prep.step()
+        t = self.items()["Tailorco"]
+        sc = t["changes"]["score"]
+        self.assertIsNotNone(sc, "kept with the version")
+        self.assertIsInstance(sc["before"], int)
+        self.assertGreaterEqual(sc["after"], sc["before"], "tailoring here only rewords toward the posting")
+        self.assertTrue(set(sc["gained"]).isdisjoint(sc["lost"]))
+        self.assertIsNone(self.prep.score_tailored(t["key"], "no-such-file.tex"))
+
+    def test_what_would_raise_the_score(self):
+        self.prep.step()
+        key = self.items()["Tailorco"]["key"]
+        got = self.prep.raise_score(key)
+        self.assertIsInstance(got["score"], int)
+        self.assertTrue(got["missing"], "the fixture's posting asks for things the resume lacks")
+        gains = [m["gain"] for m in got["missing"]]
+        self.assertEqual(gains, sorted(gains, reverse=True), "biggest gain first")
+        for m in got["missing"]:
+            self.assertIn(m["kind"], ("title", "req", "pref"))
+            if not m["skill"]:
+                self.assertEqual(m["related"], [])
+        # Confirming one (Review skills) takes it off the list.
+        first = next(m for m in got["missing"] if m["skill"])
+        s = self.prep.scoring()
+        self.prep.save_scoring({**s, "added": [first["keyword"]], "at": (s.get("at") or 0) + 1})
+        again = self.prep.raise_score(key)
+        self.assertNotIn(first["keyword"], [m["keyword"] for m in again["missing"]])
+        self.assertGreaterEqual(again["score"], got["score"])
+        self.assertIsNone(self.prep.raise_score("no such job"))
+
+    def test_the_resume_an_application_went_out_with_is_kept(self):
+        self.prep.step()
+        master_pdf = self.tmp / "master.pdf"
+        master_pdf.write_bytes(b"%PDF master (TEST)")
+        self.prep.master_pdf = lambda path: master_pdf
+        it = self.items()
+        tailored, master = it["Tailorco"], it["Coveredco"]
+        self.assertEqual(master["choice"], "master")
+
+        class Now:        # the copy runs here instead of on its own thread
+            def __init__(self, target, **kw):
+                self.target = target
+
+            def start(self):
+                self.target()
+        with mock.patch.object(prep.threading, "Thread", Now):
+            self.prep.mark(tailored["key"], "applied")
+            self.prep.mark(master["key"], "applied")
+            sent = self.prep.sent()
+            self.assertEqual(set(sent), {tailored["key"], master["key"]})
+            self.assertEqual((self.prep.sent_dir() / sent[tailored["key"]]).read_bytes(),
+                             (self.prep.out_dir / tailored["pdf"]).read_bytes(), "the tailored PDF that was attached")
+            self.assertEqual((self.prep.sent_dir() / sent[master["key"]]).read_bytes(), master_pdf.read_bytes())
+            self.assertRegex(sent[tailored["key"]], r"^\d{4}-\d{2}-\d{2}_Tailorco-.*_[0-9a-f]{6}\.pdf$")
+            # Marked again (the extension and the dashboard both report it): still the one copy.
+            self.prep.mark(tailored["key"], "applied")
+        self.assertEqual(len(list(self.prep.sent_dir().iterdir())), 2)
+
     def test_a_resume_tailored_by_hand_is_the_jobs_resume(self):
         self.prep.step()
         key = self.items()["Coveredco"]["key"]
@@ -439,6 +498,29 @@ class EndpointTests(Base):
             return e.code, json.loads(e.read())
 
     EXT = {"X-Onward-Client": "autofill", "Origin": "moz-extension://1234-abcd"}
+
+    def test_kept_resumes_are_listed_and_served(self):
+        key = self.items()["Tailorco"]["key"]
+        self.prep.keep_sent(key, wait=True)           # not applied yet: nothing kept
+        self.assertEqual(self.call("/api/sent"), (200, {}))
+        self.prep.mark(key, "applied")
+        self.prep.keep_sent(key, wait=True)
+        status, sent = self.call("/api/sent")
+        self.assertEqual(list(sent), [key])
+        get = lambda p: urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{self.port}{p}",
+                                                                      headers={"Host": f"127.0.0.1:{self.port}"}), timeout=10)
+        with get("/sent/" + sent[key]) as r:
+            self.assertEqual((r.status, r.headers["Content-Type"]), (200, "application/pdf"))
+        for bad in ("/sent/..%2Fmaster.tex", "/sent/nothing.pdf", "/sent/" + sent[key].replace(".pdf", ".tex")):
+            with self.assertRaises(urllib.error.HTTPError, msg=bad):
+                get(bad)
+        # Versions made before scores were kept get one when listed.
+        conn = server.db()
+        with conn:
+            conn.execute("UPDATE tailored SET result = json_remove(result, '$.score') WHERE job_key = ?", (key,))
+        conn.close()
+        hist = self.call("/api/history?key=" + urllib.parse.quote(key))[1]
+        self.assertIsNotNone(hist[0]["result"]["score"])
 
     def test_prepared_resume_for_the_form(self):
         url = "https://job-boards.greenhouse.io/tailorco/jobs/101"

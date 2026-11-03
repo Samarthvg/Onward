@@ -96,6 +96,8 @@ def db() -> sqlite3.Connection:
 
 
 PREP = prep.Preparer(db, RESUME_DIR, OUT_DIR, log, store=STORE)
+# What the extension attaches without a tailored version, for the copy kept of each application's resume.
+PREP.master_pdf = lambda path: master_pdf(path)
 # Runs radar.py. Run now works everywhere; timed runs only in the app (app.py).
 SCHEDULER = scheduler.Scheduler(STORE, log, automatic=False)
 # Set by app.py: {"autostart": bool, "update": {...} or None, "port_conflict": str}
@@ -768,6 +770,7 @@ def run_job(jid: str, params: dict) -> None:
         result = tailor.tailor(master, meta, params["jd"], backend, OUT_DIR,
                                manual_answer=params.get("answer"), level=params.get("level"),
                                confirmed=PREP.confirmed_skills())
+        result["score"] = PREP.score_tailored(params.get("key", ""), result["tex"])
         conn = db()
         try:
             with conn:
@@ -995,8 +998,22 @@ class Handler(BaseHTTPRequestHandler):
                 conn.close()
             using = PREP.prepared(key) or {}
             in_use = using.get("tailored_id") if using.get("choice") == "tailored" else ""
-            return self._json(200, [{"id": r[0], "created": r[1], "backend": r[2], "model": r[3], "in_use": r[0] == in_use,
-                                     "pdf": r[4], "tex": r[5], "result": json.loads(r[6])} for r in rows])
+            out = [{"id": r[0], "created": r[1], "backend": r[2], "model": r[3], "in_use": r[0] == in_use,
+                    "pdf": r[4], "tex": r[5], "result": json.loads(r[6])} for r in rows]
+            for h in out:
+                # Versions made before scores were kept with them.
+                if "score" not in h["result"]:
+                    h["result"]["score"] = PREP.score_tailored(key, h["tex"])
+            return self._json(200, out)
+
+        if path == "/api/raise":
+            # What would raise one job's match score, for the Tailor dialog.
+            got = PREP.raise_score((q.get("key") or [""])[0][:600])
+            return self._json(200, got) if got else self._err(HTTPStatus.NOT_FOUND, "No score for this job yet")
+
+        if path == "/api/sent":
+            # {job key: the resume its application went out with}, for the dashboard's applied jobs.
+            return self._json(200, PREP.sent())
 
         if path == "/api/queue":
             return self._json(200, {**PREP.summary(), "items": PREP.items(),
@@ -1045,6 +1062,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"next": PREP.next_ready((q.get("exclude") or [""])[0])})
             return self._prepared((q.get("url") or [""])[0][:2000])
 
+        if path.startswith("/sent/"):
+            # A kept copy of the resume an application went out with.
+            name = path[len("/sent/"):]
+            f = PREP.sent_dir() / name
+            if not FILE_NAME.match(name) or not name.endswith(".pdf") or not f.is_file():
+                return self._err(HTTPStatus.NOT_FOUND, "Not found")
+            return self._send(200, f.read_bytes(), "application/pdf", {"Content-Disposition": f'inline; filename="{name}"'})
         if path.startswith("/files/"):
             name = path[len("/files/"):]
             if not FILE_NAME.match(name):

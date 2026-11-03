@@ -304,6 +304,13 @@
   .qline { grid-column: 1 / -1; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
   .qline b { color: var(--text); font-weight: 600; }
   .qline .added { color: var(--ok); }
+  .score-line { margin: 0; }
+  .raise { display: grid; gap: 4px; }
+  .raise-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; font-size: 13px; }
+  .raise-row .added { color: var(--ok); font-weight: 600; }
+  .raise-row button { margin-left: auto; padding: 2px 10px; font-size: 12px; }
+  .score-line .added { color: var(--ok); font-weight: 600; }
+  .score-line .warnline { color: var(--warn); }
   .qline .warnline { color: var(--warn); }
   .prefs { display: grid; grid-template-columns: max-content 1fr; gap: 8px 12px; align-items: center; font-size: 13px; }
   .prefs label { color: var(--muted); }
@@ -330,7 +337,8 @@
   .field.wide { grid-column: 1 / -1; }
   fieldset.field { border: 0; margin: 0; padding: 0; min-width: 0; }
   .label-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
-  .label-row > label { font-size: 13px; font-weight: 600; color: var(--text); }
+  .label-row > label, .label-row > .label { font-size: 13px; font-weight: 600; color: var(--text); }
+  .label-row > .ghost:last-child { margin-left: auto; }
   button.howto { font-size: 12px; padding: 2px 9px 2px 3px; border-radius: 999px; color: var(--accent); border-color: transparent; background: var(--accent-soft); }
   button.howto::before { content: "?"; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
     background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 11px; }
@@ -343,6 +351,19 @@
   .kw-guide td:first-child { white-space: nowrap; }
   .kw-guide code { font: 12px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--chip); padding: 1px 6px; border-radius: 4px; }
   .kw-guide ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--muted); }
+  .kw-rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .kw-rule { display: grid; gap: 8px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); border-left: 4px solid var(--ok, #4f8a5b); background: var(--surface-2); }
+  .kw-rule.drop { border-left-color: var(--warn, #c0712f); }
+  .kw-rule.hit { box-shadow: 0 0 0 2px var(--accent); }
+  .kw-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .kw-num { font-size: 12px; font-weight: 600; color: var(--muted); min-width: 1.5em; }
+  .kw-head select { width: auto; }
+  .kw-tools { display: flex; gap: 4px; margin-left: auto; }
+  .kw-tools button { padding: 2px 8px; font-size: 12px; }
+  .kw-body { display: grid; gap: 6px; }
+  .kw-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .kw-group .kw-add { flex: 1 1 140px; min-width: 120px; padding: 3px 8px; font-size: 13px; }
+  .kw-and { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   .kw-try { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
   .kw-try input { flex: 1 1 240px; }
   .kw-verdict { font-size: 13px; flex-basis: 100%; }
@@ -784,6 +805,7 @@ const state = {
   h1bOnly: store.get(searchKey("h1bOnly", initialSearch), false),
   hidedone: store.get("hidedone", false),
   marks: store.get("marks", {}),        // url -> "applied" | "dismissed"
+  sent: {},                              // job key -> the kept resume its application went out with
   opened: {},                           // url -> true once Apply was clicked this session
   resume: store.get("resume", null),    // {name, text, skills[], off[], added[], at}
   profile: store.get("profile", {}),
@@ -1545,7 +1567,7 @@ function otherBadges(j, mark) {
     j.remote ? el("span", { class: "badge remote", text: "Remote" }) : null,
     j.entry_hint ? el("span", { class: "badge level", text: "Entry level" }) : null,
     j.min_yoe != null ? el("span", { class: "badge level", text: j.min_yoe + "+ yrs" }) : null,
-    mark ? el("span", { class: "badge", text: mark === "applied" ? "Applied" : "Dismissed" }) : null,
+    mark ? markBadge(j, mark) : null,
   ].filter(Boolean);
 }
 
@@ -1569,6 +1591,23 @@ function lazyDetails(summary, build, fk) {
 }
 
 // Applied / Dismiss, each with Undo. Unmarking is a change too.
+// "Applied", opening the resume the application went out with when Onward kept one.
+function markBadge(j, mark) {
+  const name = mark === "applied" && state.sent[j.key];
+  return name
+    ? el("a", { class: "badge", href: "/sent/" + encodeURIComponent(name), target: "_blank", rel: "noopener",
+      title: "The resume this application went out with", text: "Applied · resume sent ↗" })
+    : el("span", { class: "badge", text: mark === "applied" ? "Applied" : "Dismissed" });
+}
+
+async function loadSent() {
+  if (!HELPER) return;
+  try {
+    const sent = await api("/api/sent");
+    if (JSON.stringify(sent) !== JSON.stringify(state.sent)) { state.sent = sent; keepFocus(render); }
+  } catch {}
+}
+
 function markJob(j, val) {
   const prev = state.marks[j.url] || null;
   const next = prev === val ? null : val;
@@ -1579,6 +1618,8 @@ function markJob(j, val) {
   };
   setLocal(next);
   const sent = postMarks({ [j.key]: next });
+  // The copy of the resume is made in the background; it links from the badge once it's there.
+  if (next === "applied") setTimeout(loadSent, 2500);
   const what = { applied: `Marked “${j.title}” at ${j.company} as applied.`,
     dismissed: `Dismissed “${j.title}” at ${j.company}.` + (state.hidedone ? " It's hidden now." : "") };
   undoable(next ? what[next] : `“${j.title}” is no longer marked ${prev}.`, next ? `the ${next} mark` : "the unmark", async () => {
@@ -1667,7 +1708,7 @@ function jobCard(j, now, V, hasResume) {
   // Simple: the one most telling visa badge, Apply and Tailor; the rest in Details.
   const lead = signals.find((s) => s.warn) || signals[0];
   if (lead) meta.append(el("span", { class: lead.cls, text: lead.text }));
-  if (mark) meta.append(el("span", { class: "badge", text: mark === "applied" ? "Applied" : "Dismissed" }));
+  if (mark) meta.append(markBadge(j, mark));
   // Back from the application form: the one question worth asking.
   if (state.opened[j.url] && !mark) {
     actions.append(el("button", { type: "button", class: "nudge", text: "I applied", "data-fk": fk("applied"),
@@ -2249,7 +2290,9 @@ async function openTailor(j) {
   let jd = "", history = [];
   try { jd = (await api("/api/job?key=" + encodeURIComponent(j.key))).description || ""; } catch {}
   try { history = await api("/api/history?key=" + encodeURIComponent(j.key)); } catch {}
-  renderTailorForm(j, jd, history);
+  let raise = null;
+  try { raise = await api("/api/raise?key=" + encodeURIComponent(j.key)); } catch {}
+  renderTailorForm(j, jd, history, raise);
 }
 
 function tagHelp() {
@@ -2261,7 +2304,49 @@ function tagHelp() {
       el("code", { text: "% inventory: Kafka, Go" }), " anywhere in the file adds to what's allowed there."));
 }
 
-function renderTailorForm(j, jd, history) {
+// What would raise the job's match score: each keyword your resume doesn't
+// have, the points it's worth, and the skills you have for the same kind of
+// work. A skill you've really used can be confirmed here (Review skills
+// keeps it): it counts in the score, and tailoring may name it in your
+// entries that show that kind of work. Nothing is added without that click.
+const KIND_WORD = { title: "in the title", req: "required", pref: "nice to have" };
+function raiseBox(j, raise) {
+  if (!raise || !raise.missing || !raise.missing.length) return null;
+  const top = raise.missing.filter((m) => m.gain > 0);
+  if (!top.length) return null;
+  const list = el("div", { class: "raise" });
+  const row = (m) => {
+    const act = m.skill && state.resume
+      ? el("button", { type: "button", text: "I've used it", "aria-label": `I've used ${m.keyword}: count it and let tailoring name it`,
+        onclick: () => {
+          editResume(`Confirmed ${m.keyword}. It counts in match scores now, and the next tailoring may name it where your ` +
+            `${m.related.length ? m.related[0] : "related"} work is.`, `confirming ${m.keyword}`, (x) => {
+            x.added = [...new Set([...(x.added || []), m.keyword])];
+            x.off = (x.off || []).filter((y) => y !== m.keyword);
+          });
+          line.replaceChildren(el("b", { text: m.keyword }), el("span", { class: "added", text: " confirmed" }),
+            el("span", { class: "note", text: " · tailor again to use it" }));
+        } })
+      : null;
+    const line = el("div", { class: "raise-row" },
+      el("b", { text: m.keyword }),
+      el("span", { class: "added", text: ` +${m.gain}` }),
+      el("span", { class: "note", text: ` · ${KIND_WORD[m.kind] || m.kind}` }),
+      m.related.length ? el("span", { class: "note", text: ` · you have ${m.related.join(", ")}, used for the same kind of work` }) : null,
+      !m.skill ? el("span", { class: "note", text: " · if you've done it, write it into an entry of your master resume" }) : null,
+      act);
+    return line;
+  };
+  const shown = top.slice(0, 6), rest = top.slice(6);
+  list.append(...shown.map(row));
+  if (rest.length) list.append(el("details", {}, el("summary", { text: `${rest.length} more` }), ...rest.map(row)));
+  return el("div", { style: "display:grid;gap:6px" },
+    el("p", { class: "section-h", text: `What would raise this score (${raise.score}% with your master)` }),
+    el("p", { class: "note", text: "Points each keyword would add. Confirm only what you've really used: interviewers ask." }),
+    list);
+}
+
+function renderTailorForm(j, jd, history, raise) {
   const b = (helper.status && helper.status.backends) || {};
   let chosen = store.get("backend", SETTINGS.tailoring.backend || "chatgpt");
   if (!BACKENDS.some((be) => be.id === chosen)) chosen = SETTINGS.tailoring.backend || "chatgpt";
@@ -2387,6 +2472,7 @@ function renderTailorForm(j, jd, history) {
   };
 
   $("tailorBody").replaceChildren(...[
+    raiseBox(j, raise),
     el("p", { class: "section-h", text: "Model" }), opts, costLine,
     el("label", { class: "section-h", for: "changeSel", text: "How much to change" }), el("div", { style: "display:grid;gap:4px" }, change, changeNote),
     el("label", { class: "section-h", for: "jdBox", text: "Job description" + (jd ? " (saved from the posting, edit if needed)" : "") }), jdBox,
@@ -2520,6 +2606,7 @@ function renderResult(r, out, onAdjust) {
       el("span", { class: "spacer", style: "flex:1" }),
       el("a", { class: "btn primary", href: "/files/" + r.pdf, target: "_blank", rel: "noopener", text: "Open PDF ↗" }),
       el("a", { class: "btn", href: "/files/" + r.tex, download: r.tex, text: "Download .tex" })),
+    scoreLine(r.score),
     r.instruction ? el("p", { class: "note", text: `Your request: “${r.instruction}”` }) : null,
     // The model sometimes writes the resume's LaTeX escapes into its summary ("\&").
     r.summary ? el("p", { text: r.summary.replace(/\\([&%$#_{}])/g, "$1") }) : null,
@@ -2623,8 +2710,20 @@ function showView(v) {
   else render();
 }
 
+// The job's match score with your resume, and with this tailored version.
+function scoreLine(sc) {
+  if (!sc || sc.before == null || sc.after == null) return null;
+  const d = sc.after - sc.before;
+  return el("p", { class: "score-line" }, "Match with this version: ",
+    el("b", { text: `${sc.before}% → ${sc.after}%` }),
+    el("span", { class: d > 0 ? "added" : d < 0 ? "warnline" : "note", text: d ? ` (${d > 0 ? "+" : ""}${d})` : " (no change)" }),
+    sc.gained && sc.gained.length ? el("span", { class: "note", text: " · now matches " + sc.gained.slice(0, 8).join(", ") }) : null,
+    sc.lost && sc.lost.length ? el("span", { class: "warnline", text: " · no longer " + sc.lost.slice(0, 5).join(", ") }) : null);
+}
+
 function changeLine(c) {
   const bits = [];
+  if (c.score && c.score.before != null && c.score.after != null) bits.push(`match ${c.score.before}% → ${c.score.after}%`);
   if (c.rewrites) bits.push(`${c.rewrites} bullet${c.rewrites === 1 ? "" : "s"} reworded`);
   if (c.lists) bits.push(`${c.lists} tool list${c.lists === 1 ? "" : "s"} updated`);
   if (c.dropped_bullets) bits.push(`${c.dropped_bullets} bullet${c.dropped_bullets === 1 ? "" : "s"} trimmed`);
@@ -2877,39 +2976,142 @@ function field(label, input, note, opts = {}) {
     el("label", { for: input.id, text: label }), input, help);
 }
 
-// Title keywords: the box, a "How these work" guide that opens in place, a
-// box to try a title against the lines as typed, and notes on lines that
-// won't do what they look like. The server's filters.py does the matching,
-// so what the tester says is what the radar does.
+// Title keywords as a list of rules, one card each: Keep or Leave out, and
+// groups of words (any word in a group; every group). The textarea under it
+// holds the same rules as text lines, which is what's saved and what
+// filters.py matches, so the cards are only a way to read and edit them;
+// "Edit as text" shows the lines themselves. A "Try a title" box checks a
+// title against the rules as they stand, through the server's own matcher.
+const KW_LANG = /(^|[^a-z0-9])c\+\+/gi;      // "+" means "and", except in C++ (filters.LANG_NAMES)
+
+function parseRule(line) {
+  const t = line.trim();
+  const drop = t.startsWith("-");
+  const body = (drop ? t.slice(1) : t).replace(KW_LANG, "$1c\u0001\u0001");
+  const groups = body.split("+").map((g) => g.split("/").map((w) => w.replace(/\u0001/g, "+").trim()).filter(Boolean))
+    .filter((g) => g.length);
+  return { drop, groups };
+}
+
+function ruleText(r) {
+  return (r.drop ? "- " : "") + r.groups.map((g) => g.join("/")).join(" + ");
+}
+
 function keywordField(label, keywords, getLevels) {
   keywords.id = keywords.id || nextId("f");
-  const ex = (code, finds, sample) => el("tr", {}, el("td", {}, el("code", { text: code })), el("td", { text: finds }), el("td", { class: "note", text: sample }));
   const guide = el("div", { class: "kw-guide", id: keywords.id + "-guide", hidden: "" },
-    el("p", { text: "Each line describes job titles you want, or with a “-” in front, titles you don't. " +
-      "Lines are read from the top, and the first line a title fits decides. A title that fits no line is left out." }),
-    el("table", {},
-      el("tr", {}, el("th", { text: "Write" }), el("th", { text: "Finds titles with" }), el("th", { text: "For example" })),
-      ex("software engineer", "these words together, in this order", "Software Engineer II"),
-      ex("frontend/front end", "either one (“/” means or)", "Front End Developer"),
-      ex("data + engineer", "both, anywhere in the title (“+” means and)", "Engineer, Data Platform"),
-      ex("recruit*", "a word starting this way", "Recruiter, Recruiting"),
-      ex("- manager/director", "leaves these titles out", "skips “Engineering Manager”")),
+    el("p", { text: "Each rule is read from the top, and the first rule a title fits decides: Keep finds it, Leave out drops it. " +
+      "A title that fits no rule is left out." }),
     el("ul", {},
-      el("li", { text: "Put “-” lines above the lines they should win over: “- test engineer” first, then “software + engineer”." }),
+      el("li", { text: "Inside a group, any one word or phrase is enough. With two groups joined by “and”, the title needs one from each: " +
+        "“data” and “engineer” finds “Engineer, Data Platform”." }),
+      el("li", { text: "A phrase's words must appear together, in that order: “front end” finds “Front End Developer”." }),
+      el("li", { text: "End a word with * for any ending: “recruit*” finds Recruiter and Recruiting." }),
+      el("li", { text: "Put Leave out rules above the Keep rules they should win over (move them with ↑ ↓): leave out “test engineer” first, then keep “software” and “engineer”." }),
       el("li", { text: "Capitals and punctuation don't matter: “Full-Stack” is “full stack”. C++, C# and .NET work as written." }),
-      el("li", { text: "Leave seniority to Level: no need for “- senior” or “- intern” lines here." }),
-      el("li", { text: "Not sure a line works? Type a real title in “Try a title” below." })));
+      el("li", { text: "Leave seniority to Level: no need for rules that leave out senior or intern titles." }),
+      el("li", {}, "As text, each rule is one line: ", el("code", { text: "/" }), " means or, ", el("code", { text: "+" }), " means and, and a ",
+        el("code", { text: "-" }), " in front leaves titles out, as in ", el("code", { text: "- manager/director" }), ".")));
   const howto = el("button", { type: "button", class: "howto", text: "How these work", "aria-expanded": "false",
-    "aria-controls": guide.id, title: "Show how to write title keywords",
+    "aria-controls": guide.id, title: "Show how title keywords work",
     onclick: () => { guide.hidden = !guide.hidden; howto.setAttribute("aria-expanded", String(!guide.hidden)); } });
 
+  // The cards, drawn from the textarea and written back to it on every change.
+  let rules = [];
+  let hit = null;                   // the rule the tried title fits: [index, keeps]
+  const list = el("ol", { class: "kw-rules", "aria-label": label });
+  const read = () => { rules = keywords.value.split("\n").filter((l) => l.trim()).map(parseRule); };
+  const write = (focus) => {
+    keywords.value = rules.map(ruleText).filter((l) => l.replace(/^- /, "").trim()).join("\n");
+    draw(focus);
+    check();
+  };
+  const move = (i, by) => { const [r] = rules.splice(i, 1); rules.splice(i + by, 0, r); write(`[data-rule="${i + by}"] .kw-kind`); };
+
+  function wordGroup(r, i, g, gi) {
+    const add = el("input", { type: "text", class: "kw-add", spellcheck: "false", "data-add": `${i}-${gi}`,
+      placeholder: g.length ? "add another" : "a word or phrase", "aria-label": `Add a word to group ${gi + 1} of rule ${i + 1}` });
+    const commit = () => {
+      const words = add.value.split("/").map((w) => w.trim()).filter(Boolean);
+      if (!words.length) return false;
+      g.push(...words.filter((w) => !g.some((x) => x.toLowerCase() === w.toLowerCase())));
+      add.value = "";
+      write(`[data-add="${i}-${gi}"]`);
+      return true;
+    };
+    add.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === "," || e.key === "/") { e.preventDefault(); commit(); }
+      else if (e.key === "Backspace" && !add.value && g.length) { g.pop(); write(`[data-add="${i}-${gi}"]`); }
+    });
+    add.addEventListener("blur", () => { if (add.value.trim()) commit(); });
+    return el("div", { class: "kw-group" },
+      ...g.map((w, wi) => el("span", { class: "tag" }, w,
+        el("button", { type: "button", text: "×", "aria-label": `Remove “${w}” from rule ${i + 1}`, onclick: () => {
+          g.splice(wi, 1);
+          if (!g.length && r.groups.length > 1) r.groups.splice(gi, 1);
+          write(`[data-add="${i}-${Math.min(gi, r.groups.length - 1)}"]`);
+        } }))),
+      add);
+  }
+
+  function draw(focus) {
+    list.replaceChildren(...rules.map((r, i) => {
+      if (!r.groups.length) r.groups = [[]];
+      const kind = el("select", { class: "kw-kind", "aria-label": `Rule ${i + 1}` },
+        el("option", { value: "keep", text: "Keep titles with" }), el("option", { value: "drop", text: "Leave out titles with" }));
+      kind.value = r.drop ? "drop" : "keep";
+      kind.addEventListener("change", () => { r.drop = kind.value === "drop"; write(`[data-rule="${i}"] .kw-kind`); });
+      const body = [];
+      r.groups.forEach((g, gi) => {
+        if (gi) body.push(el("span", { class: "kw-and", text: "and" }));
+        body.push(wordGroup(r, i, g, gi));
+      });
+      const tools = el("div", { class: "kw-tools" },
+        el("button", { type: "button", class: "ghost", text: "+ and", title: "Add a group the title must also match",
+          "aria-label": `Add an “and” group to rule ${i + 1}`,
+          onclick: () => { r.groups.push([]); draw(`[data-add="${i}-${r.groups.length - 1}"]`); } }),
+        el("button", { type: "button", class: "ghost", text: "↑", disabled: i === 0 ? "" : null, "aria-label": `Move rule ${i + 1} up`, onclick: () => move(i, -1) }),
+        el("button", { type: "button", class: "ghost", text: "↓", disabled: i === rules.length - 1 ? "" : null, "aria-label": `Move rule ${i + 1} down`, onclick: () => move(i, 1) }),
+        el("button", { type: "button", class: "ghost", text: "Remove", "aria-label": `Remove rule ${i + 1}`,
+          onclick: () => { rules.splice(i, 1); write(rules.length ? `[data-rule="${Math.max(0, i - 1)}"] .kw-kind` : null); } }));
+      const cls = "kw-rule " + (r.drop ? "drop" : "keep") + (hit && hit[0] === i ? " hit" : "");
+      return el("li", { class: cls, "data-rule": String(i) },
+        el("div", { class: "kw-head" }, el("span", { class: "kw-num", text: String(i + 1) }), kind, tools),
+        el("div", { class: "kw-body" }, ...body));
+    }));
+    if (!rules.length) list.append(el("li", { class: "note", text: "No rules yet, so this finds no titles. Add one below." }));
+    if (focus) { const f = list.querySelector(focus); if (f) f.focus(); }
+  }
+
+  const addRule = el("button", { type: "button", text: "+ Add a rule", onclick: () => {
+    rules.push({ drop: false, groups: [[]] });
+    draw(`[data-add="${rules.length - 1}-0"]`);
+  } });
+  keywords.hidden = true;
+  keywords.setAttribute("aria-label", label + ", one rule per line");
+  const asText = el("button", { type: "button", class: "ghost", text: "Edit as text", "aria-pressed": "false", onclick: () => {
+    const show = keywords.hidden;
+    if (!show) { read(); draw(); }
+    keywords.hidden = !show;
+    list.hidden = addRule.hidden = show;
+    asText.textContent = show ? "Show as rules" : "Edit as text";
+    asText.setAttribute("aria-pressed", String(show));
+    if (show) keywords.focus();
+  } });
+
   const sample = el("input", { type: "text", placeholder: "Try a title, e.g. Software Engineer, New Grad", spellcheck: "false",
-    "aria-label": "Try a job title against these keywords" });
+    "aria-label": "Try a job title against these rules" });
   const verdict = el("div", { class: "kw-verdict", "aria-live": "polite" });
   const warns = el("ul", { class: "kw-warns", "aria-live": "polite", hidden: "" });
   const quote = (t) => el("code", { text: t.length > 70 ? t.slice(0, 68) + "…" : t });
+  // The server numbers lines from 1, blank lines included; the cards skip blank lines.
+  const ruleOf = (line) => keywords.value.split("\n").slice(0, line).filter((l) => l.trim()).length;
+  const mark = (i, keeps) => {
+    hit = i == null ? null : [i, keeps];
+    for (const li of list.querySelectorAll(".kw-rule")) li.classList.toggle("hit", !!hit && li.dataset.rule === String(hit[0]));
+  };
   let timer = 0, seq = 0;
-  const check = () => {
+  function check() {
     clearTimeout(timer);
     timer = setTimeout(async () => {
       const mine = ++seq, title = sample.value.trim();
@@ -2920,31 +3122,35 @@ function keywordField(label, keywords, getLevels) {
       warns.replaceChildren(...r.warnings.map((w) => el("li", { text: w })));
       warns.hidden = !r.warnings.length;
       const t = r.title;
-      if (!t) { verdict.replaceChildren(); verdict.className = "kw-verdict"; return; }
+      if (!t) { verdict.replaceChildren(); verdict.className = "kw-verdict"; mark(null); return; }
+      const n = ruleOf(t.line);
       const lvl = t.levels.map((x) => LABELS.seniority[x] || x).join(" or ");
+      if (t.line) mark(n - 1, t.keep); else mark(null);
       if (t.keep && t.level_ok === false) {
         verdict.className = "kw-verdict drop";
-        verdict.replaceChildren(`Line ${t.line} fits it (`, quote(t.text), `), but it reads as ${lvl || "not a regular job"}, which this role's Level leaves out.`);
+        verdict.replaceChildren(`Rule ${n} fits it (`, quote(t.text), `), but it reads as ${lvl || "not a regular job"}, which this role's Level leaves out.`);
       } else if (t.keep) {
         verdict.className = "kw-verdict keep";
-        verdict.replaceChildren(`Kept by line ${t.line}: `, quote(t.text));
+        verdict.replaceChildren(`Kept by rule ${n}: `, quote(t.text));
       } else if (t.line) {
         verdict.className = "kw-verdict drop";
-        verdict.replaceChildren(`Left out by line ${t.line}: `, quote(t.text));
+        verdict.replaceChildren(`Left out by rule ${n}: `, quote(t.text));
       } else {
         verdict.className = "kw-verdict drop";
-        verdict.textContent = "Left out: no line fits this title. Add a line for it, or check the spelling.";
+        verdict.textContent = "Left out: no rule fits this title. Add a rule for it, or check the spelling.";
       }
     }, 250);
-  };
+  }
   keywords.addEventListener("input", check);
   sample.addEventListener("input", check);
+  read();
+  draw();
   check();
-  const note = el("p", { class: "note", id: keywords.id + "-note", text: "One per line. “/” means or, “+” means and, a “-” in front leaves titles out." });
-  keywords.setAttribute("aria-describedby", note.id);
   return { node: el("div", { class: "field wide" },
-    el("div", { class: "label-row" }, el("label", { for: keywords.id, text: label }), howto),
-    guide, keywords, note, warns, el("div", { class: "kw-try" }, sample, verdict)), recheck: check };
+    el("div", { class: "label-row" }, el("span", { class: "label", id: keywords.id + "-label", text: label }), howto, asText),
+    guide, list, el("div", {}, addRule), keywords, warns, el("div", { class: "kw-try" }, sample, verdict)),
+    // After the text was set from outside (a template was picked): redraw the cards too.
+    recheck: () => { read(); draw(); check(); } };
 }
 
 function checks(legend, options, selected, note, opts = {}) {
@@ -4240,6 +4446,7 @@ if (HELPER) {
 }
 // The Apply kit and marks: the helper's copy when it's newer, else this one goes up.
 if (HELPER) {
+  loadSent();
   api("/api/state").then((remote) => {
     let changed = false;
     for (const k of SYNCED) {

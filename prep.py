@@ -13,8 +13,11 @@ the queue, reviews what the extension filled and presses Submit.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
+import shutil
 import threading
 import time
 import traceback
@@ -47,6 +50,7 @@ CREATE TABLE IF NOT EXISTS prep (
     error       TEXT NOT NULL DEFAULT '',
     instruction TEXT NOT NULL DEFAULT '',  -- the user's "adjust" request for the next tailoring
     own         INTEGER NOT NULL DEFAULT 0,  -- the user tailored it themselves: it stays until they're done with it
+    sent        TEXT NOT NULL DEFAULT '',  -- the resume PDF the application went out with, in resume/applied/
     attempts    INTEGER NOT NULL DEFAULT 0,
     notified    REAL,
     applied     REAL
@@ -59,7 +63,8 @@ CREATE TABLE IF NOT EXISTS prep_usage (
 """
 
 # Columns added after the first release of the queue.
-MIGRATIONS = {"instruction": "TEXT NOT NULL DEFAULT ''", "own": "INTEGER NOT NULL DEFAULT 0"}
+MIGRATIONS = {"instruction": "TEXT NOT NULL DEFAULT ''", "own": "INTEGER NOT NULL DEFAULT 0",
+              "sent": "TEXT NOT NULL DEFAULT ''"}
 
 
 def migrate(conn) -> None:
@@ -143,6 +148,7 @@ def change_summary(result: dict) -> dict:
         "rejected": sum(1 for c in ch if c.get("status") == "rejected"),
         "pages": result.get("pages"),
         "summary": result.get("summary", ""),
+        "score": result.get("score"),
     }
 
 
@@ -258,6 +264,79 @@ class Preparer:
         if self.master_path.exists():
             return match.Resume(match.tex_text(self.master_path.read_text(encoding="utf-8")))
         return None
+
+    def score_tailored(self, key: str, tex_name: str) -> dict | None:
+        """The job's match score with the dashboard's resume and with a
+        tailored version of it: {"before", "after", "gained", "lost"}, the
+        last two the keywords the version newly has or no longer has. None
+        when the job or the scoring data isn't there.
+
+        The version keeps the skills the dashboard scores with (the user's
+        corrections included) and adds only those its own text names that
+        the master didn't, so the difference is the tailoring's alone."""
+        base = self.resume()
+        path = self.out_dir / tex_name if tex_name else None
+        if not base or not path or not path.is_file():
+            return None
+        conn = self.connect()
+        try:
+            corpus = self.corpus(conn)
+            row = conn.execute(self._select(conn) + "WHERE key = ?", (key,)).fetchone()
+        finally:
+            conn.close()
+        if not corpus or not row:
+            return None
+        _, skill_w, term_w = corpus
+        j = self._job(row)
+        text = match.tex_text(path.read_text(encoding="utf-8"))
+        master = self.master_for(j["roles"])
+        had = match.detect_skills(match.tex_text(master.read_text(encoding="utf-8"))) if master.exists() else set()
+        after = match.Resume(text, sorted(base.have | (match.detect_skills(text) - had)), years=base.years)
+        weights = self.weights()
+        b = match.score_job(j, base, skill_w, term_w, weights)
+        a = match.score_job(j, after, skill_w, term_w, weights)
+        if b["pct"] is None or a["pct"] is None:
+            return None
+        return {"before": b["pct"], "after": a["pct"],
+                "gained": [k for k in a["matched"] if k not in b["matched"]],
+                "lost": [k for k in b["matched"] if k not in a["matched"]]}
+
+    def raise_score(self, key: str) -> dict | None:
+        """What would raise the job's match score: each keyword the resume
+        doesn't have, with the points having it would add, whether it is a
+        skill Onward knows (which Review skills can confirm), and the skills
+        the resume has that are used for the same kind of work. None when
+        the job or the scoring data isn't there."""
+        base = self.resume()
+        if not base:
+            return None
+        conn = self.connect()
+        try:
+            corpus = self.corpus(conn)
+            row = conn.execute(self._select(conn) + "WHERE key = ?", (key,)).fetchone()
+        finally:
+            conn.close()
+        if not corpus or not row:
+            return None
+        _, skill_w, term_w = corpus
+        j, weights = self._job(row), self.weights()
+        now = match.score_job(j, base, skill_w, term_w, weights)
+        if now["pct"] is None:
+            return None
+        out = []
+        for item in now["items"]:
+            k = item["k"]
+            if item["ok"]:
+                continue
+            skill = k in match.TAXONOMY
+            # The same resume with this one keyword in it.
+            more = match.Resume(base.text if skill else base.text + "\n" + k,
+                                sorted(base.have | {k}) if skill else sorted(base.have), years=base.years)
+            pct = match.score_job(j, more, skill_w, term_w, weights)["pct"]
+            out.append({"keyword": k, "kind": item["kind"], "skill": skill, "gain": max(0, pct - now["pct"]),
+                        "related": rt.related(k, base.have)[:4] if skill else []})
+        out.sort(key=lambda x: (-x["gain"], x["keyword"].lower()))
+        return {"score": now["pct"], "missing": out}
 
     # ------------------------------------------------------------ scanning
 
@@ -495,6 +574,7 @@ class Preparer:
                                  error=f"Waiting: today's {s['daily_cap']} model runs are used up. Continues tomorrow.")
                     return "requeued"
                 result = tailor.tailor(master, meta, jd, s["backend"], self.out_dir, confirmed=self.confirmed_skills())
+                result["score"] = self.score_tailored(key, result["tex"])
                 tailored_id, choice = uuid.uuid4().hex[:12], "tailored"
                 with conn:
                     conn.execute("INSERT INTO tailored (id, job_key, created, backend, model, pdf, tex, result) "
@@ -635,6 +715,7 @@ class Preparer:
         `recorded` collects the jobs newly added to an applications table."""
         now = time.time()
         n = 0
+        applied: list[str] = []
         conn = self.connect()
         try:
             with conn:
@@ -655,8 +736,12 @@ class Preparer:
                                  (key, state, now, now, now if state == "applied" else None))
                     if state == "applied" and self._record_application(conn, key, now) and recorded is not None:
                         recorded.append(key)
+                    if state == "applied":
+                        applied.append(key)
             if n:
                 self.poke()
+            for key in applied:
+                self.keep_sent(key)
             return n
         finally:
             conn.close()
@@ -664,6 +749,68 @@ class Preparer:
     def unmark(self, key: str) -> None:
         """Undo applied/dismissed: back to ready when it was prepared."""
         self.mark_many({key: None})
+
+    # The resume an application went out with is kept, since the tailored
+    # versions and the master's PDF can change or go: a copy in
+    # resume/applied/, named for the day, company and title. `master_pdf`
+    # (set by the server) is the master's PDF for a resume path, compiled if
+    # need be, so the copy is made off the request thread.
+    master_pdf: Callable[[Path], Path | None] | None = None
+
+    def sent_dir(self) -> Path:
+        return self.resume_dir / "applied"
+
+    def keep_sent(self, key: str, wait: bool = False) -> None:
+        """Copies the resume the extension attaches for this job, once."""
+        def run():
+            try:
+                self._keep_sent(key)
+            except Exception:
+                self.log(f"prep: couldn't keep the resume sent for {key}:\n{traceback.format_exc()}")
+        if wait:
+            run()
+        else:
+            threading.Thread(target=run, name="keep-sent", daemon=True).start()
+
+    def _keep_sent(self, key: str) -> None:
+        conn = self.connect()
+        try:
+            roles = "j.roles" if self._tagged(conn) else "'[]'"
+            row = conn.execute(f"SELECT p.sent, j.company, j.title, p.applied, {roles} "
+                               "FROM prep p JOIN jobs j ON j.key = p.job_key WHERE p.job_key = ? AND p.state = 'applied'",
+                               (key,)).fetchone()
+        finally:
+            conn.close()
+        if not row or row[0]:
+            return
+        _, company, title, applied, roles = row
+        p = self.prepared(key) or {}
+        pdf = p.get("pdf")
+        if not pdf and self.master_pdf:
+            pdf = self.master_pdf(self.master_for(json.loads(roles or "[]")))
+        if not pdf or not Path(pdf).is_file():
+            return
+        day = datetime.fromtimestamp(applied or time.time()).strftime("%Y-%m-%d")
+        slug = re.sub(r"[^A-Za-z0-9]+", "-", f"{company} {title}").strip("-")[:80] or "job"
+        name = f"{day}_{slug}_{hashlib.sha256(key.encode()).hexdigest()[:6]}.pdf"
+        self.sent_dir().mkdir(parents=True, exist_ok=True)
+        tmp = self.sent_dir() / (name + ".tmp")
+        shutil.copyfile(pdf, tmp)
+        os.replace(tmp, self.sent_dir() / name)
+        conn = self.connect()
+        try:
+            with conn:
+                conn.execute("UPDATE prep SET sent = ? WHERE job_key = ? AND sent = ''", (name, key))
+        finally:
+            conn.close()
+
+    def sent(self) -> dict[str, str]:
+        """{job key: file in sent_dir()} for every application with a kept resume."""
+        conn = self.connect()
+        try:
+            return dict(conn.execute("SELECT job_key, sent FROM prep WHERE sent != ''").fetchall())
+        finally:
+            conn.close()
 
     @staticmethod
     def _record_application(conn, key: str, now: float) -> bool:
