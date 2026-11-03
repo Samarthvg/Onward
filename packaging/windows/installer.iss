@@ -64,6 +64,10 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=force
 RestartApplications=no
+; Tells Explorer to redraw shell icons when setup finishes, so the Start menu,
+; desktop and taskbar shortcuts show a changed icon after an update rather
+; than the one Windows cached.
+ChangesAssociations=yes
 ; SignTool=mysign
 
 [Files]
