@@ -376,7 +376,10 @@ PROGRAM = re.compile(
 INTERN_AND_ENTRY = re.compile(r"\b(new[- ]?grad\w*|new college|(?:university|college|recent) grad\w*|"
                               r"entry[- ]level|early[- ]career|junior|full[- ]time)\b", re.I)
 # The words NOT_ENTRY rejects, so entry-level filtering stays as it was.
-INTERN = re.compile(r"\b(intern|internship|internships|co-?op|apprentice)\b", re.I)
+# Banks call internships "Summer Analyst" and "Summer Associate" ("2028
+# Investment Banking Summer Financial Analyst").
+INTERN = re.compile(r"\b(intern|internship|internships|co-?op|apprentice|"
+                    r"summer(?:\s+[\w&-]+){0,2}\s+(?:analyst|associate|scholar|program)s?)\b", re.I)
 SENIOR = re.compile(
     r"\b(senior|sr\.?|staff|principal|lead|manager|director|head|[afes]?vp|vice[- ]president|"
     r"architect|distinguished|fellow|chief|iii|iv|l[5-9]|e[5-9]|ic[4-9]|level [3-9]|tech lead|"

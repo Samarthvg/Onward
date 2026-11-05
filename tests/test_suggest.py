@@ -73,6 +73,13 @@ class FinanceTemplateTests(unittest.TestCase):
                   "Marketing Analyst", "Data Entry Clerk", "Customer Service Representative - Banking"):
             self.assertFalse(self.rules.matches(t), t)
 
+    def test_banks_summer_analysts_are_internships(self):
+        for t in ("2028 Investment Banking Summer Financial Analyst (Class of 2029)", "Summer Associate",
+                  "Summer 2027 Analyst Program"):
+            self.assertEqual(filters.title_levels(t), {"intern"}, t)
+        for t in ("Financial Analyst", "Analyst - Summer Hours", "Software Engineer, Summer Sale Team"):
+            self.assertNotIn("intern", filters.title_levels(t), t)
+
     def test_no_warnings(self):
         self.assertEqual(filters.keyword_warnings(filters.ROLE_TEMPLATES["finance"][1]), [])
 
