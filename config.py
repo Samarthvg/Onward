@@ -401,6 +401,18 @@ SCHEMA = Obj({
         "model": Str(pricing.default_model(p), 100, choices=pricing.model_ids(p)),
         "monthly_budget": Num(5, 0, 10_000),
     }) for p in pricing.MODELS}),
+    # The ChatGPT login's model and thinking effort (tailor.codex_models
+    # lists what Codex offers). Empty leaves the choice to Codex.
+    "chatgpt": Obj({
+        "model": Str("", 100, pattern=r"[A-Za-z0-9._:-]*"),
+        "effort": Str("", 20, pattern=r"[a-z]*"),
+    }),
+    # The same for the Claude login (tailor.CLAUDE_MODELS): the claude CLI
+    # takes model aliases that follow its latest models.
+    "claude": Obj({
+        "model": Str("", 40, choices=("", "fable", "opus", "sonnet", "haiku")),
+        "effort": Str("", 20, choices=("", "low", "medium", "high", "xhigh", "max")),
+    }),
     # How drafted answers should sound (tailor.VOICE).
     "voice": Obj({
         "tone": Str("casual", choices=voice.TONES),

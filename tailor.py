@@ -27,6 +27,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -238,10 +239,15 @@ def _claude_json(prompt: str, schema: dict) -> tuple[dict, str]:
     if not exe:
         raise BackendError("The claude command isn't installed.")
     runner_dir().mkdir(parents=True, exist_ok=True)
+    sec = config.store().section("claude")
     cmd = [exe, "-p", "--output-format", "json", "--no-session-persistence",
            "--tools", "", "--strict-mcp-config",
            "--system-prompt", "You return only the requested JSON.",
            "--json-schema", json.dumps(schema)]
+    if sec["model"]:
+        cmd += ["--model", sec["model"]]
+    if sec["effort"]:
+        cmd += ["--effort", sec["effort"]]
     try:
         proc = subprocess.run(cmd, input=prompt, cwd=runner_dir(), capture_output=True,
                               text=True, encoding="utf-8", errors="replace", timeout=600)
@@ -255,6 +261,9 @@ def _claude_json(prompt: str, schema: dict) -> tuple[dict, str]:
         msg = str(out.get("result", "claude failed"))
         if re.search(r"auth|login|OAuth", msg, re.I):
             msg += " Run `claude auth login` in a terminal once, then try again."
+        elif sec["model"] and re.search(r"selected model|unrecognized_model", msg + (proc.stderr or ""), re.I):
+            msg = (f"Your Claude login can't use the {CLAUDE_NAMES.get(sec['model'], sec['model'])} model. "
+                   "Pick another in Settings, under AI models.")
         raise BackendError(msg[:400])
     parsed = out.get("structured_output")
     if parsed is None:
@@ -266,11 +275,104 @@ def _claude_json(prompt: str, schema: dict) -> tuple[dict, str]:
     return parsed, model
 
 
+# Thinking efforts offered for the ChatGPT login. Codex also lists "ultra",
+# which hands parts of a task to helper agents; one structured answer has
+# nothing to hand off, so it's left out.
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+CATALOG_TTL = 600
+_catalog: tuple[float, list[dict]] = (0.0, [])
+_catalog_lock = threading.Lock()
+
+
+def codex_models() -> list[dict]:
+    """The models Codex offers on the user's login, in Codex's own order:
+    [{id, label, efforts, default_effort}]. Read from `codex debug models`,
+    so new models show up without an Onward update; [] when Codex isn't
+    installed or can't say."""
+    global _catalog
+    with _catalog_lock:
+        at, models = _catalog
+        if time.time() - at < CATALOG_TTL:
+            return models
+        models = []
+        exe = shutil.which("codex")
+        if exe:
+            try:
+                proc = subprocess.run([exe, "debug", "models"], capture_output=True, text=True,
+                                      encoding="utf-8", errors="replace", timeout=20)
+                models = _parse_catalog(proc.stdout) if proc.returncode == 0 else []
+            except (subprocess.TimeoutExpired, OSError):
+                models = []
+        # A failed read is retried sooner than a good one is refreshed.
+        _catalog = (time.time() - (CATALOG_TTL - 60 if not models else 0), models)
+        return models
+
+
+def _parse_catalog(text: str) -> list[dict]:
+    try:
+        raw = json.loads(text).get("models") or []
+    except (json.JSONDecodeError, AttributeError):
+        return []
+    out = []
+    for m in sorted((m for m in raw if isinstance(m, dict)), key=lambda m: m.get("priority") or 0):
+        slug = str(m.get("slug") or "")
+        if m.get("visibility") != "list" or not re.fullmatch(r"[A-Za-z0-9._:-]{1,100}", slug):
+            continue
+        efforts = [e for e in EFFORTS if e in {str(x.get("effort")) for x in m.get("supported_reasoning_levels") or []
+                                               if isinstance(x, dict)}]
+        default = str(m.get("default_reasoning_level") or "")
+        out.append({"id": slug, "label": str(m.get("display_name") or slug)[:100], "efforts": efforts,
+                    "default_effort": default if default in efforts else ""})
+    return out
+
+
+def codex_choice(model: str | None = None, effort: str | None = None) -> tuple[str, str]:
+    """The saved (or given) ChatGPT model and effort, checked against what
+    Codex offers now. Codex runs an effort a model doesn't support without
+    complaint, so it's checked here."""
+    sec = config.store().section("chatgpt")
+    model = sec["model"] if model is None else model
+    effort = sec["effort"] if effort is None else effort
+    if effort and effort not in EFFORTS:
+        raise BackendError(f"Unknown thinking effort {effort}. Pick another in Settings, under AI models.")
+    if not model and not effort:
+        return "", ""
+    catalog = codex_models()
+    if not catalog:
+        return model, effort         # Codex can't list its models; it will say if one is wrong
+    if model:
+        found = next((m for m in catalog if m["id"] == model), None)
+        if not found:
+            raise BackendError(f"ChatGPT doesn't offer {model} any more. Pick another model in Settings, under AI models.")
+        if effort and effort not in found["efforts"]:
+            raise BackendError(f"{found['label']} doesn't take {effort} thinking effort. "
+                               "Pick another in Settings, under AI models.")
+    return model, effort
+
+
+# The Claude login's models: the claude CLI's aliases, which follow its
+# latest models (it has no command that lists them). A plan without a model
+# may get another, so the run records the model that actually answered.
+CLAUDE_NAMES = {"fable": "Fable", "opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku"}
+CLAUDE_MODELS = [{"id": k, "label": f"{v} (latest)", "efforts": list(EFFORTS), "default_effort": ""}
+                 for k, v in CLAUDE_NAMES.items()]
+
+
+def _codex_ran(stderr: str) -> str:
+    """What Codex says it ran, from the header it prints: "chatgpt (model, effort)"."""
+    model = re.search(r"^model:\s*(\S+)", stderr, re.M)
+    effort = re.search(r"^reasoning effort:\s*(\S+)", stderr, re.M)
+    if not model:
+        return "chatgpt (codex)"
+    return f"chatgpt ({model.group(1)}{', ' + effort.group(1) if effort else ''})"
+
+
 def _codex_json(prompt: str, schema: dict) -> tuple[dict, str]:
     """One structured answer from OpenAI's `codex` CLI on the user's ChatGPT login."""
     exe = shutil.which("codex")
     if not exe:
         raise BackendError("The codex command isn't installed. Run: npm install -g @openai/codex")
+    model, effort = codex_choice()
     runner_dir().mkdir(parents=True, exist_ok=True)
     # Per-run file names: tailoring and drafting can run at the same time.
     stem = f"codex-{os.getpid()}-{time.time_ns()}"
@@ -280,7 +382,12 @@ def _codex_json(prompt: str, schema: dict) -> tuple[dict, str]:
     prompt = "Do not run any commands or read any files. Everything you need is below.\n\n" + prompt
     cmd = [exe, "exec", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
            "-s", "read-only", "-C", str(runner_dir()), "--color", "never",
-           "--output-schema", str(schema_path), "-o", str(out_path), "-"]
+           "--output-schema", str(schema_path), "-o", str(out_path)]
+    if model:
+        cmd += ["-m", model]
+    if effort:
+        cmd += ["-c", f'model_reasoning_effort="{effort}"']
+    cmd.append("-")
     try:
         try:
             proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
@@ -293,7 +400,7 @@ def _codex_json(prompt: str, schema: dict) -> tuple[dict, str]:
                 msg = "Not signed in to ChatGPT. Run `codex login` in a terminal once, then try again."
             raise BackendError(msg[-400:])
         try:
-            return json.loads(out_path.read_text(encoding="utf-8")), "chatgpt (codex)"
+            return json.loads(out_path.read_text(encoding="utf-8")), _codex_ran(proc.stderr or "")
         except json.JSONDecodeError as e:
             raise BackendError("ChatGPT returned malformed output. Try again.") from e
     finally:

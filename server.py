@@ -249,6 +249,7 @@ def ai_payload() -> dict:
                      "models": [{"id": m.id, "label": m.label, "input": m.input, "output": m.output}
                                 for m in pricing.MODELS[prov]]}
     return {"providers": out, "prices_as_of": pricing.PRICES_AS_OF, "month": ai.this_month(),
+            "chatgpt_models": tailor.codex_models(), "claude_models": tailor.CLAUDE_MODELS,
             "typical": typical_costs(), "default_voice": list(tailor.voice.DEFAULT_BANNED)}
 
 
@@ -1351,6 +1352,13 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(patch, dict):
             return self._err(HTTPStatus.BAD_REQUEST, "Expected {\"settings\": {...}}")
         patch.pop("version", None)
+        chosen = patch.get("chatgpt")
+        if isinstance(chosen, dict) and ({"model", "effort"} & set(chosen)):
+            cur = STORE.load()["chatgpt"]
+            try:
+                tailor.codex_choice(str(chosen.get("model", cur["model"])), str(chosen.get("effort", cur["effort"])))
+            except tailor.BackendError as e:
+                return self._json(HTTPStatus.BAD_REQUEST, {"error": str(e), "errors": [str(e)]})
         try:
             uid = save_settings(patch, str(data.get("label") or "the settings change")[:80])
         except config.SettingsError as e:

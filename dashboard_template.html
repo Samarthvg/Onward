@@ -3857,6 +3857,36 @@ function tailoringCard() {
       "Saved the tailoring settings.", "the tailoring settings"));
 }
 
+// A login's model and thinking effort: ChatGPT's from the models Codex
+// offers (tailor.codex_models), Claude's from the claude CLI's aliases
+// (tailor.CLAUDE_MODELS). Blank leaves each to the CLI.
+const EFFORT_NAMES = { low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
+
+function loginBlock({ title, saved, models, cli, note, empty }) {
+  const known = models.some((m) => m.id === saved.model);
+  const model = select([["", `${cli}'s default`], ...models.map((m) => [m.id, m.label]),
+    ...(saved.model && !known ? [[saved.model, `${saved.model} (not offered any more)`]] : [])], saved.model);
+  const effort = el("select", {});
+  const effortNote = el("p", { class: "note" });
+  const fill = (want) => {
+    const m = models.find((x) => x.id === model.value);
+    const levels = m ? m.efforts : Object.keys(EFFORT_NAMES).filter((e) => !models.length || models.some((x) => x.efforts.includes(e)));
+    effort.replaceChildren(el("option", { value: "", text: m && m.default_effort ? `Model's default (${EFFORT_NAMES[m.default_effort]})` : "Model's default" }),
+      ...levels.map((e) => el("option", { value: e, text: EFFORT_NAMES[e] })));
+    effort.value = levels.includes(want) ? want : "";
+    effortNote.textContent = want && !levels.includes(want) ? `This model doesn't take ${EFFORT_NAMES[want] || want} effort, so it's back to the model's default.` : "";
+  };
+  model.addEventListener("change", () => fill(effort.value));
+  fill(saved.effort);
+  const effortField = field("Thinking effort", effort, "");
+  effortField.append(effortNote);
+  const head = el("div", { class: "field wide" }, el("label", { class: "section-h", text: title }),
+    el("p", { class: "note", text: models.length ? note : empty }));
+  if (!models.length) return { node: el("div", { class: "fields" }, head), value: () => ({ model: saved.model, effort: saved.effort }) };
+  return { node: el("div", { class: "fields" }, head, field("Model", model, ""), effortField),
+           value: () => ({ model: model.value, effort: effort.value }) };
+}
+
 // API keys go to the helper once and are kept in the system keychain; the
 // page only ever learns whether one is saved.
 function aiCard() {
@@ -3899,6 +3929,13 @@ function aiCard() {
       field("Model", model, typ ? `With your resume, about ${money(typ.tailor)} per tailored resume and ${money(typ.draft)} per drafted answer on the model saved now.` : ""),
       field(`Monthly budget (US$)`, budget, `${money(p.spent)} used in ${month}. Paid calls stop when the next one would go over; 0 turns this key off.`)) };
   });
+  const effortCost = "Higher effort thinks longer: it's slower and uses more of your plan's limits.";
+  const gpt = loginBlock({ title: "ChatGPT login", saved: d.settings.chatgpt, models: info.chatgpt_models || [], cli: "Codex",
+    note: `Used when tailoring or drafting runs on ChatGPT. ${effortCost}`,
+    empty: "Codex isn't installed or couldn't list its models, so Codex picks the model and effort itself." });
+  const claude = loginBlock({ title: "Claude login", saved: d.settings.claude, models: info.claude_models || [], cli: "Claude",
+    note: `Used when tailoring or drafting runs on Claude. Each choice follows the latest model of that name; if your plan doesn't have it, Claude uses another, and the run shows which. ${effortCost}`,
+    empty: "" });
   const loadUsage = async () => {
     usage.replaceChildren(progressLine("Loading usage…"));
     try {
@@ -3921,9 +3958,11 @@ function aiCard() {
   return el("section", { class: "card", "aria-labelledby": "aiH" },
     el("h3", { id: "aiH", text: "AI models" }),
     el("p", { text: "ChatGPT and Claude logins run on your existing plan and cost nothing extra. With your own OpenAI or Anthropic API key you pay the provider per use instead; Onward shows the cost before each run and stops at your monthly budget. Keys stay on this computer and are never shown again after saving." }),
+    gpt.node,
+    claude.node,
     ...blocks.map((b) => b.node),
     el("p", { class: "note", text: `Prices as published by the providers in ${info.prices_as_of}.` }),
-    saveBar("Save models and budgets", () => postSettings({ providers: Object.fromEntries(blocks.map((b) =>
+    saveBar("Save models and budgets", () => postSettings({ chatgpt: gpt.value(), claude: claude.value(), providers: Object.fromEntries(blocks.map((b) =>
       [b.id, { model: b.model.value, monthly_budget: +b.budget.value }])) }, "the AI model settings"),
       "Saved the models and budgets.", "the AI model settings"),
     el("div", { class: "rowline" }, el("button", { type: "button", text: "Show usage", onclick: loadUsage })),
