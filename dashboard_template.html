@@ -428,6 +428,15 @@
   .kw-verdict.drop { color: var(--warn); }
   .kw-verdict code, .kw-warns code { font: 12px ui-monospace, Consolas, monospace; }
   .kw-warns { margin: 0; padding-left: 18px; color: var(--warn); font-size: 12px; display: grid; gap: 3px; }
+  .kw-suggest { display: grid; gap: 8px; }
+  .kw-suggest:empty { display: none; }
+  .kw-sug-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .kw-sug-h { font-size: 12px; font-weight: 600; color: var(--muted); min-width: 9.5em; }
+  .kw-sug { display: inline-flex; align-items: center; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--control); }
+  .kw-sug button { border: 0; background: transparent; font-size: 12px; padding: 3px 4px 3px 10px; }
+  .kw-sug .kw-sug-x { padding: 3px 8px 3px 2px; color: var(--muted); }
+  .kw-sug-add:hover, .kw-sug-x:hover { color: var(--text); }
+  .kw-sug-n { margin-left: 6px; color: var(--muted); font-variant-numeric: tabular-nums; }
   @media (max-width: 560px) { .kw-guide th:nth-child(3), .kw-guide td:nth-child(3) { display: none; } }
   .checks { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
   .checks label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
@@ -3146,7 +3155,7 @@ function ruleText(r) {
   return (r.drop ? "- " : "") + r.groups.map((g) => g.join("/")).join(" + ");
 }
 
-function keywordField(label, keywords, getLevels) {
+function keywordField(label, keywords, getLevels, getRole) {
   keywords.id = keywords.id || nextId("f");
   const guide = el("div", { class: "kw-guide", id: keywords.id + "-guide", hidden: "" },
     el("p", { text: "Each rule is read from the top, and the first rule a title fits decides: Keep finds it, Leave out drops it. " +
@@ -3179,18 +3188,26 @@ function keywordField(label, keywords, getLevels) {
 
   function wordGroup(r, i, g, gi) {
     const add = el("input", { type: "text", class: "kw-add", spellcheck: "false", "data-add": `${i}-${gi}`,
-      placeholder: g.length ? "add another" : "a word or phrase", "aria-label": `Add a word to group ${gi + 1} of rule ${i + 1}` });
-    const commit = () => {
-      const words = add.value.split("/").map((w) => w.trim()).filter(Boolean);
+      placeholder: g.length ? "add more, comma-separated" : "words or phrases, comma-separated",
+      "aria-label": `Add words to group ${gi + 1} of rule ${i + 1}, separated by commas` });
+    // A list at once: "backend, frontend; full stack" or one per line, typed or pasted.
+    const commit = (text = add.value) => {
+      const words = text.split(/[,;/\t\n]+/).map((w) => w.trim()).filter(Boolean);
       if (!words.length) return false;
-      g.push(...words.filter((w) => !g.some((x) => x.toLowerCase() === w.toLowerCase())));
+      for (const w of words) if (!g.some((x) => x.toLowerCase() === w.toLowerCase())) g.push(w);
       add.value = "";
       write(`[data-add="${i}-${gi}"]`);
       return true;
     };
     add.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === "," || e.key === "/") { e.preventDefault(); commit(); }
+      if (e.key === "Enter" || e.key === "," || e.key === "/" || e.key === ";") { e.preventDefault(); commit(); }
       else if (e.key === "Backspace" && !add.value && g.length) { g.pop(); write(`[data-add="${i}-${gi}"]`); }
+    });
+    add.addEventListener("paste", (e) => {
+      const text = (e.clipboardData || window.clipboardData).getData("text");
+      if (!/[,;/\t\n]/.test(text)) return;
+      e.preventDefault();
+      commit(add.value + text);
     });
     add.addEventListener("blur", () => { if (add.value.trim()) commit(); });
     return el("div", { class: "kw-group" },
@@ -3290,6 +3307,52 @@ function keywordField(label, keywords, getLevels) {
       }
     }, 250);
   }
+  // Words to add, learned from the last week's postings: titles no Keep rule
+  // finds, and titles of jobs passed on (dismissed, or a low match). Worked out
+  // for the rules as they stand here; adding one asks again.
+  const hiddenKey = () => `kwHidden:${(getRole && getRole()) || ""}`;
+  const suggestOut = el("div", { class: "kw-suggest", "aria-live": "polite" });
+  const suggestBtn = el("button", { type: "button", text: "Suggest words", onclick: () => suggest() });
+  async function suggest() {
+    suggestBtn.disabled = true;
+    suggestOut.replaceChildren(progressLine("Looking through recent postings…"));
+    let r;
+    try {
+      r = await api("/api/titles/suggest", { lines: rules.map(ruleText), seniority: getLevels ? getLevels() : null,
+                                             role: getRole ? getRole() : "" });
+    } catch (e) { suggestOut.replaceChildren(el("div", { class: "errbox", text: e.message })); return; }
+    finally { suggestBtn.disabled = false; }
+    const hidden = new Set(store.get(hiddenKey(), []));
+    const hide = (k) => { hidden.add(k); store.set(hiddenKey(), [...hidden]); };
+    const chip = (s, sign, note, apply) => {
+      const k = sign + s.word;
+      const box = el("span", { class: "kw-sug" },
+        el("button", { type: "button", class: "kw-sug-add", title: note, "aria-label": `${sign === "+" ? "Keep" : "Leave out"} titles with “${s.word}”: ${note}`,
+          onclick: () => { apply(); write(); suggest(); } },
+          `${sign} ${s.word}`, el("span", { class: "kw-sug-n", text: String(s.count) })),
+        el("button", { type: "button", class: "kw-sug-x", text: "×", "aria-label": `Don't suggest “${s.word}” again`,
+          onclick: () => { hide(k); box.remove(); } }));
+      return hidden.has(k) ? null : box;
+    };
+    const keep = r.keep.map((s) => chip(s, "+",
+      `Rule ${s.line}: finds ${s.count} more posting${s.count === 1 ? "" : "s"}, like ${s.examples.join("; ")}`,
+      () => { const rule = rules[s.line - 1]; if (rule && rule.groups[s.group - 1]) rule.groups[s.group - 1].push(s.word); })).filter(Boolean);
+    const drop = r.drop.map((s) => chip(s, "−",
+      `Leaves out ${s.count} you passed on` + (s.lost ? ` and ${s.lost} other${s.lost === 1 ? "" : "s"}` : "") + `, like ${s.examples.join("; ")}`,
+      () => { if (s.line && rules[s.line - 1]) rules[s.line - 1].groups[0].push(s.word); else rules.unshift({ drop: true, groups: [[s.word]] }); }))
+      .filter(Boolean);
+    const from = r.learned_from;
+    suggestOut.replaceChildren(
+      keep.length ? el("div", { class: "kw-sug-row" }, el("span", { class: "kw-sug-h", text: "Keep more titles" }), ...keep) : "",
+      drop.length ? el("div", { class: "kw-sug-row" }, el("span", { class: "kw-sug-h", text: "Leave out more" }), ...drop) : "",
+      el("p", { class: "note", text: keep.length || drop.length
+        ? `From the last week's postings: ${from.missed} no rule found, ${from.passed_on} you passed on (dismissed, or a low match), ${from.others} others. `
+          + "The number is how many titles each word changes. Hover for examples; adding one updates the rules above, then Save."
+        : from.missed || from.passed_on
+          ? "Nothing to suggest: the rules already find what recent postings had, and leave out what you passed on."
+          : "Nothing to learn from yet. Suggestions come once a search has run with these rules, and from jobs you dismiss or apply to." }));
+  }
+
   keywords.addEventListener("input", check);
   sample.addEventListener("input", check);
   read();
@@ -3297,7 +3360,8 @@ function keywordField(label, keywords, getLevels) {
   check();
   return { node: el("div", { class: "field wide" },
     el("div", { class: "label-row" }, el("span", { class: "label", id: keywords.id + "-label", text: label }), howto, asText),
-    guide, list, el("div", {}, addRule), keywords, warns, el("div", { class: "kw-try" }, sample, verdict)),
+    guide, list, el("div", { class: "rowline" }, addRule, suggestBtn), suggestOut, keywords, warns,
+    el("div", { class: "kw-try" }, sample, verdict)),
     // After the text was set from outside (a template was picked): redraw the cards too.
     recheck: () => { read(); draw(); check(); } };
 }
@@ -3583,7 +3647,7 @@ function roleForm(saved) {
     afterRoleSave();
   });
 
-  const kwf = keywordField("Title keywords", keywords, levels.get);
+  const kwf = keywordField("Title keywords", keywords, levels.get, () => p.id);
   levels.node.addEventListener("change", kwf.recheck);
   const adv = advanced();
   return el("div", { style: "display:grid;gap:14px" },
@@ -4213,7 +4277,7 @@ const SETUP_RENDER = {
     const keywords = el("textarea", { class: "jd", rows: "6", spellcheck: "false", placeholder: "e.g. product designer/ux designer" });
     keywords.value = cur.title_keywords.join("\n");
     let levels = null;
-    const kw = keywordField("Job titles to look for", keywords, () => levels && levels.get());
+    const kw = keywordField("Job titles to look for", keywords, () => levels && levels.get(), () => cur.id);
     const rules = el("details", { class: "field wide", open: same ? null : "" },
       el("summary", { text: "Show the job titles it looks for" }), kw.node);
     from.addEventListener("change", () => {

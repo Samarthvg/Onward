@@ -31,7 +31,6 @@ import argparse
 import gzip
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -42,6 +41,7 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 import feed  # noqa: E402
+import filters  # noqa: E402
 
 SETTINGS = Path(__file__).with_name("feed-settings.json")
 STATE_KEY = "jobs.db.gz"
@@ -114,6 +114,22 @@ class R2Store:
         return out
 
 
+def write_settings(home: Path) -> dict:
+    """The search's settings.json: feed-settings.json, with one role for each
+    role template the app offers (software, data, finance...), each with the
+    level, country and visa of the role there. A posting is in the feed when
+    any of them keeps it, so a copy of Onward whose role starts from a
+    template finds its postings in the feed; each copy sorts them by its own
+    roles."""
+    base = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    like = base["roles"][0]
+    base["roles"] = [{**like, "id": f"feed-{key}", "name": f"Shared feed: {label}", "title_keywords": keywords}
+                     for key, (label, keywords) in filters.ROLE_TEMPLATES.items() if keywords]
+    base["active_role"] = base["roles"][0]["id"]
+    (home / "settings.json").write_text(json.dumps(base, indent=1), encoding="utf-8")
+    return base
+
+
 def search(home: Path, out: Path) -> None:
     """radar.py's search into the feed folder, with home as its data folder."""
     env = {**os.environ, "ONWARD_HOME": str(home)}
@@ -140,7 +156,7 @@ def run_h1b(feed_store, work: Path, now: float, read_fn: Callable[[Path], dict[i
         return None
     home, out = work / "h1b-home", work / "h1b-public"
     home.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(SETTINGS, home / "settings.json")
+    write_settings(home)
     files = read_fn(home)
     if len(files) < 2:
         log("couldn't read both H-1B years from the Data Hub; the published ones stay")
@@ -173,7 +189,7 @@ def run(feed_store, state_store, work: Path, search_fn: Callable[[Path, Path], N
     home, out = work / "home", work / "public"
     home.mkdir(parents=True, exist_ok=True)
     out.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(SETTINGS, home / "settings.json")
+    write_settings(home)
 
     saved = state_store.get(STATE_KEY)
     if saved:

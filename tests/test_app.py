@@ -30,6 +30,7 @@ import app
 import appinfo
 import autostart
 import config
+import filters
 import oslock
 import resume_import
 import resume_tex as rt
@@ -856,6 +857,13 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(code, 200, data)
         self.assertIn("Turbo Cache", data["text"])
         self.assertNotIn("Acme Corp", data["text"], "what the resume has stays out")
+
+    def test_5_title_suggestions(self):
+        code, data = self.call("/api/titles/suggest", {"lines": filters.ROLE_TEMPLATES["finance"][1],
+                                                       "seniority": ["entry"], "role": ""})
+        self.assertEqual(code, 200, data)
+        self.assertEqual(set(data), {"keep", "drop", "learned_from"})
+        self.assertEqual(set(data["learned_from"]), {"missed", "passed_on", "others"})
 
     def test_4_setup_progress_saves_without_rebuilding(self):
         code, data = self.call("/api/settings", {"settings": {"setup": {"step": "role"}}})

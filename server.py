@@ -1131,6 +1131,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._estimate(data)
         if path == "/api/titles/check":
             return self._titles_check(data)
+        if path == "/api/titles/suggest":
+            return self._titles_suggest(data)
         if path.startswith("/api/companies/"):
             return self._companies(path.rsplit("/", 1)[-1], data)
         if path == "/api/draft":
@@ -1450,6 +1452,35 @@ class Handler(BaseHTTPRequestHandler):
                             "keep": keep, "levels": levels,
                             "level_ok": bool(set(levels) & set(wanted)) if isinstance(wanted, list) else None}
         return self._json(200, out)
+
+    def _titles_suggest(self, data: dict):
+        """Words the role editor could add to the title keywords as they stand:
+        to keep titles the last week's postings had that no line keeps, and to
+        leave out titles the person passed on."""
+        raw = data.get("lines")
+        lines = [str(x)[:1000] for x in raw[:200]] if isinstance(raw, list) else []
+        seniority = [str(x) for x in data.get("seniority") or []][:10] if isinstance(data.get("seniority"), list) else []
+        role = str(data.get("role") or "")[:40]
+        week = time.time() - 7 * 86400
+        counts: dict[str, int] = {}
+        conn = db()
+        try:
+            # Titles the radar left out when it searched boards itself, and feed
+            # postings stored here that no role keeps.
+            for sql in ("SELECT title, n FROM title_misses WHERE last >= ?",
+                        "SELECT title, COUNT(*) FROM jobs WHERE roles = '[]' AND last_seen >= ? GROUP BY title"):
+                try:
+                    for title, n in conn.execute(sql, (week,)):
+                        counts[title] = counts.get(title, 0) + n
+                except sqlite3.OperationalError:    # no run since the table or column came
+                    pass
+        finally:
+            conn.close()
+        misses = list(counts.items())
+        bad, good = PREP.title_feedback(role, kit.value("marks"))
+        return self._json(200, {"keep": filters.keep_suggestions(lines, misses, seniority),
+                                "drop": filters.drop_suggestions(lines, bad, good),
+                                "learned_from": {"missed": sum(n for _, n in misses), "passed_on": len(bad), "others": len(good)}})
 
     def _estimate(self, data: dict):
         """What tailoring one job would cost on a paid API, before running it.

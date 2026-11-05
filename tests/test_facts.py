@@ -186,6 +186,14 @@ class LimitTests(unittest.TestCase):
     def test_as_many_as_the_resume_shows(self):
         self.assertEqual(self.limits(5, 4), (tailor.min_bullets(), {"experience": 5, "project": 4}))
 
+    def test_fact_sheet_bullets_dont_raise_the_most(self):
+        sheet = "# Work Experience\n## Example Labs\n" + "".join(f"- Another bullet {i}.\n" for i in range(5)) + \
+                "# Projects\n## Turbofan Life Estimation\n- One more.\n- And another.\n"
+        res = rt.parse(facts.combine(TEMPLATE, sheet)[0])
+        self.assertEqual(len(next(e for e in res.entries if "Example Labs" in e.title).bullets), 7)
+        self.assertEqual(tailor.bullet_limits(res)[1], {"experience": tailor.min_bullets(), "project": tailor.min_bullets()},
+                         "as full as the resume's own entries, which have two each")
+
     def test_never_under_the_fewest_nor_over_the_most(self):
         self.assertEqual(self.limits(2, 2)[1], {"experience": tailor.min_bullets(), "project": tailor.min_bullets()})
         self.assertEqual(self.limits(9, 9)[1], {"experience": rt.MOST_BULLETS, "project": rt.MOST_BULLETS})

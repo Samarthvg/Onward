@@ -3,7 +3,7 @@
   "roles": [
     {
       "id": "feed",
-      "name": "Shared feed: software roles, internship to mid level, US",
+      "name": "Shared feed: internship to mid level, US (one role per template, made by run_feed.py)",
       "seniority": ["intern", "entry", "mid"],
       "countries": ["US"],
       "visa": {"status": "authorized"}

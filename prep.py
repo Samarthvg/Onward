@@ -266,6 +266,41 @@ class Preparer:
             return match.Resume(match.tex_text(self.master_path.read_text(encoding="utf-8")))
         return None
 
+    def title_feedback(self, role: str, marks: dict, days: float = 14, limit: int = 3000) -> tuple[list[str], list[str]]:
+        """Titles of a role's recent jobs the person passed on (dismissed, or
+        under 25% against their resume), and all the others: what the role
+        editor's leave-out suggestions learn from (filters.drop_suggestions),
+        the others being what a word would cost."""
+        conn = self.connect()
+        try:
+            newest = conn.execute("SELECT MAX(last_seen) FROM jobs").fetchone()[0]
+            s = self.scoring()
+            # Scoring a few thousand jobs takes seconds: the last answer stands until
+            # a search, the resume, the marks or the role changes it.
+            key = (role, newest, self.changed_at(s) if s else None, hashlib.sha256(
+                json.dumps(marks, sort_keys=True).encode()).hexdigest(), json.dumps(self.weights(), sort_keys=True))
+            cached = getattr(self, "_feedback", None)
+            if cached and cached[0] == key:
+                return cached[1]
+            corpus = self.corpus(conn)
+            rows = conn.execute(self._select(conn) + "WHERE last_seen >= ? ORDER BY last_seen DESC LIMIT ?",
+                                (time.time() - days * 86400, limit)).fetchall()
+        finally:
+            conn.close()
+        resume, weights = self.resume(), self.weights()
+        bad, good = [], []
+        for row in rows:
+            j = self._job(row)
+            if role and j["roles"] and role not in j["roles"]:
+                continue
+            mark = marks.get(j["url"])
+            if mark is None and resume and corpus:
+                pct = match.score_job(j, resume, corpus[1], corpus[2], weights)["pct"]
+                mark = "dismissed" if pct is not None and pct < 25 else None
+            (bad if mark == "dismissed" else good).append(j["title"])
+        self._feedback = (key, (bad, good))
+        return bad, good
+
     def score_tailored(self, key: str, tex_name: str) -> dict | None:
         """The job's match score with the dashboard's resume and with a
         tailored version of it: {"before", "after", "gained", "lost"}, the

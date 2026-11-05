@@ -36,7 +36,9 @@ class FakeSearch:
 
     def __call__(self, home: Path, out: Path) -> None:
         settings = json.loads((home / "settings.json").read_text())
-        assert settings["roles"][0]["id"] == "feed", "the feed's own settings"
+        ids = [r["id"] for r in settings["roles"]]
+        assert ids and all(i.startswith("feed-") for i in ids) and "feed-finance" in ids, \
+            "the feed's own settings, a role for each template"
         conn = sqlite3.connect(home / "jobs.db")
         try:
             radar.migrate(conn)

@@ -98,6 +98,160 @@ class TitleRules:
         return self.decide(title)[1]
 
 
+# Suggestions for the role editor: words a role's title keywords could add.
+# Only a title's role part counts ("Platform Engineer" in "Platform Engineer -
+# Payments, NYC (Hybrid)"): what follows a dash, comma, bracket or bar is a
+# team, a place or a level.
+ROLE_PART = re.compile(r"\s+[-–—|]\s+|[,(\[|:]")
+NOT_SUGGESTED = {
+    "and", "or", "of", "the", "for", "to", "in", "with", "on", "at", "a", "an", "new", "grad", "graduate", "graduates",
+    "early", "career", "careers", "entry", "level", "junior", "jr", "intern", "internship", "interns", "co", "op",
+    "summer", "fall", "spring", "winter", "remote", "hybrid", "onsite", "part", "full", "time", "us", "usa", "i", "ii",
+    "iii", "iv", "team", "program", "year", "years", "based", "university", "college", "student", "students",
+}
+
+
+def _role_words(title: str) -> list[str]:
+    return title_words(ROLE_PART.split(title, maxsplit=1)[0])
+
+
+def _candidates(title: str, skip: set[str] = frozenset()) -> set[str]:
+    """Words and two-word phrases of a title's role part that could be keywords:
+    no level codes ("P19", "L3"), and a phrase only of words written next to
+    each other ("Datacenter & Agentic" is none)."""
+    out, prev = set(), None
+    for tok in ROLE_PART.split(title, maxsplit=1)[0].split():
+        ws = title_words(tok)
+        w = ws[0] if len(ws) == 1 else None
+        if w and (len(w) < 2 or any(c.isdigit() for c in w) or w in NOT_SUGGESTED or w in skip):
+            w = None
+        if w:
+            out.add(w)
+            if prev:
+                out.add(f"{prev} {w}")
+        prev = w
+    return out
+
+
+def _with_word(lines: list[str], line: int, group: int, word: str) -> list[str]:
+    """`lines` with `word` as one more alternative in group `group` of line `line`."""
+    out = list(lines)
+    text = out[line].strip()
+    drop = text.startswith("-")
+    parts = [p.strip() for p in (text[1:] if drop else text).split("+")]
+    parts[group] += "/" + word
+    out[line] = ("- " if drop else "") + " + ".join(parts)
+    return out
+
+
+def _best(found: list[dict], limit: int) -> list[dict]:
+    """The strongest suggestions, one per set of titles they change: of a word
+    and a phrase that change the same titles ("site", "reliability", "site
+    reliability"), the phrase, as it says what it's for."""
+    by_set: dict[tuple, dict] = {}
+    for s in found:
+        key = s.pop("_set")
+        have = by_set.get(key)
+        if not have or len(s["word"].split()) > len(have["word"].split()):
+            by_set[key] = s
+    out = sorted(by_set.values(), key=lambda s: (s.get("lost", 0), -s["count"], s["word"]))
+    seen, best = set(), []
+    for s in out:
+        if s["word"] not in seen:
+            seen.add(s["word"])
+            best.append(s)
+    return best[:limit]
+
+
+def _examples(titles) -> list[str]:
+    out = []
+    for t in titles:
+        if t not in out:
+            out.append(t)
+        if len(out) == 3:
+            break
+    return out
+
+
+def keep_suggestions(lines: list[str], misses: list[tuple[str, int]], seniority: Iterable[str],
+                     limit: int = 8) -> list[dict]:
+    """Words that would let a role's keep lines find titles they miss now:
+    {"line", "group", "word", "count", "examples"}, most postings first.
+    `misses` is (title, postings) for recent titles no line keeps. A title
+    counts for a word (or two-word phrase) when it's in its role part, its
+    line's other groups all fit it, and the line with the word added would
+    keep it (a leave-out line above still wins)."""
+    rules = TitleRules(lines)
+    wanted = set(seniority)
+    titles = [(t, n) for t, n in misses if title_levels(t) & wanted and not rules.matches(t)]
+    found = []
+    for (keep, parts), line in zip(rules.rules, rules.line_of):
+        if not keep:
+            continue
+        # A word the line already has in a group fits that group, not the missing one:
+        # "analyst" for "credit/risk + analyst" would keep any analyst at all.
+        used = {w for alts in parts for ph in alts for w, _ in ph}
+        cands: dict[tuple[int, str], list[tuple[str, int]]] = {}
+        for t, n in titles:
+            words = title_words(t)
+            failing = [g for g, alts in enumerate(parts) if not any(_has(words, ph) for ph in alts)]
+            if len(failing) != 1:
+                continue
+            for w in _candidates(t, used):
+                cands.setdefault((failing[0], w), []).append((t, n))
+        # The most common first; each is tried with the real matcher, so only so many.
+        top = sorted(cands.items(), key=lambda kv: -sum(n for _, n in kv[1]))[:80]
+        for (group, word), hits in top:
+            if sum(n for _, n in hits) < 2:
+                continue
+            trial = TitleRules(_with_word(lines, line, group, word))
+            kept = sorted(((t, n) for t, n in hits if trial.decide(t) == (line, True)), key=lambda x: -x[1])
+            count = sum(n for _, n in kept)
+            if count >= 2:
+                found.append({"line": line + 1, "group": group + 1, "word": word, "count": count,
+                              "examples": _examples(t for t, _ in kept), "_set": (line, tuple(sorted(t for t, _ in kept)))})
+    return _best(found, limit)
+
+
+def drop_suggestions(lines: list[str], unwanted: list[str], others: list[str], limit: int = 8) -> list[dict]:
+    """Words that would leave out titles the person passed on (dismissed,
+    or a low match against their resume) and little else the rules keep:
+    {"word", "count", "lost", "examples", "line"}, count being the unwanted
+    titles the rules keep now that would go, lost the others that would go
+    with them (ones gone for and ones in between). Only words mostly in
+    unwanted ones are suggested: "development" in "Software Development
+    Engineer" would cost too much. The word goes into the first leave-out
+    line of one group (in one with a "+", it would leave out only titles
+    with the rest too), or a new one at the top ("line": None)."""
+    rules = TitleRules(lines)
+    bad = [t for t in unwanted if rules.matches(t)]
+    good = [t for t in others if rules.matches(t)]
+    if not bad:
+        return []
+    first_drop = next((i for (keep, parts), i in zip(rules.rules, rules.line_of) if not keep and len(parts) == 1), None)
+    used = {w for keep, parts in rules.rules if keep for alts in parts for ph in alts for w, _ in ph}
+    counts: dict[str, int] = {}
+    for t in bad:
+        for w in _candidates(t, used):
+            counts[w] = counts.get(w, 0) + 1
+    # A leave-out word can only cost titles that have it, so only those are tried.
+    bad_words = [title_words(t) for t in bad]
+    good_words = [title_words(t) for t in good]
+    found = []
+    for word, n in sorted(counts.items(), key=lambda kv: -kv[1])[:80]:
+        if n < 2:
+            continue
+        phrase = _phrase(word)
+        trial_lines = _with_word(lines, first_drop, 0, word) if first_drop is not None else ["- " + word, *lines]
+        trial = TitleRules(trial_lines)
+        gone = [t for t, ws in zip(bad, bad_words) if _has(ws, phrase) and not trial.matches(t)]
+        lost = sum(1 for t, ws in zip(good, good_words) if _has(ws, phrase) and not trial.matches(t))
+        if len(gone) >= 2 and lost * 3 < len(gone):
+            found.append({"word": word, "count": len(gone), "lost": lost, "examples": _examples(gone),
+                          "line": first_drop + 1 if first_drop is not None else None, "_set": tuple(sorted(set(gone)))})
+    return _best(found, limit)
+
+
 def keyword_warnings(lines: list[str]) -> list[str]:
     """Plain-language notes on title keyword lines that won't do what they
     look like they do. Line numbers count from 1, blank lines included."""
@@ -141,6 +295,22 @@ SOFTWARE_KEYWORDS = [
     "forward deployed/distributed systems/cloud/security/web/application/compiler/embedded software + " + ROLE_WORD,
 ]
 
+# Finance: a finance word next to a role word (analyst, associate,
+# accountant), or a finance title by itself; not sales, service, clerical,
+# loan-officer or software titles, which share the words.
+FINANCE_KEYWORDS = [
+    "- sales/recruit*/marketing/customer service/call center/collections/teller/insurance agent/loan officer/"
+    "mortgage/data entry/clerk/receptionist/administrative assistant/software/developer/engineer/engineering/"
+    "it support/help desk",
+    "financial/finance/fp&a/investment/investment banking/equity research/credit/risk/treasury/valuation/m&a/"
+    "mergers/private equity/venture capital/portfolio/asset management/wealth management/capital markets/"
+    "corporate development/fixed income/trading/quantitative/quant/underwriting/audit/tax/accounting/fund/"
+    "hedge fund/restructuring/leveraged finance/real estate finance/pricing/actuarial + "
+    "analyst/associate/specialist/accountant/researcher/trader/strategist/underwriter/auditor/consultant/"
+    "rotational program/development program/leadership program",
+    "accountant/auditor/underwriter/actuary/quantitative researcher/quantitative trader/quant researcher/quant trader",
+]
+
 NOT_TECH = "- sales/account/marketing/recruit*/customer/support/technician/mechanical/electrical/civil/chemical/" \
            "hardware/manufacturing/facilities/clerk/data center/solution/solutions/field"
 
@@ -167,6 +337,7 @@ ROLE_TEMPLATES: dict[str, tuple[str, list[str]]] = {
         "site reliability/sre/devops/dev ops/devsecops/infrastructure/infra/platform/cloud/reliability/production/"
         "systems/kubernetes/observability/build/release/storage/compute + "
         "engineer/engineering/developer/sre/administrator/architect"]),
+    "finance": ("Finance (analyst, accounting, risk)", FINANCE_KEYWORDS),
 }
 
 _SOFTWARE = TitleRules(SOFTWARE_KEYWORDS)
@@ -620,6 +791,14 @@ class Search:
             return "title"
         levels_ = title_levels(title)
         return None if any(levels_ & r.seniority for r in fits) else "level"
+
+    def level_and_place_fit(self, title: str, location: str | None = None, country: str | None = None,
+                            remote: bool = False) -> bool:
+        """Whether some role would take a posting's level and place, whatever
+        its title: one the title rules leave out that a role could want."""
+        levels_ = title_levels(title)
+        return any(levels_ & r.seniority and (location is None or r.location_ok(location, country, remote))
+                   for r in self.roles)
 
     def location_wanted(self, location: str, country: str | None = None, remote: bool = False) -> bool:
         return any(r.location_ok(location, country, remote) for r in self.roles)

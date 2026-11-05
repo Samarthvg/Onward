@@ -65,7 +65,8 @@ def bullet_limits(res: rt.Resume) -> tuple[int, dict[str, int]]:
     own: dict[str, int] = {}
     for e in res.entries:
         if not e.fact and e.kind in ("experience", "project"):
-            own[e.kind] = max(own.get(e.kind, 0), len(e.bullets))
+            # Its own bullets only: the fact sheet's drawn into it don't make it fuller.
+            own[e.kind] = max(own.get(e.kind, 0), sum(not b.fact for b in e.bullets))
     other = max(own.values(), default=4)
     return low, {k: max(low, min(rt.MOST_BULLETS, own.get(k, other))) for k in ("experience", "project")}
 
@@ -887,12 +888,17 @@ REFIT_SCHEMA = {
 }
 
 
+def spills(fit: rt.Fit | None) -> bool:
+    """A wrapped piece whose last line holds too little (unmeasured: no)."""
+    return bool(fit and fit.lines > 1 and fit.fill < MIN_FILL)
+
+
 def spilled(state: dict, layout: dict) -> dict[str, rt.Fit]:
     """The edited pieces whose last line holds too little."""
     out = {}
     for mid in [*state["rewrites"], *state["tech"], *state["rows"]]:
         fit = rt.line_fit(layout, mid)
-        if fit and fit.lines > 1 and fit.fill < MIN_FILL:
+        if spills(fit):
             out[mid] = fit
     return out
 
@@ -1103,7 +1109,7 @@ def fit_page_lines(res: rt.Resume, state: dict, changes: list[rt.Change], layout
                 continue
             for b in e.bullets:
                 fit = rt.line_fit(layout, b.id)
-                if b.id not in state["drop_bullets"] and fit and fit.lines > 1 and fit.fill < MIN_FILL:
+                if b.id not in state["drop_bullets"] and spills(fit):
                     out[b.id] = fit
         return out
 
@@ -1133,10 +1139,28 @@ def fit_page_lines(res: rt.Resume, state: dict, changes: list[rt.Change], layout
         e, b = res.bullet(bid)
         state["rewrites"].pop(bid, None)
         changes[:] = [c for c in changes if not (c.target == bid and c.reason == FILLED)]
-        if b.fact and sum(x.id not in state["drop_bullets"] for x in e.bullets) > state["min_bullets"]:
+        if not b.fact:
+            continue                    # the resume's own wording stays
+        if sum(x.id not in state["drop_bullets"] for x in e.bullets) > state["min_bullets"]:
             state["drop_bullets"].add(bid)
             state.setdefault("spilled", set()).add(bid)
             left_out = True
+            continue
+        # At the fewest it may show: one the cap set aside takes its place, if that one fills its line.
+        rank = state["rank"]
+        aside = sorted((x for x in e.bullets if x.id in state.get("capped", set()) and x.id in state["drop_bullets"]),
+                       key=lambda x: (rank.get(x.id, 999), x.fact, e.bullets.index(x)))
+        for alt in aside[:2]:
+            state["drop_bullets"].discard(alt.id)
+            state["drop_bullets"].add(bid)
+            measure()
+            if not spills(rt.line_fit(layout, alt.id)):
+                state["capped"].discard(alt.id)
+                state.setdefault("spilled", set()).add(bid)
+                left_out = True
+                break
+            state["drop_bullets"].add(alt.id)
+            state["drop_bullets"].discard(bid)
     measure()
     return left_out, cost
 
@@ -1253,7 +1277,7 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
     state["min_bullets"], state["max_bullets"] = bullet_limits(res)
     short = {e.id for e in res.entries if e.fact and len(e.bullets) < state["min_bullets"]}
     state["drop_entries"] |= short
-    capped = cap_bullets(res, state)
+    capped = state["capped"] = cap_bullets(res, state)
     if capped or short:
         compile_now()
 
@@ -1300,7 +1324,8 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
         relevant first, until `misses` in a row don't fit: the halving stops at
         the first cut that fits, and refitted lines free room too, so a smaller
         piece further on often still has a place. Bullets come back only up to
-        what their entry may show."""
+        what their entry may show, and only ending near the end of a line, as
+        every bullet on the page does (fit_page_lines ran before this)."""
         goal = max(target_pages(), last[0])
         dirty = False
         for kind, xid in reversed(trimmed):
@@ -1314,8 +1339,11 @@ def tailor(master_tex: str, job: dict, jd: str, backend: str, out_dir: Path,
                 shown = sum(b.id not in state["drop_bullets"] for b in e.bullets)
                 if e.id in state["drop_entries"] or shown >= state["max_bullets"].get(e.kind, shown + 1):
                     continue
+                back = [xid]
+            else:
+                back = [b.id for b in next(x for x in res.entries if x.id == xid).bullets if b.id not in state["drop_bullets"]]
             state[key].discard(xid)
-            if compile_now() <= goal:
+            if compile_now() <= goal and not any(spills(rt.line_fit(layout, bid)) for bid in back):
                 dirty = False
                 continue
             state[key].add(xid)

@@ -420,6 +420,32 @@ class Funnel:
 FUNNEL = Funnel()
 
 
+class Misses:
+    """Titles of this run's fresh postings that no role's title keywords keep
+    though a role would take their level and place: what the role editor's
+    keyword suggestions learn from (filters.keep_suggestions). Counted per
+    title, as many as this run saw."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.titles: dict[str, list] = {}
+
+    def add(self, title: str) -> None:
+        key = " ".join(filters.title_words(title))[:200]
+        if key:
+            with self.lock:
+                self.titles.setdefault(key, [title[:200], 0])[1] += 1
+
+    def rows(self) -> list[tuple[str, str, int]]:
+        with self.lock:
+            return [(k, t, n) for k, (t, n) in self.titles.items()]
+
+
+MISSES = Misses()
+MISS_DAYS = 30              # how long a missed title is kept for suggestions
+MISS_ROWS = 20000           # and at most this many of them, the latest first
+
+
 def is_fresh(posted_at: float | None) -> bool:
     return posted_at is not None and posted_at >= time.time() - FRESH_DAYS * 86400
 
@@ -435,6 +461,8 @@ def screen(source: str, title: str, location: str | None = None, country: str | 
         stage = "location"
     if stage:
         FUNNEL.add(source, stage, fresh)
+        if stage == "title" and fresh and SEARCH.level_and_place_fit(title, location, country, remote):
+            MISSES.add(title)
         return False
     return True
 
@@ -1825,6 +1853,13 @@ CREATE TABLE IF NOT EXISTS run_funnel (
     n_fresh INTEGER NOT NULL,       -- postings dated within FRESH_DAYS
     PRIMARY KEY (started, source, stage)
 );
+CREATE TABLE IF NOT EXISTS title_misses (
+    norm    TEXT PRIMARY KEY,       -- the title's words, lowercased (filters.title_words)
+    title   TEXT NOT NULL,          -- as a posting wrote it
+    n       INTEGER NOT NULL,       -- postings with it in the latest run that saw it
+    last    REAL NOT NULL           -- that run's start
+);
+CREATE INDEX IF NOT EXISTS title_misses_last ON title_misses(last);
 CREATE TABLE IF NOT EXISTS board_state (
     board      TEXT PRIMARY KEY,    -- "<source>:<token>"
     strikes    INTEGER NOT NULL,    -- throttled runs in a row
@@ -2700,6 +2735,13 @@ def locked_main(args: argparse.Namespace) -> int:
             conn.executemany("INSERT OR REPLACE INTO run_funnel VALUES (?, ?, ?, ?, ?)",
                              [(started, *row) for row in FUNNEL.rows()])
             conn.execute("DELETE FROM run_funnel WHERE started < ?", (started - PURGE_AFTER_DAYS * 86400,))
+            # Each title as many times as this run saw it: open postings, not runs added up.
+            conn.executemany("INSERT INTO title_misses (norm, title, n, last) VALUES (?, ?, ?, ?) "
+                             "ON CONFLICT(norm) DO UPDATE SET title = excluded.title, n = excluded.n, last = excluded.last",
+                             [(*row, started) for row in MISSES.rows()])
+            conn.execute("DELETE FROM title_misses WHERE last < ?", (started - MISS_DAYS * 86400,))
+            conn.execute("DELETE FROM title_misses WHERE norm NOT IN "
+                         "(SELECT norm FROM title_misses ORDER BY last DESC LIMIT ?)", (MISS_ROWS,))
         with conn:
             build_dashboard(conn, h1b, {
                 "started": started, "generated": finished, "previous_run": prev, "first_run": first_run or started,
