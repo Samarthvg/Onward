@@ -25,6 +25,7 @@ import time
 import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -40,6 +41,7 @@ import prep
 import pricing
 import radar
 import facts
+import resume_edit
 import resume_import
 import resume_tex as rt
 import scheduler
@@ -67,6 +69,8 @@ EXT_ORIGIN = re.compile(r"^(moz|chrome)-extension://[A-Za-z0-9-]+$")
 EXT_CLIENT = "autofill"
 
 EXECUTOR = ThreadPoolExecutor(max_workers=2)
+# Saving an edit is one or two compiles: it doesn't wait behind tailoring runs.
+EDIT_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
 
@@ -774,6 +778,7 @@ def run_job(jid: str, params: dict) -> None:
                                manual_answer=params.get("answer"), level=params.get("level"),
                                confirmed=PREP.confirmed_skills())
         result["score"] = PREP.score_tailored(params.get("key", ""), result["tex"])
+        result["id"] = jid          # for editing it (/api/tailored/edit)
         conn = db()
         try:
             with conn:
@@ -792,6 +797,104 @@ def run_job(jid: str, params: dict) -> None:
         update(state="error", error=str(e))
     except Exception as e:  # report, don't kill the worker
         log(f"job {jid} failed:\n{traceback.format_exc()}")
+        update(state="error", error=f"Unexpected error: {e}")
+
+
+MAX_SOURCE = 400_000      # characters of LaTeX saved from the editor
+
+
+def tailored_row(tid: str) -> dict | None:
+    conn = db()
+    try:
+        r = conn.execute("SELECT id, job_key, created, backend, model, pdf, tex, result FROM tailored WHERE id = ?",
+                         (tid,)).fetchone()
+    finally:
+        conn.close()
+    if not r:
+        return None
+    return {"id": r[0], "key": r[1], "created": r[2], "backend": r[3], "model": r[4], "pdf": r[5],
+            "tex": r[6], "result": json.loads(r[7])}
+
+
+def run_edit(jid: str, params: dict) -> None:
+    """A new version from edits made by hand to one (resume_edit), or from
+    its LaTeX as edited. The version edited stays as it was."""
+    def update(**kw):
+        with JOBS_LOCK:
+            JOBS[jid].update(kw)
+
+    update(state="running", started=time.time())
+    started = time.time()
+    try:
+        base = tailored_row(params["id"])
+        path = OUT_DIR / base["tex"] if base else None
+        if not path or not path.is_file():
+            raise resume_edit.EditError("That version isn't stored any more.")
+        before = path.read_text(encoding="utf-8")
+        if params.get("source") is not None:
+            tex, edits = params["source"], [resume_edit.Edit("source", "", "LaTeX", "", "")]
+            if tex == before:
+                raise resume_edit.EditError("Nothing changed.")
+        else:
+            tex, edits = resume_edit.apply(before, params["edits"])
+            if not edits:
+                raise resume_edit.EditError("Nothing changed.")
+        stem = re.sub(r"_\d{8}-\d{6}$", "", path.stem)
+        name = f"{stem}_{time.strftime('%Y%m%d-%H%M%S')}"
+        tex_path, pdf_path = OUT_DIR / f"{name}.tex", OUT_DIR / f"{name}.pdf"
+        try:
+            pages = rt.compile_pdf(tex, pdf_path)
+        except rt.CompileError as e:
+            pdf_path.unlink(missing_ok=True)
+            raise resume_edit.EditError(f"Your edit doesn't compile: {e}") from e
+        tex_path.write_text(tex, encoding="utf-8")
+
+        # How the edited pieces sit on the page: one that leaves a few words
+        # on a line of their own is pointed out, not changed.
+        notes = []
+        target = tailor.target_pages()
+        if pages > target:
+            notes.append(f"It's {pages} pages now, over your {target}-page limit. Shorten or remove something.")
+        if params.get("source") is None:
+            try:
+                marked, names = resume_edit.measured(tex, edits)
+                layout: dict = {}
+                rt.compile_pdf(marked, layout=layout)
+                notes += [f"{names[m]} leaves a few words on a line of their own." for m in names
+                          if tailor.spills(rt.line_fit(layout, m))]
+            except (rt.CompileError, ValueError):
+                pass
+
+        key = base["key"]
+        result = dict(base["result"])
+        master = tailor_master("", key) if key else None
+        if master and master.exists() and result.get("keywords"):
+            try:
+                result["keywords"] = tailor.verify_keywords(result["keywords"], facts.source(master), tex)
+            except (ValueError, OSError):
+                pass
+        result.update({"id": jid, "backend": "edited", "model": "edited by you", "cost": None, "pages": pages,
+                       "target_pages": target, "tex": tex_path.name, "pdf": pdf_path.name,
+                       "seconds": round(time.time() - started, 1), "edited_from": base["id"],
+                       "edits": [asdict(x) for x in edits], "notes": notes})
+        result["score"] = PREP.score_tailored(key, tex_path.name) if key else None
+        conn = db()
+        try:
+            with conn:
+                conn.execute(
+                    "INSERT INTO tailored (id, job_key, created, backend, model, pdf, tex, result) VALUES (?,?,?,?,?,?,?,?)",
+                    (jid, key, time.time(), "edited", "edited by you", pdf_path.name, tex_path.name, json.dumps(result)))
+        finally:
+            conn.close()
+        # The edited version is the one sent, as a new tailored one is.
+        rows = PREP.snapshot([key]) if key else {}
+        if key:
+            PREP.use_tailored(key, jid)
+        update(state="done", result=result, undo=remember("tailored", "the edited version", {"id": jid, "rows": rows}))
+    except (resume_edit.EditError, ValueError) as e:
+        update(state="error", error=str(e))
+    except Exception as e:  # report, don't kill the worker
+        log(f"edit {jid} failed:\n{traceback.format_exc()}")
         update(state="error", error=f"Unexpected error: {e}")
 
 
@@ -836,6 +939,12 @@ def _register(**fields) -> str:
 def submit_draft(params: dict) -> str:
     jid = _register(kind="draft", backend=params["backend"])
     EXECUTOR.submit(run_draft, jid, params)
+    return jid
+
+
+def submit_edit(params: dict) -> str:
+    jid = _register(kind="edit", backend="edited")
+    EDIT_EXECUTOR.submit(run_edit, jid, params)
     return jid
 
 
@@ -1010,10 +1119,24 @@ class Handler(BaseHTTPRequestHandler):
             out = [{"id": r[0], "created": r[1], "backend": r[2], "model": r[3], "in_use": r[0] == in_use,
                     "pdf": r[4], "tex": r[5], "result": json.loads(r[6])} for r in rows]
             for h in out:
+                h["result"]["id"] = h["id"]
                 # Versions made before scores were kept with them.
                 if "score" not in h["result"]:
                     h["result"]["score"] = PREP.score_tailored(key, h["tex"])
             return self._json(200, out)
+
+        if path == "/api/tailored/edit":
+            # One version's pieces for the editor, and its LaTeX.
+            row = tailored_row((q.get("id") or [""])[0][:40])
+            src = OUT_DIR / row["tex"] if row else None
+            if not src or not src.is_file():
+                return self._err(HTTPStatus.NOT_FOUND, "That version isn't stored any more")
+            tex = src.read_text(encoding="utf-8")
+            try:
+                got = resume_edit.pieces(tex)
+            except ValueError as e:
+                got = {"entries": [], "skills": [], "problem": str(e)}
+            return self._json(200, {"id": row["id"], "key": row["key"], **got, "source": tex})
 
         if path == "/api/raise":
             # What would raise one job's match score, for the Tailor dialog.
@@ -1186,6 +1309,17 @@ class Handler(BaseHTTPRequestHandler):
                     return self._err(HTTPStatus.BAD_REQUEST, problem)
                 ai.save_secret(ACCOUNT_SECRET, pw)
             return self._json(200, ai.key_status(ACCOUNT_SECRET))
+        if path == "/api/tailored/edit":
+            tid = str(data.get("id", ""))[:40]
+            if not tailored_row(tid):
+                return self._err(HTTPStatus.NOT_FOUND, "That version isn't stored any more")
+            source = data.get("source")
+            if source is not None:
+                if not isinstance(source, str) or len(source) > MAX_SOURCE or "\\begin{document}" not in source:
+                    return self._err(HTTPStatus.BAD_REQUEST, "Expected the whole LaTeX document")
+            elif not isinstance(data.get("edits"), dict):
+                return self._err(HTTPStatus.BAD_REQUEST, "Expected the edits")
+            return self._json(202, {"id": submit_edit({"id": tid, "edits": data.get("edits"), "source": source})})
         if path == "/api/tailored/use":
             # A version from the Tailor dialog's list becomes the job's resume.
             key, tid = str(data.get("key", ""))[:600], str(data.get("id", ""))[:40]

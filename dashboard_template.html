@@ -187,14 +187,41 @@
   .d-meta b { color: var(--text); font-weight: 600; }
   .d-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
   .d-back { display: none; justify-self: start; }
-  .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--rule); }
-  .kpi { padding: 14px 20px; display: grid; gap: 2px; align-content: start; }
+  .kpis { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
+  .kpi { padding: 14px 16px; min-width: 0; display: grid; gap: 2px; align-content: start; }
   .kpi + .kpi { border-left: 1px solid var(--rule); }
   .kpi-l { font-size: 12.5px; color: var(--muted); }
-  .kpi-v { font-size: 26px; font-weight: 600; line-height: 1.15; letter-spacing: -0.01em; }
+  .kpi-v { font-size: 23px; font-weight: 600; line-height: 1.15; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .kpi.match .kpi-v { color: var(--data); }
+  .kpi.visa-no .kpi-v { color: var(--warn); }
+  .kpi.visa-yes .kpi-v { color: var(--ok); }
   .kpi-s { font-size: 12.5px; color: var(--muted); }
-  .d-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  /* An ⓘ beside a figure: its details in a small panel, opened on click. */
+  .kpi { position: relative; }
+  .kpi-l { display: flex; align-items: center; gap: 6px; }
+  button.info-btn { width: 18px; height: 18px; min-height: 0; padding: 0; border-radius: 50%; border: 1px solid var(--control);
+    background: transparent; color: var(--muted); font: 600 11px/1 Georgia, serif; font-style: italic; display: inline-grid; place-items: center; }
+  button.info-btn:hover, button.info-btn[aria-expanded="true"] { color: var(--text); border-color: var(--text); }
+  .info-pop { position: absolute; top: calc(100% - 6px); right: 12px; z-index: 6; width: min(420px, calc(100vw - 40px));
+    padding: 12px 14px; display: grid; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 10px 30px rgb(0 0 0 / .28); font-size: 13px; }
+  .info-pop .ev { margin: 0; padding: 0; background: none; border: 0; }
+  .info-pop .warnline { color: var(--warn); }
+  /* The posting's own description, below the two columns. */
+  .d-desc { border-top: 0; }
+  .d-desc .desc-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+  .d-desc .desc-head .note { font-size: 12.5px; }
+  .desc-text { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; max-width: 72ch; }
+  .d-desc .desc-text p { margin: 0 0 .55em; }
+  .d-desc .desc-text p.desc-h { margin-top: .9em; font-weight: 600; color: var(--text); }
+  .d-desc .desc-text p.desc-li { padding-left: 1.1em; text-indent: -1.1em; margin-bottom: .3em; }
+  .desc-text.folded { max-height: 22em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+  .desc-text mark { border-radius: 3px; padding: 0 2px; }
+  .desc-text mark.have, .desc-key.have { background: var(--ok-soft); color: var(--ok); }
+  .desc-text mark.miss, .desc-key.miss { background: var(--warn-soft); color: var(--warn); }
+  .desc-key { border-radius: 3px; padding: 0 4px; }
+  .d-cols { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
+  .d-cols.one { grid-template-columns: minmax(0, 1fr); }
   .d-col { display: grid; align-content: start; min-width: 0; }
   .d-col + .d-col { border-left: 1px solid var(--rule); }
   .dsec { padding: 14px 20px; display: grid; gap: 8px; border-bottom: 1px solid var(--rule); min-width: 0; }
@@ -249,7 +276,8 @@
     padding: 6px 10px; min-height: 32px; border: 1px solid var(--control); border-radius: var(--radius-ctl);
     background: var(--surface); color: var(--text); font: inherit; font-size: 14px; min-width: 0;
   }
-  textarea { min-height: 0; }
+  /* Pill-shaped controls stay pills on one line; a box of several lines gets corners. */
+  textarea { min-height: 0; border-radius: min(var(--radius-ctl), 14px); }
   input::placeholder, textarea::placeholder { color: var(--muted); }
   input[type=search] { flex: 1 1 200px; }
   label.toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
@@ -353,6 +381,20 @@
   .chg ins { background: var(--ok-soft); color: var(--ok); text-decoration: none; border-radius: 3px; padding: 0 2px; }
   .chg del { color: var(--warn); }
   .chg.rejected .after { text-decoration: line-through; color: var(--muted); }
+  /* Editing a tailored version by hand. */
+  .edit { display: grid; gap: 14px; }
+  .edit-entry { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+  .edit-entry > b { font-size: 14px; }
+  .edit-sec { margin: 4px 0 -6px; color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .edit-line { display: flex; gap: 8px; align-items: flex-start; }
+  .edit-line > textarea, .edit-line > input { flex: 1; width: 100%; resize: vertical; font-size: 13px; line-height: 1.45; }
+  .edit-line > .edit-tag { flex: 0 0 88px; padding-top: 7px; color: var(--muted); font-size: 12px; }
+  .edit-line textarea.latex, .edit-line input.latex, textarea.source { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  .edit-line.removed > textarea { text-decoration: line-through; color: var(--muted); background: transparent; }
+  .edit-line.changed > textarea, .edit-line.changed > input { border-color: var(--accent); }
+  .edit-line > button { flex: none; }
+  textarea.source { width: 100%; min-height: 320px; resize: vertical; }
+  .edit-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; position: sticky; bottom: 0; padding: 8px 0; background: var(--surface); }
   .section-h { font-size: 13px; font-weight: 600; color: var(--text); margin: 0; }
   .qline { grid-column: 1 / -1; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
   .qline b { color: var(--text); font-weight: 600; }
@@ -560,8 +602,13 @@
     .rowbtn { grid-template-columns: minmax(0, 1fr) 56px; grid-template-areas: "main score" "mid score" "state score"; padding: 10px 14px; }
     .r-main { grid-area: main; } .r-mid { grid-area: mid; } .r-state { grid-area: state; } .r-score { grid-area: score; }
     .r-mid, .r-state { display: flex; gap: 10px; justify-items: start; text-align: left; }
-    .kpis, .d-cols { grid-template-columns: minmax(0, 1fr); }
+    .kpis, .d-cols, .d-cols.one { grid-template-columns: minmax(0, 1fr); }
+    .kpis { grid-auto-flow: row; }
+    /* On a phone the score, raise and resume come first; the description after. */
+    .d-side { order: -1; }
     .kpi + .kpi, .d-col + .d-col { border-left: 0; border-top: 1px solid var(--rule); }
+    .d-cols > .d-side { border-top: 0; }
+    .d-cols > .d-main { border-top: 1px solid var(--rule); }
     .seg.cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     /* The master resume line is detail on a phone; it would push the first job down. */
     .resume-bar.has > .note { display: none; }
@@ -1949,30 +1996,140 @@ function renderDetail() {
   // The three figures that decide most applications.
   const pct = sc && sc.pct != null ? sc.pct : it ? it.score : null;
   const age = j ? ageInfo(j, now) : null;
-  const kpi = (label, value, sub, cls = "") => el("div", { class: "kpi " + cls }, el("span", { class: "kpi-l", text: label }),
-    el("b", { class: "kpi-v" + (/\d/.test(value) && !/[a-z]/.test(value) ? " num" : ""), text: value }), sub ? el("span", { class: "kpi-s", text: sub }) : null);
+  const kpi = (label, value, sub, cls = "", info = null) => el("div", { class: "kpi " + cls },
+    el("span", { class: "kpi-l" }, label, info ? info.button : null),
+    el("b", { class: "kpi-v" + (/\d/.test(value) && !/[a-z]/.test(value) ? " num" : ""), text: value, title: value }), sub ? el("span", { class: "kpi-s", text: sub }) : null,
+    info ? info.pop : null);
+  const signals = j ? visaSignals(j, V) : [];
+  // Where the date comes from and how to check it: there when wanted, out of the way otherwise.
+  const proof = j ? infoTip(`How Onward knows when ${name} went up`,
+    evidence(j, !(j.sponsor_note && signals.some((s) => String(s.why).includes(j.sponsor_note))))) : null;
   const tailored = it && it.changes && it.changes.score;
   const kpis = el("div", { class: "kpis" },
     kpi("Match", pct != null ? pct + "%" : "—",
       tailored && tailored.after != null ? `${tailored.after}% with the tailored resume` : sc && sc.pct != null && sc.req.of ? `${sc.req.have} of ${sc.req.of} required skills` : sc && sc.noJd ? "No description to score" : "", "match"),
     kpi("Pay", j && j.pay_min ? "$" + payLabel(j) : "—", j && j.pay_min ? "Stated in the posting" : "Not stated"),
     kpi("Posted", !j ? "—" : dateOnly(j) ? cap(dayLabel(when(j))) : age.text,
-      j ? (j.repost ? "Reposted · first up " + fmt(j.repost.first) : (dateOnly(j) ? "Date only · " : "") + "Onward saw it " + ago(j.first_seen)) : ""));
+      j ? (j.repost ? "Reposted · first up " + fmt(j.repost.first) : (dateOnly(j) ? "Date only · " : "") + "Onward saw it " + ago(j.first_seen)) : "",
+      "", proof),
+    V.sponsor && j ? visaKpi(kpi, signals, name) : null);
 
-  // Left: why the score; what would raise it. Right: the resume, visa, proof.
+  // Left: the posting itself. Right: why the score, what would raise it, and the resume that goes on the form.
   const q = it ? queueParts(it) : null;
-  const left = el("div", { class: "d-col" },
+  const side = el("div", { class: "d-col d-side" },
     sc && sc.pct != null ? section("Skills", scoreSection(sc, j)) : sc ? section("Skills", scoreReason(sc, j)) : null,
-    j && sc && sc.pct != null ? section("What would raise this score", raiseSection(j)) : null);
-  const signals = j ? visaSignals(j, V) : [];
-  const right = el("div", { class: "d-col" },
+    j && sc && sc.pct != null ? section("What would raise this score", raiseSection(j)) : null,
     section("Resume on the form", q ? [...q.lines, q.actions.length ? el("div", { class: "row" }, ...q.actions) : null]
-      : [el("p", {}, readyKeys().has(key) ? "Prepared in the Apply queue." : "Not in the Apply queue: the extension attaches your master resume. Tailor it to make one for this job.")]),
-    V.sponsor && j ? section("Visa", signals.length ? signals.map((s) => el("p", { class: s.warn ? "warnline" : "" }, el("b", { text: s.text }), " · " + s.why))
-      : [el("p", { class: "note", text: "Nothing in the posting or the company's H-1B history either way." })]) : null,
-    j ? section("When it went up, and the proof", evidence(j, !(j.sponsor_note && signals.some((s) => String(s.why).includes(j.sponsor_note))))) : null);
-  keepFocus(() => pane.replaceChildren(head, kpis, el("div", { class: "d-cols" }, left, right)));
+      : [el("p", {}, readyKeys().has(key) ? "Prepared in the Apply queue." : "Not in the Apply queue: the extension attaches your master resume. Tailor it to make one for this job.")]));
+  const desc = descSection(key, sc, j ? j.url : it.url);
+  keepFocus(() => pane.replaceChildren(head, kpis,
+    el("div", { class: "d-cols" + (desc ? "" : " one") }, desc ? el("div", { class: "d-col d-main" }, desc) : null, side)));
   pane.setAttribute("aria-labelledby", "detailTitle");
+}
+
+// Visa as one of the figures: a short verdict from the signals, the
+// evidence for it behind ⓘ.
+function visaKpi(kpi, signals, name) {
+  const no = signals.find((s) => s.warn);
+  const yes = signals.find((s) => !s.warn && /H-1B sponsor/.test(s.text));
+  const value = no ? "Unlikely" : yes ? "Likely" : signals.length ? "Possible" : "Unknown";
+  const sub = no ? no.text : signals.length ? signals[0].text : "Nothing either way";
+  const info = infoTip(`Visa evidence for ${name}`, signals.length
+    ? signals.map((s) => el("p", { class: s.warn ? "warnline" : "" }, el("b", { text: s.text }), " · " + s.why))
+    : el("p", { class: "note", text: "Nothing in the posting or the company's H-1B history either way." }));
+  return kpi("Visa", value, sub, no ? "visa-no" : yes ? "visa-yes" : "", info);
+}
+
+// An ⓘ button and the panel it opens; Escape or a click elsewhere closes it.
+function infoTip(label, ...content) {
+  const pop = el("div", { class: "info-pop", id: nextId("pop"), role: "region", "aria-label": label, hidden: true }, ...content.flat());
+  const button = el("button", { type: "button", class: "info-btn", text: "i", "aria-label": label,
+    "aria-expanded": "false", "aria-controls": pop.id, title: label });
+  const set = (open) => {
+    pop.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+    if (open) {
+      const away = (e) => { if (!pop.contains(e.target) && e.target !== button) { set(false); off(); } };
+      const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); set(false); off(); button.focus(); } };
+      const off = () => { document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", esc, true); };
+      document.addEventListener("pointerdown", away, true);
+      document.addEventListener("keydown", esc, true);
+    }
+  };
+  button.addEventListener("click", () => set(pop.hidden));
+  return { button, pop };
+}
+
+// The posting's description as it was fetched, the skills the score counts
+// marked in it: those your resume has, and those it doesn't.
+const descCache = new Map();
+const descOpen = new Set();
+
+function descSection(key, sc, url) {
+  if (!HELPER) return null;
+  const body = el("div", {}, progressLine("Loading the description…"));
+  const sec = el("section", { class: "dsec d-desc", "aria-labelledby": "descH" },
+    el("div", { class: "desc-head" }, el("h3", { id: "descH", text: "Job description" })), body);
+  const fill = (text) => {
+    if (!text || text.trim().length < 40) {
+      body.replaceChildren(el("p", { class: "note" }, "No description was saved for this posting. ",
+        el("a", { href: url, target: "_blank", rel: "noopener", text: "Read it on the posting ↗" })));
+      return;
+    }
+    const items = (sc && sc.items) || [];
+    const box = el("div", { class: "desc-text" }, ...descBlocks(text.trim(), items));
+    const long = text.length > 1800;
+    const toggle = el("button", { type: "button", class: "linkish" });
+    const show = (open) => {
+      box.classList.toggle("folded", long && !open);
+      toggle.textContent = open ? "Show less" : "Show the whole description";
+      toggle.setAttribute("aria-expanded", String(open));
+      if (open) descOpen.add(key); else descOpen.delete(key);
+    };
+    toggle.addEventListener("click", () => show(box.classList.contains("folded")));
+    show(descOpen.has(key));
+    const have = items.some((i) => i.ok), miss = items.some((i) => !i.ok);
+    if (have || miss) sec.firstChild.append(el("span", { class: "note" },
+      ...(have ? [el("span", { class: "desc-key have", text: "skills you have" })] : []), have && miss ? " · " : "",
+      ...(miss ? [el("span", { class: "desc-key miss", text: "skills you're missing" })] : [])));
+    body.replaceChildren(box, long ? el("div", {}, toggle) : null);
+  };
+  if (descCache.has(key)) fill(descCache.get(key));
+  else api("/api/job?key=" + encodeURIComponent(key)).then((r) => { descCache.set(key, r.description || ""); fill(r.description || ""); },
+    () => body.replaceChildren(el("p", { class: "note" }, "Couldn't load the description. ",
+      el("a", { href: url, target: "_blank", rel: "noopener", text: "Read it on the posting ↗" }))));
+  return sec;
+}
+
+// The description's lines as paragraphs: a short line with no closing
+// punctuation reads as a heading ("Requirements"), one opening with a bullet
+// mark as a list item.
+function descBlocks(text, items) {
+  return text.split(/\n+/).map((s) => s.trim()).filter(Boolean).map((line) => {
+    const li = /^[•\-*·▪◦]\s*/.exec(line);
+    if (li) return el("p", { class: "desc-li" }, "• ", ...marked(line.slice(li[0].length), items));
+    const head = line.length <= 80 && !/[.,;!?"”]$/.test(line) && !/\d{2,}|\$/.test(line) && line.split(/\s+/).length <= 10;
+    return el("p", { class: head ? "desc-h" : "" }, ...marked(line, items));
+  });
+}
+
+// Text with each named skill wrapped in a mark, as nodes (never HTML).
+function marked(text, items) {
+  const names = [...new Map(items.map((i) => [i.k.toLowerCase(), i])).values()].sort((a, b) => b.k.length - a.k.length);
+  if (!names.length) return [text];
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(?<![\\w+#.])(${names.map((i) => esc(i.k)).join("|")})(?![\\w+#])`, "gi");
+  const byName = new Map(names.map((i) => [i.k.toLowerCase(), i]));
+  const out = [];
+  let at = 0;
+  for (const m of text.matchAll(re)) {
+    if (m.index > at) out.push(text.slice(at, m.index));
+    const it = byName.get(m[0].toLowerCase());
+    out.push(el("mark", { class: it && it.ok ? "have" : "miss", text: m[0] }));
+    at = m.index + m[0].length;
+  }
+  out.push(text.slice(at));
+  return out;
 }
 
 const readyKeys = () => new Set(queue.data ? queue.data.items.filter((i) => i.state === "ready").map((i) => i.key) : []);
@@ -2698,11 +2855,11 @@ function renderTailorForm(j, jd, history, raise) {
           refreshHistory();
         } }),
       el("a", { class: "btn", href: "/files/" + h.pdf, target: "_blank", rel: "noopener", text: "PDF" }),
-      el("button", { type: "button", class: "ghost", text: "Show changes", onclick: () => renderResult(h.result, result, retailor) })))] : []));
+      el("button", { type: "button", class: "ghost", text: "Show changes", onclick: () => renderResult(h.result, result, retailor, () => refreshHistory()) })))] : []));
   showHistory(history);
   // Opened on a job that has one: its changes show straight away.
   const current = history.find((h) => h.in_use);
-  if (current) renderResult(current.result, result, retailor);
+  if (current) renderResult(current.result, result, retailor, () => refreshHistory());
   const refreshHistory = async () => {
     try { showHistory(await api("/api/history?key=" + encodeURIComponent(j.key))); } catch {}
     if (queue.data) loadQueue();
@@ -2740,7 +2897,7 @@ async function runTailor(j, opts, btn, out, onAdjust, onDone) {
       await sleep(1500);
       const s = await api("/api/tailor/" + id);
       if (s.state === "done") {
-        renderResult(s.result, out, onAdjust);
+        renderResult(s.result, out, onAdjust, onDone);
         if (onDone) onDone();
         announce("Tailoring finished. The result is below.");
         if (s.undo) undoable((opts.instruction ? "Made a new version with your request. The earlier ones are still in the list below. "
@@ -2813,7 +2970,24 @@ function adjustBox(onAdjust, label = "Re-tailor", heading = true) {
     el("p", { class: "note", text: "Runs tailoring again with your request. The honesty checks and the one-page limit still apply, and this version stays in the history." }));
 }
 
-function renderResult(r, out, onAdjust) {
+// What each edit made by hand did, for its card.
+const EDIT_KIND = { bullet: "Bullet edited", add: "Bullet added", remove: "Bullet removed", tech: "Tool list edited",
+  skills: "Skills row edited", source: "LaTeX edited" };
+
+function editCard(edit) {
+  // The cards show the words, not the **bold** and *italic* marks typed for them.
+  const words = (s) => String(s || "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1");
+  const x = { ...edit, before: words(edit.before), after: words(edit.after) };
+  return el("div", { class: "chg" },
+    el("div", { class: "lbl", text: `${EDIT_KIND[x.kind] || x.kind}${x.kind === "source" ? "" : " · " + x.label}` }),
+    x.kind === "source" ? el("div", { text: "You edited the LaTeX source." })
+      : x.kind === "remove" ? el("div", { class: "after", style: "text-decoration:line-through;color:var(--muted)", text: x.before })
+      : x.kind === "add" ? el("div", { text: x.after })
+      : (x.kind === "tech" || x.kind === "skills") ? listDiff(x.before, x.after)
+      : el("div", {}, ...wordDiff(x.before, x.after)));
+}
+
+function renderResult(r, out, onAdjust, onDone) {
   const applied = r.changes.filter((c) => c.status === "applied" && ["bullet", "tech", "skills"].includes(c.kind));
   const rejected = r.changes.filter((c) => c.status === "rejected");
   const dropped = r.changes.filter((c) => c.kind === "drop_bullet" || c.kind === "drop_entry");
@@ -2847,8 +3021,13 @@ function renderResult(r, out, onAdjust) {
         + (r.check_claims === false ? " · edits not checked against your resume" : "") }),
       el("span", { class: "spacer", style: "flex:1" }),
       el("a", { class: "btn primary", href: "/files/" + r.pdf, target: "_blank", rel: "noopener", text: "Open PDF ↗" }),
+      r.id ? el("button", { type: "button", text: "Edit", "aria-label": "Edit this version by hand",
+        onclick: () => editVersion(r, out, onAdjust, onDone) }) : null,
       el("a", { class: "btn", href: "/files/" + r.tex, download: r.tex, text: "Download .tex" })),
     scoreLine(r.score),
+    ...(r.notes || []).map((n) => el("p", { class: "warnline", text: n })),
+    ...(r.edits && r.edits.length ? [el("p", { class: "section-h", text: `Your edits (${r.edits.length})` }),
+      el("div", { class: "changes" }, ...r.edits.map(editCard))] : []),
     r.target_pages && r.pages > r.target_pages ? el("p", { class: "warnline", text: `Still ${r.pages} pages, over your `
       + `${r.target_pages}-page limit, with everything that may go taken out: jobs keep three bullets each, and education, `
       + "skills and certifications stay. Shorten those in your master resume, or raise Resume length in Settings (advanced)." }) : null,
@@ -2881,6 +3060,145 @@ function renderResult(r, out, onAdjust) {
     ...moved.map((c) => el("p", { class: "note", text: `${c.label} reordered, most relevant first: ${c.after}` })),
     onAdjust ? adjustBox(onAdjust) : null,
   ].filter(Boolean));
+}
+
+// Editing one version by hand: its bullets, tool lists and skills rows as
+// text (resume_edit.py). Saving makes a new version; this one stays.
+async function editVersion(r, out, onAdjust, onDone) {
+  out.replaceChildren(progressLine("Opening this version…"));
+  let d;
+  try { d = await api("/api/tailored/edit?id=" + encodeURIComponent(r.id)); }
+  catch (e) { out.replaceChildren(el("p", { class: "errbox", text: e.message })); return; }
+  const back = () => renderResult(r, out, onAdjust, onDone);
+  const status = el("p", { class: "note", "aria-live": "polite" });
+  // A bullet's box is as tall as its text, and grows as it's typed into.
+  const fit = (box) => { if (box.tagName === "TEXTAREA") { box.style.height = "auto"; box.style.height = box.scrollHeight + 2 + "px"; } };
+
+  // Each field remembers what it started as, so only real changes are sent.
+  const piece = (p, tag, opts = {}) => {
+    const box = el(opts.input ? "input" : "textarea", { class: p.latex ? "latex" : "", spellcheck: p.latex ? "false" : "true",
+      "aria-label": opts.label, ...(opts.input ? { type: "text" } : { rows: "1" }) });
+    box.value = p.text;
+    const line = el("div", { class: "edit-line" }, tag ? el("span", { class: "edit-tag", text: tag }) : null, box);
+    box.addEventListener("input", () => { line.classList.toggle("changed", box.value !== p.text); fit(box); });
+    return { box, line, start: p.text, latex: p.latex };
+  };
+  const bullets = [], added = {}, tech = {}, skills = {};
+  const entryNodes = [];
+  let section = "";
+  for (const e of d.entries) {
+    if (e.section !== section) { section = e.section; entryNodes.push(el("p", { class: "edit-sec", text: section })); }
+    const list = el("div", { style: "display:grid;gap:6px" });
+    for (const [i, b] of e.bullets.entries()) {
+      const f = piece(b, "", { label: `Bullet ${i + 1} of ${e.title}` });
+      f.id = b.id;
+      f.removed = false;
+      const rm = el("button", { type: "button", class: "ghost", text: "Remove", "aria-pressed": "false",
+        "aria-label": `Remove bullet ${i + 1} of ${e.title}` });
+      rm.addEventListener("click", () => {
+        f.removed = !f.removed;
+        f.line.classList.toggle("removed", f.removed);
+        f.box.disabled = f.removed;
+        rm.textContent = f.removed ? "Keep" : "Remove";
+        rm.setAttribute("aria-pressed", String(f.removed));
+      });
+      f.line.append(rm);
+      bullets.push(f);
+      list.append(f.line);
+    }
+    added[e.id] = [];
+    const add = el("button", { type: "button", class: "linkish", text: "+ Add a bullet", disabled: !e.bullets.length });
+    add.addEventListener("click", () => {
+      const f = piece({ text: "", latex: false }, "", { label: `New bullet in ${e.title}` });
+      f.line.classList.add("changed");
+      const rm = el("button", { type: "button", class: "ghost", text: "Remove", "aria-label": `Remove the new bullet in ${e.title}` });
+      rm.addEventListener("click", () => { f.line.remove(); added[e.id] = added[e.id].filter((x) => x !== f); add.focus(); });
+      f.line.append(rm);
+      added[e.id].push(f);
+      list.append(f.line);
+      f.box.focus();
+    });
+    if (e.tech) tech[e.id] = piece(e.tech, "Tools", { input: true, label: `Tools of ${e.title}` });
+    entryNodes.push(el("div", { class: "edit-entry" }, el("b", { text: e.title }),
+      e.tech ? tech[e.id].line : null, list, el("div", {}, add)));
+  }
+  const skillNodes = d.skills.map((s) => (skills[s.id] = piece(s, s.label, { input: true, label: `${s.label} skills` })).line);
+
+  const collect = () => {
+    const pick = (fields) => Object.fromEntries(Object.entries(fields).filter(([, f]) => f.box.value !== f.start)
+      .map(([id, f]) => [id, { text: f.box.value, latex: f.latex }]));
+    const edits = {
+      bullets: Object.fromEntries(bullets.filter((f) => !f.removed && f.box.value !== f.start)
+        .map((f) => [f.id, { text: f.box.value, latex: f.latex }])),
+      remove: bullets.filter((f) => f.removed).map((f) => f.id),
+      add: Object.fromEntries(Object.entries(added).map(([id, fs]) => [id, fs.filter((f) => f.box.value.trim())
+        .map((f) => ({ text: f.box.value, latex: false }))]).filter(([, xs]) => xs.length)),
+      tech: pick(tech), skills: pick(skills),
+    };
+    const n = Object.keys(edits.bullets).length + edits.remove.length + Object.values(edits.add).flat().length
+      + Object.keys(edits.tech).length + Object.keys(edits.skills).length;
+    return n ? edits : null;
+  };
+
+  const save = async (body, btns) => {
+    btns.forEach((b) => { b.disabled = true; });
+    status.replaceChildren(progressLine("Making the new version…"));
+    try {
+      const { id } = await api("/api/tailored/edit", { id: r.id, ...body });
+      for (;;) {
+        await sleep(800);
+        const s = await api("/api/tailor/" + id);
+        if (s.state === "error") throw new Error(s.error);
+        if (s.state !== "done") continue;
+        renderResult(s.result, out, onAdjust, onDone);
+        if (onDone) onDone();
+        announce("Saved your edits as a new version.");
+        if (s.undo) undoable("Saved your edits as a new version. It goes on the application form; the one you edited is still in the list.",
+          "the edited version", async () => {
+            await serverUndo(s.undo)();
+            back();
+            if (onDone) onDone();
+          });
+        return;
+      }
+    } catch (e) {
+      status.replaceChildren(el("span", { class: "errbox", style: "display:block", text: e.message }));
+      btns.forEach((b) => { b.disabled = false; });
+    }
+  };
+  const saveBtn = el("button", { type: "button", class: "primary", text: "Save as a new version" });
+  const cancel = el("button", { type: "button", class: "ghost", text: "Cancel", onclick: back });
+  saveBtn.addEventListener("click", () => {
+    const edits = collect();
+    if (!edits) { status.textContent = "Nothing changed yet."; return; }
+    save({ edits }, [saveBtn, cancel]);
+  });
+
+  // The whole LaTeX, for what the fields don't cover; folded away until wanted.
+  const src = el("textarea", { class: "source", spellcheck: "false", "aria-label": "LaTeX source of this version" });
+  src.value = d.source;
+  const go = el("button", { type: "button", text: "Save the LaTeX as a new version" });
+  go.addEventListener("click", () => {
+    if (src.value === d.source) { status.textContent = "The LaTeX is unchanged."; return; }
+    save({ source: src.value }, [go, saveBtn, cancel]);
+  });
+  const sourceBox = el("details", {}, el("summary", { text: "Edit the LaTeX instead" }),
+    el("div", { style: "display:grid;gap:8px;margin-top:8px" },
+      el("p", { class: "note", text: "For what the fields above don't cover, like dates, headers or spacing. Changes made in the fields above aren't included." }),
+      src, el("div", {}, go)));
+
+  out.replaceChildren(el("div", { class: "edit" },
+    el("div", {}, el("p", { class: "section-h", text: "Edit this version" }),
+      el("p", { class: "note", text: "Change the wording, remove bullets or add your own. Type **two stars** around words for bold and *one star* for italic. "
+        + "Saving makes a new version for this job and checks how it fits the page; the one you edited stays in the list." }),
+      d.problem ? el("p", { class: "errbox", text: `Onward can't split this version into its pieces (${d.problem}).` }) : null),
+    ...entryNodes,
+    skillNodes.length ? el("div", { class: "edit-entry" }, el("b", { text: "Skills" }), ...skillNodes) : null,
+    sourceBox,
+    el("div", { class: "edit-bar" }, saveBtn, cancel, status)));
+  out.querySelectorAll(".edit-line > textarea").forEach(fit);
+  const first = out.querySelector("textarea, input");
+  if (first) first.focus();
 }
 
 $("closeTailor").addEventListener("click", () => $("tailorDlg").close());
