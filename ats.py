@@ -180,9 +180,9 @@ def _ashby(token: str) -> tuple[int, str]:
 
 def _workday(token: str) -> tuple[int, str]:
     host_part, site = token.split("/", 1)
-    tenant = host_part.split(".")[0]
+    _, cxs = radar.workday_roots(host_part, site)
     try:
-        data = radar.post_json(f"https://{host_part}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs",
+        data = radar.post_json(f"{cxs}/jobs",
                                {"appliedFacets": {}, "limit": 1, "offset": 0, "searchText": ""}, retries=2)
     except urllib.error.HTTPError as e:
         if e.code in (400, 422):        # Workday's answer for a site name the tenant doesn't have

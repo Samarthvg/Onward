@@ -8,6 +8,7 @@ import json
 import shutil
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -43,6 +44,7 @@ URLS = {
         "workday", "salesforce.wd12/External_Career_Site"),
     "https://adobe.wd5.myworkdayjobs.com/wday/cxs/adobe/external_experienced/jobs": ("workday", "adobe.wd5/external_experienced"),
     "https://wd1.myworkdaysite.com/en-US/recruiting/snapchat/snap/job/x": ("workday", "snapchat.wd1/snap"),
+    "https://wd5.myworkdaysite.com/recruiting/vhr_fhlbdm/careers": ("workday", "vhr_fhlbdm.wd5/careers"),
     # The rest
     "https://jobs.smartrecruiters.com/Intuitive/744000012345678": ("smartrecruiters", "Intuitive"),
     "https://careers.smartrecruiters.com/Dominos": ("smartrecruiters", "Dominos"),
@@ -144,6 +146,17 @@ class CheckTests(unittest.TestCase):
         r = self.check("workday", "x.wd1/Gone", {}, post={"https://x.wd1": {"errorCode": "NOT_FOUND"}})
         self.assertFalse(r["ok"])
 
+    def test_workday_tenant_that_cant_be_a_host_name(self):
+        # vhr_fhlbdm.wd5.myworkdayjobs.com fails the certificate check (no
+        # underscores in host names); Workday serves it on myworkdaysite.com.
+        r = self.check("workday", "vhr_fhlbdm.wd5/careers", {}, post={
+            "https://wd5.myworkdaysite.com/wday/cxs/vhr_fhlbdm/careers/jobs": {"total": 30, "jobPostings": [{}]}})
+        self.assertEqual((r["ok"], r["jobs"]), (True, 30))
+        self.assertEqual(radar.workday_roots("vhr_fhlbdm.wd5", "careers"),
+                         ("https://wd5.myworkdaysite.com/recruiting/vhr_fhlbdm",
+                          "https://wd5.myworkdaysite.com/wday/cxs/vhr_fhlbdm/careers"))
+        self.assertEqual(radar.workday_roots("nvidia.wd5", "X")[0], "https://nvidia.wd5.myworkdayjobs.com")
+
     def test_others(self):
         self.assertEqual(self.check("lever", "palantir", {"https://api.lever.co/v0/postings/palantir": [{}, {}]})["jobs"], 2)
         self.assertEqual(self.check("ashby", "notion", {"https://api.ashbyhq.com": {"jobs": [{}, {"isListed": False}]}})["jobs"], 1)
@@ -180,7 +193,9 @@ class EndpointTests(unittest.TestCase):
         fake_check = lambda b: self.checked.append(b.board) or (
             {"ok": True, "jobs": 3, "name": "", "error": ""} if b.token != "dead" else
             {"ok": False, "jobs": 0, "name": "", "error": "The ATS says this board doesn't exist."})
+        # Undo records and the like go to a database of the test's own, never the real one.
         for p in [mock.patch.object(server, "PORT", self.port), mock.patch.object(server, "STORE", self.store),
+                  mock.patch.object(server, "DB_PATH", self.tmp / "jobs.db"),
                   mock.patch.object(server, "PREP", q), mock.patch.object(server, "RESUME_DIR", self.tmp / "resume"),
                   mock.patch.object(server, "MASTER", self.tmp / "resume" / "master.tex"),
                   mock.patch.object(server, "ORIGINS", {f"http://127.0.0.1:{self.port}"}),
@@ -228,6 +243,66 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(self.store.load()["queue"]["quiet_start"], "22:00", "a rejected save changes nothing")
         st, _ = self.call("/api/settings", {"settings": {"ui": {"advanced": True}}}, origin=False)
         self.assertEqual(st, 403, "only the dashboard may change settings")
+
+    def lookups(self, urls):
+        st, r = self.call("/api/companies/lookup-many", {"urls": urls})
+        self.assertEqual(st, 202, r)
+        for _ in range(200):
+            st, job = self.call("/api/lookup/" + r["id"])
+            if job["state"] == "done":
+                return job["results"]
+            time.sleep(0.05)
+        self.fail("the lookups never finished")
+
+    def test_several_links_at_once(self):
+        p = mock.patch.dict(server.CHECKED, clear=True)
+        p.start()
+        self.addCleanup(p.stop)
+        got = self.lookups(["https://boards.greenhouse.io/newco", "https://jobs.lever.co/otherco/abc",
+                            "https://boards.greenhouse.io/airbnb", "https://boards.greenhouse.io/dead",
+                            "https://example.test/not-a-board.pdf", "https://boards.greenhouse.io/newco"])
+        self.assertEqual(len(got), 5, "the same link twice is looked up once")
+        by = {r["url"]: r for r in got}
+        self.assertEqual((by["https://boards.greenhouse.io/newco"]["board"], by["https://boards.greenhouse.io/newco"]["ok"]),
+                         ("greenhouse:newco", True))
+        self.assertEqual(by["https://jobs.lever.co/otherco/abc"]["board"], "lever:otherco")
+        self.assertTrue(by["https://boards.greenhouse.io/airbnb"]["tracked"])
+        self.assertFalse(by["https://boards.greenhouse.io/dead"]["ok"])
+        self.assertFalse(by["https://example.test/not-a-board.pdf"]["ok"])
+
+        # Adding what answered a moment ago doesn't ask the boards again; one
+        # not looked up is checked now, and one that doesn't answer isn't saved.
+        before = list(self.checked)
+        st, r = self.call("/api/companies/add-many", {"boards": [
+            {"source": "greenhouse", "token": "newco", "name": "NewCo"}, {"source": "lever", "token": "otherco", "name": ""},
+            {"source": "ashby", "token": "fresh"}, {"source": "greenhouse", "token": "dead"}]})
+        self.assertEqual(st, 200, r)
+        self.assertEqual(self.checked[len(before):], ["ashby:fresh", "greenhouse:dead"], "dead didn't answer its lookup, so it's asked again")
+        self.assertEqual(r["added"], ["greenhouse:newco", "lever:otherco", "ashby:fresh"])
+        self.assertEqual([f["board"] for f in r["failed"]], ["greenhouse:dead"])
+        c = self.store.load()["companies"]
+        self.assertEqual(c["added"], {"greenhouse": ["newco"], "lever": ["otherco"], "ashby": ["fresh"]})
+        self.assertEqual(c["display_names"], {"newco": "NewCo"})
+        # One undo takes the whole batch back out.
+        st, u = self.call("/api/undo", {"id": r["undo"]})
+        self.assertEqual(st, 200, u)
+        self.assertEqual(self.store.load()["companies"]["added"], {})
+
+    def test_undo_takes_a_first_added_company_back_out(self):
+        # The section as it was is put back whole: merging it in would keep
+        # keys added since, like the first board of an ATS ("added": {"lever": [...]}).
+        st, r = self.call("/api/companies/add", {"source": "lever", "token": "firstco"})
+        self.assertEqual(self.store.load()["companies"]["added"], {"lever": ["firstco"]})
+        st, u = self.call("/api/undo", {"id": r["undo"]})
+        self.assertEqual(st, 200, u)
+        self.assertEqual(self.store.load()["companies"]["added"], {})
+
+    def test_batch_limits(self):
+        self.assertEqual(self.call("/api/companies/lookup-many", {"urls": []})[0], 400)
+        self.assertEqual(self.call("/api/companies/lookup-many", {"urls": ["  "]})[0], 400)
+        self.assertEqual(self.call("/api/companies/lookup-many", {"urls": [f"https://x{i}.test" for i in range(51)]})[0], 400)
+        self.assertEqual(self.call("/api/companies/add-many", {"boards": [{"source": "myspace", "token": "x"}]})[0], 400)
+        self.assertEqual(self.store.load()["companies"]["added"], {})
 
     def test_add_remove_and_block_companies(self):
         st, r = self.call("/api/companies/lookup", {"url": "https://boards.greenhouse.io/newco"})

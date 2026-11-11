@@ -168,6 +168,9 @@ class Preparer:
         self.log = log
         self.wake = threading.Event()
         self.lock = threading.Lock()          # settings file and scans
+        # One copy of a sent resume at a time: marking a job applied starts one,
+        # and a second call for the same job must find it kept, not race it.
+        self.sent_lock = threading.Lock()
         self.dirty = True
         self.corpus_seen: float | None = None
         self.status = ""                      # why the queue is idle, for the dashboard
@@ -809,7 +812,8 @@ class Preparer:
         """Copies the resume the extension attaches for this job, once."""
         def run():
             try:
-                self._keep_sent(key)
+                with self.sent_lock:
+                    self._keep_sent(key)
             except Exception:
                 self.log(f"prep: couldn't keep the resume sent for {key}:\n{traceback.format_exc()}")
         if wait:

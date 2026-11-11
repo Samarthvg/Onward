@@ -259,18 +259,24 @@
    * The posting's text, also on pages that don't show it: Workday's application steps
    * leave the description behind, so it's read from Workday's own job API for this URL
    * (/{site}/job/{location}/{title_id}/apply -> /wday/cxs/{tenant}/{site}/job/...).
+   * A tenant whose name can't be a host name ("vhr_fhlbdm") is on wdN.myworkdaysite.com,
+   * with the tenant in the path instead: /recruiting/{tenant}/{site}/job/...
    */
   const postingCache = new Map();
   async function postingText(doc) {
     const onPage = jobDescription(doc);
     if (onPage.trim().length >= 200) return onPage;
     const loc = doc.location || {};
-    if (!/\.myworkdayjobs\.com$/i.test(loc.hostname || "")) return onPage;
+    const host = loc.hostname || "";
     const parts = String(loc.pathname || "").split("/").filter(Boolean);
+    const r = parts.indexOf("recruiting");
+    const tenant = /\.myworkdayjobs\.com$/i.test(host) ? host.split(".")[0]
+      : /\.myworkdaysite\.com$/i.test(host) && r >= 0 ? parts[r + 1] : "";
+    if (!tenant) return onPage;
     const j = parts.indexOf("job");
-    if (j < 1) return onPage;
+    if (j < 1 || (r >= 0 && j < r + 3)) return onPage;
     const stop = parts.indexOf("apply", j);
-    const url = `/wday/cxs/${loc.hostname.split(".")[0]}/${parts[j - 1]}/${parts.slice(j, stop > j ? stop : undefined).join("/")}`;
+    const url = `/wday/cxs/${tenant}/${parts[j - 1]}/${parts.slice(j, stop > j ? stop : undefined).join("/")}`;
     if (!postingCache.has(url)) {
       postingCache.set(url, fetch(url, { headers: { accept: "application/json" }, credentials: "include" })
         .then((r) => (r.ok ? r.json() : null))

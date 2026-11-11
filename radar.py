@@ -1077,6 +1077,22 @@ def _workday_posting(base: str, cxs: str, site: str, path: str, list_location: s
     )
 
 
+HOST_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", re.I)
+
+
+def workday_roots(host_part: str, site: str) -> tuple[str, str]:
+    """(public site root without the site, CXS API root) of "<tenant>.<wdN>".
+    A tenant that can't be a host name ("vhr_fhlbdm": underscores aren't
+    allowed, so no certificate covers <tenant>.wd5.myworkdayjobs.com) is
+    served as wdN.myworkdaysite.com/recruiting/<tenant> instead."""
+    tenant, wd = host_part.split(".", 1)
+    if HOST_LABEL.fullmatch(tenant):
+        base = f"https://{host_part}.myworkdayjobs.com"
+        return base, f"{base}/wday/cxs/{tenant}/{site}"
+    return (f"https://{wd}.myworkdaysite.com/recruiting/{tenant}",
+            f"https://{wd}.myworkdaysite.com/wday/cxs/{tenant}/{site}")
+
+
 def fetch_workday(token: str) -> list[Job]:
     """token: "<tenant>.<wdN>/<site>", e.g. "nvidia.wd5/NVIDIAExternalCareerSite".
 
@@ -1087,8 +1103,7 @@ def fetch_workday(token: str) -> list[Job]:
     titles pass the filters, once each (see cached_posting)."""
     host_part, site = token.split("/", 1)
     tenant = host_part.split(".")[0]
-    base = f"https://{host_part}.myworkdayjobs.com"
-    cxs = f"{base}/wday/cxs/{tenant}/{site}"
+    base, cxs = workday_roots(host_part, site)
     # Sites of one tenant can belong to different companies (talentmanagementsolution
     # hosts Jonas Software and Perseus Group), so a name for the site wins.
     company = DISPLAY_NAMES.get(token) or display_name(tenant)

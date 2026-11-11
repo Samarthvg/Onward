@@ -71,6 +71,9 @@ EXT_CLIENT = "autofill"
 EXECUTOR = ThreadPoolExecutor(max_workers=2)
 # Saving an edit is one or two compiles: it doesn't wait behind tailoring runs.
 EDIT_EXECUTOR = ThreadPoolExecutor(max_workers=1)
+# Links pasted to add companies, looked up a few at a time (each host keeps
+# its own pace in radar.HostGate, so different sites run side by side).
+LOOKUP_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
 
@@ -443,6 +446,70 @@ def _name_key(source: str, token: str) -> str:
     return token.split(".")[0] if source == "workday" else token
 
 
+MAX_LINKS = 50            # links looked up in one batch
+CHECKED_TTL = 1800        # seconds a board's lookup stands in for the check before it's added
+CHECKED: dict[str, float] = {}      # "source:token" -> when a lookup found it answering
+CHECKED_LOCK = threading.Lock()
+
+
+def lookup_link(url: str) -> dict:
+    """ats.lookup for one pasted link, with whether the board is tracked
+    already. A board that answered is remembered for a while, so adding it
+    right after needn't ask it again."""
+    res = ats.lookup(str(url)[:2000])
+    if res.get("board"):
+        tracked = next((b for b in company_list()["boards"] if f"{b['source']}:{b['token']}" == res["board"]), None)
+        res["tracked"] = bool(tracked and not tracked["removed"])
+        if res.get("ok"):
+            with CHECKED_LOCK:
+                CHECKED[res["board"]] = time.time()
+    return res
+
+
+def run_lookups(jid: str, urls: list[str]) -> None:
+    """Looks up each link, filling the job's results as each one finishes."""
+    with JOBS_LOCK:
+        JOBS[jid].update(state="running", started=time.time())
+
+    def one(i: int, url: str) -> None:
+        try:
+            res = lookup_link(url)
+        except Exception as e:  # one link's failure doesn't stop the rest
+            log(f"lookup {url} failed:\n{traceback.format_exc()}")
+            res = {"ok": False, "error": f"Unexpected error: {e}"}
+        with JOBS_LOCK:
+            JOBS[jid]["results"][i] = {"url": url, **res}
+            if all(r is not None for r in JOBS[jid]["results"]):
+                JOBS[jid]["state"] = "done"
+
+    for i, url in enumerate(urls):
+        LOOKUP_EXECUTOR.submit(one, i, url)
+
+
+def submit_lookups(urls: list[str]) -> str:
+    jid = _register(kind="lookup", backend="", results=[None] * len(urls), urls=urls)
+    run_lookups(jid, urls)
+    return jid
+
+
+def recently_checked(board: str) -> bool:
+    with CHECKED_LOCK:
+        at = CHECKED.get(board)
+    return bool(at and time.time() - at < CHECKED_TTL)
+
+
+def add_board(c: dict, source: str, token: str, name: str) -> None:
+    """Puts one board into the companies settings `c` (saved by the caller)."""
+    board = f"{source}:{token}"
+    if token not in c["added"].get(source, []) and not any(
+            b["source"] == source and b["token"] == token and b["origin"] == "builtin"
+            for b in company_list()["boards"]):
+        c["added"].setdefault(source, []).append(token)
+    if name:
+        c["display_names"][_name_key(source, token)] = name
+    c["removed"] = [r for r in c["removed"] if r != board]
+
+
 GREENHOUSE_BOARD = re.compile(r"greenhouse\.io/(?:embed/job_app\?for=)?([\w-]+)")
 
 
@@ -684,7 +751,10 @@ def queue_undo(keys, label: str):
 
 def _undo_settings(payload: dict, uid: str) -> dict:
     before = payload["before"]
-    STORE.update(before, strict=False)
+    # Each changed section goes back whole. Merged in, it would keep keys added
+    # since: undoing the first board of an ATS left {"added": {"lever": [...]}}.
+    with STORE.lock:
+        STORE.save({**STORE.load(), **before}, strict=False)
     PREP.poke()
     rerender = bool(set(before) - {"setup", "app", "ui"})
     if rerender:
@@ -1099,7 +1169,7 @@ class Handler(BaseHTTPRequestHandler):
             row = job_row((q.get("key") or [""])[0])
             return self._json(200, row) if row else self._err(HTTPStatus.NOT_FOUND, "Unknown job")
 
-        if path.startswith(("/api/tailor/", "/api/draft/")):
+        if path.startswith(("/api/tailor/", "/api/draft/", "/api/lookup/")):
             jid = path.rsplit("/", 1)[-1]
             with JOBS_LOCK:
                 job = dict(JOBS.get(jid) or {})
@@ -1652,12 +1722,20 @@ class Handler(BaseHTTPRequestHandler):
     def _companies(self, action: str, data: dict):
         c = STORE.section("companies")
         if action == "lookup":
-            res = ats.lookup(str(data.get("url", ""))[:2000])
-            if res.get("board"):
-                tracked = next((b for b in company_list()["boards"]
-                                if f"{b['source']}:{b['token']}" == res["board"]), None)
-                res["tracked"] = bool(tracked and not tracked["removed"])
-            return self._json(200, res)
+            return self._json(200, lookup_link(str(data.get("url", ""))))
+        if action == "lookup-many":
+            # Several links at once: looked up in the background, results by /api/lookup/<id>.
+            urls = data.get("urls")
+            if not isinstance(urls, list) or not urls or not all(isinstance(u, str) for u in urls):
+                return self._err(HTTPStatus.BAD_REQUEST, "Expected a list of links")
+            urls = list(dict.fromkeys(u.strip()[:2000] for u in urls if u.strip()))
+            if not urls:
+                return self._err(HTTPStatus.BAD_REQUEST, "Expected a list of links")
+            if len(urls) > MAX_LINKS:
+                return self._err(HTTPStatus.BAD_REQUEST, f"Paste up to {MAX_LINKS} links at a time")
+            return self._json(202, {"id": submit_lookups(urls)})
+        if action == "add-many":
+            return self._add_many(c, data.get("boards"))
         source, token = str(data.get("source", "")), str(data.get("token", "")).strip()[:300]
         if action in ("add", "remove", "restore"):
             if source not in config.SOURCES or not token:
@@ -1668,14 +1746,7 @@ class Handler(BaseHTTPRequestHandler):
                 res = ats.check(ats.Board(source, token))
                 if not res["ok"]:
                     return self._err(HTTPStatus.UNPROCESSABLE_ENTITY, res["error"])
-                if token not in c["added"].get(source, []) and not any(
-                        b["source"] == source and b["token"] == token and b["origin"] == "builtin"
-                        for b in company_list()["boards"]):
-                    c["added"].setdefault(source, []).append(token)
-                name = str(data.get("name") or "").strip()[:120]
-                if name:
-                    c["display_names"][_name_key(source, token)] = name
-                c["removed"] = [r for r in c["removed"] if r != board]
+                add_board(c, source, token, str(data.get("name") or "").strip()[:120])
             elif action == "remove":
                 if token in c["added"].get(source, []):
                     c["added"][source] = [t for t in c["added"][source] if t != token]
@@ -1700,6 +1771,37 @@ class Handler(BaseHTTPRequestHandler):
         if action in ("block", "unblock"):
             schedule_render()
         return self._json(200, {**company_list(), "undo": uid})
+
+    def _add_many(self, c: dict, boards):
+        """Adds several boards in one change (one undo). Each must answer: a
+        lookup that found it answering in the last half hour counts, the
+        rest are checked now. Those that don't are reported, not saved."""
+        if not isinstance(boards, list) or not boards or len(boards) > MAX_LINKS * 2:
+            return self._err(HTTPStatus.BAD_REQUEST, "Expected the boards to add")
+        want = []
+        for b in boards:
+            source = str((b or {}).get("source", "")) if isinstance(b, dict) else ""
+            token = str(b.get("token", "")).strip()[:300] if isinstance(b, dict) else ""
+            if source not in config.SOURCES or not token:
+                return self._err(HTTPStatus.BAD_REQUEST, "Unknown board")
+            want.append((source, token, str(b.get("name") or "").strip()[:120]))
+        unchecked = [(s, t) for s, t, _ in want if not recently_checked(f"{s}:{t}")]
+        answers = dict(zip(unchecked, LOOKUP_EXECUTOR.map(lambda st: ats.check(ats.Board(*st)), unchecked)))
+        added, failed = [], []
+        for source, token, name in want:
+            res = answers.get((source, token))
+            if res is not None and not res["ok"]:
+                failed.append({"board": f"{source}:{token}", "name": name or token, "error": res["error"]})
+                continue
+            add_board(c, source, token, name)
+            added.append(f"{source}:{token}")
+        uid = None
+        if added:
+            try:
+                uid = save_settings({"companies": c}, f"adding {len(added)} compan{'y' if len(added) == 1 else 'ies'}")
+            except config.SettingsError as e:
+                return self._json(HTTPStatus.BAD_REQUEST, {"error": "Couldn't save that", "errors": e.errors})
+        return self._json(200, {**company_list(), "added": added, "failed": failed, "undo": uid})
 
     def _prepared(self, page_url: str):
         """The resume and drafted answers prepared for the job behind an

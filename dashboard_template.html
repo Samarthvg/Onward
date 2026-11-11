@@ -489,6 +489,17 @@
   .radios label b { font-weight: 500; color: var(--text); }
   .rowline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .rowline > input[type=text], .rowline > input[type=url], .rowline > select { flex: 1 1 220px; }
+  .rowline > #companyUrl { flex: 1 1 320px; resize: vertical; line-height: 1.45; overflow-y: auto; }
+  /* Several links looked up together. */
+  .batch-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 420px; overflow-y: auto; }
+  .batch-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .batch-row > div { display: grid; gap: 4px; min-width: 0; flex: 1; }
+  .batch-row.off { background: transparent; }
+  .batch-row input[type=checkbox] { margin-top: 3px; accent-color: var(--accent); }
+  .batch-row .spin, .batch-mark { flex: none; margin-top: 2px; width: 14px; text-align: center; color: var(--muted); }
+  .batch-url { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .batch-row .warnline { color: var(--warn); font-size: 12.5px; }
+  .batch-row .rowline > input { flex: 0 1 220px; }
   .tags { display: flex; flex-wrap: wrap; gap: 6px; }
   .tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 4px 2px 9px; border-radius: 999px; background: var(--chip); }
   .tag button { border: 0; background: transparent; padding: 0 5px; font-size: 14px; line-height: 1; color: var(--muted); border-radius: 999px; }
@@ -4041,21 +4052,39 @@ async function afterRoleSave() {
 
 function companiesCard() {
   const c = cfg.companies;
-  const url = el("input", { type: "url", id: "companyUrl", placeholder: "https://boards.greenhouse.io/acme or a company's careers page" });
-  url.setAttribute("aria-label", "Careers page or job board URL");
-  const out = el("div", { "aria-live": "polite" });
+  // One link, or several (one per line, or separated by spaces or commas).
+  const url = el("textarea", { id: "companyUrl", rows: "1", spellcheck: "false",
+    placeholder: "https://boards.greenhouse.io/acme or a company's careers page. Paste several, one per line, to add them together." });
+  url.setAttribute("aria-label", "Careers pages or job board URLs, one per line");
+  const grow = () => { url.style.height = "auto"; url.style.height = Math.min(url.scrollHeight + 2, 260) + "px"; };
+  url.addEventListener("input", grow);
+  const out = el("div", { id: "companyFound", "aria-live": "polite" });
   const check = el("button", { type: "button", class: "primary", text: "Find board" });
+  const syncLabel = () => { check.textContent = pastedLinks(url.value).length > 1 ? `Find ${pastedLinks(url.value).length} boards` : "Find board"; };
+  url.addEventListener("input", syncLabel);
   const run = async () => {
-    if (!url.value.trim()) { url.focus(); return; }
+    const links = pastedLinks(url.value);
+    if (!links.length) { url.focus(); return; }
+    if (links.length > 50) { out.replaceChildren(el("div", { class: "errbox", text: `That's ${links.length} links. Paste up to 50 at a time.` })); return; }
     check.disabled = true;
-    out.replaceChildren(progressLine("Looking for the job board and checking it…"));
-    try { cfg.found = await api("/api/companies/lookup", { url: url.value.trim() }); drawFound(out); }
-    catch (e) { out.replaceChildren(el("div", { class: "errbox", text: e.message })); }
+    try {
+      if (links.length === 1) {
+        cfg.batch = null;
+        out.replaceChildren(progressLine("Looking for the job board and checking it…"));
+        cfg.found = await api("/api/companies/lookup", { url: links[0] });
+        drawFound(out);
+      } else {
+        cfg.found = null;
+        await lookupMany(links);
+      }
+    } catch (e) { out.replaceChildren(el("div", { class: "errbox", text: e.message })); }
     finally { check.disabled = false; }
   };
   check.addEventListener("click", run);
-  url.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
-  if (cfg.found) drawFound(out);
+  // Enter looks the link up; Shift+Enter starts another line for the next one.
+  url.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); run(); } });
+  if (cfg.batch) drawBatch(out); else if (cfg.found) drawFound(out);
+  setTimeout(() => { grow(); syncLabel(); }, 0);
 
   const added = c.boards.filter((b) => b.origin === "added");
   const blockIn = text("", "Company name");
@@ -4065,7 +4094,7 @@ function companiesCard() {
 
   return el("section", { class: "card", "aria-labelledby": "compH" },
     el("h3", { id: "compH", text: "Companies" }),
-    el("p", { text: "Onward reads company job boards directly. Paste a careers page or any job posting link to add a company: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Oracle, Eightfold and iCIMS are recognized." }),
+    el("p", { text: "Onward reads company job boards directly. Paste a careers page or any job posting link to add a company, or several links, one per line, to add them together: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Oracle, Eightfold and iCIMS are recognized." }),
     el("div", { class: "rowline" }, url, check), out,
     el("div", { class: "field" }, el("p", { class: "section-h", text: `Companies you added (${added.length})` }),
       added.length ? boardList(added) : el("p", { class: "note", text: "None yet. They're read from the next search on." })),
@@ -4090,6 +4119,128 @@ function drawFound(out) {
     el("div", {}, el("b", { text: where }), ` · ${n(f.jobs)} open posting${f.jobs === 1 ? "" : "s"} right now`),
     f.note ? el("div", { class: "note", text: f.note }) : null,
     el("div", { class: "rowline" }, el("label", { for: name.id = nextId("cn"), text: "Name" }), name, addBtn)));
+}
+
+// The links in what was pasted: anything that reads as a web address, in
+// order, each once ("acme.com/careers" counts; plain words don't).
+function pastedLinks(text) {
+  const seen = new Set();
+  return String(text || "").split(/[\s,;]+/).map((s) => s.replace(/^[<("']+|[>)"'.]+$/g, ""))
+    .filter((s) => /^(https?:\/\/)?[\w-]+(\.[\w-]+)+(\/\S*)?$/i.test(s))
+    .filter((s) => { const k = s.replace(/^https?:\/\//i, "").replace(/\/+$/, "").toLowerCase(); return !seen.has(k) && seen.add(k); });
+}
+
+// Several links: each is looked up on the helper as one link is (the page
+// opened when needed to find its board), a few at a time; rows fill in as
+// they finish. Picks and names are kept in cfg.batch across redraws.
+async function lookupMany(links) {
+  const { id } = await api("/api/companies/lookup-many", { urls: links });
+  cfg.batch = { id, urls: links, results: links.map(() => null), pick: {}, names: {}, state: "running" };
+  const draw = () => { const o = $("companyFound"); if (o && cfg.batch && cfg.batch.id === id) drawBatch(o); };
+  draw();
+  while (cfg.batch && cfg.batch.id === id) {
+    await sleep(700);
+    let s;
+    try { s = await api("/api/lookup/" + id); } catch (e) { cfg.batch.error = e.message; cfg.batch.state = "error"; draw(); return; }
+    cfg.batch.results = s.results;
+    cfg.batch.state = s.state;
+    draw();
+    if (s.state === "done") {
+      const ok = batchRows().filter((r) => r.addable).length;
+      announce(`Looked up ${links.length} links: ${ok} compan${ok === 1 ? "y" : "ies"} can be added.`);
+      return;
+    }
+  }
+}
+
+// Each link's row: what was found, and whether it can be added (answers, not
+// tracked yet, and not the same board as an earlier link).
+function batchRows() {
+  const b = cfg.batch, first = new Map();
+  return b.urls.map((url, i) => {
+    const r = b.results[i];
+    const row = { i, url, r, done: !!r, addable: false, note: "" };
+    if (!r) return row;
+    if (!r.board) { row.note = r.error; return row; }
+    if (first.has(r.board)) { row.note = `Same board as link ${first.get(r.board) + 1}.`; return row; }
+    first.set(r.board, i);
+    if (!r.ok) row.note = `Found it, but it didn't answer: ${r.error}`;
+    else if (r.tracked) row.note = "Already tracked.";
+    else row.addable = true;
+    return row;
+  });
+}
+
+function drawBatch(out) {
+  const b = cfg.batch;
+  if (b.error) { out.replaceChildren(el("div", { class: "errbox", text: b.error })); return; }
+  const rows = batchRows();
+  const done = rows.filter((r) => r.done).length;
+  const picked = () => rows.filter((r) => r.addable && b.pick[r.i] !== false);
+  const addBtn = el("button", { type: "button", class: "primary", id: "batchAdd" });
+  const label = () => {
+    const n = picked().length;
+    addBtn.textContent = n ? `Add ${n} compan${n === 1 ? "y" : "ies"}` : "Add companies";
+    addBtn.disabled = !n;
+  };
+  const items = rows.map((row) => {
+    const r = row.r;
+    const link = el("span", { class: "batch-url", text: row.url, title: row.url });
+    if (!row.done) return el("li", { class: "batch-row" }, el("span", { class: "spin", "aria-hidden": "true" }), el("div", {}, link, el("span", { class: "note", text: "Looking…" })));
+    const where = r.board ? `${LABELS.sources[r.source] || r.source} · ${r.token}` : "";
+    if (!row.addable) return el("li", { class: "batch-row off" }, el("span", { class: "batch-mark", "aria-hidden": "true", text: r.ok && r.board ? "✓" : "–" }),
+      el("div", {}, link, r.board ? el("span", { class: "note", text: `${r.name || r.token} · ${where}` }) : null,
+        el("span", { class: r.ok && r.tracked ? "note" : "warnline", text: row.note })));
+    const box = el("input", { type: "checkbox", "aria-label": `Add ${r.name || r.token}` });
+    box.checked = b.pick[row.i] !== false;
+    box.addEventListener("change", () => { b.pick[row.i] = box.checked; label(); });
+    const name = text(b.names[row.i] != null ? b.names[row.i] : r.name, "Company name");
+    name.setAttribute("aria-label", `Name for ${where}`);
+    name.addEventListener("input", () => { b.names[row.i] = name.value; });
+    return el("li", { class: "batch-row" }, box,
+      el("div", {}, link, el("div", { class: "rowline" }, name,
+        el("span", { class: "note", text: `${where} · ${n(r.jobs)} open posting${r.jobs === 1 ? "" : "s"}` })),
+        r.note ? el("span", { class: "note", text: r.note }) : null));
+  });
+  addBtn.addEventListener("click", () => addMany(picked().map((row) => ({ source: row.r.source, token: row.r.token,
+    name: String(b.names[row.i] != null ? b.names[row.i] : row.r.name || "").trim() }))));
+  label();
+  out.replaceChildren(el("div", { class: "found batch" },
+    el("div", { class: "rowline" }, el("b", { text: done < rows.length ? `Looked up ${done} of ${rows.length} links…` : `${rows.length} links looked up` }),
+      done < rows.length ? el("span", { class: "spin", "aria-hidden": "true" }) : null),
+    el("ul", { class: "batch-list" }, ...items),
+    el("div", { class: "rowline" }, addBtn,
+      el("button", { type: "button", class: "ghost", text: "Clear", onclick: () => { cfg.batch = null; out.replaceChildren(); $("companyUrl").focus(); } }))));
+}
+
+async function addMany(boards) {
+  const btn = $("batchAdd");
+  if (btn) { btn.disabled = true; btn.textContent = "Adding…"; }
+  try {
+    const r = await api("/api/companies/add-many", { boards });
+    cfg.companies = r;
+    const failed = r.failed || [];
+    cfg.batch = null;
+    keepDraft();
+    renderSettings();
+    const box = $("companyUrl");
+    if (box) { box.value = ""; box.focus(); }
+    const out = $("companyFound");
+    if (out && failed.length) out.replaceChildren(el("div", { class: "errbox" },
+      el("b", { text: `${failed.length} didn't answer when added, so ${failed.length === 1 ? "it wasn't" : "they weren't"} saved:` }),
+      el("ul", {}, ...failed.map((f) => el("li", { text: `${f.name}: ${f.error}` })))));
+    const one = r.added.length === 1;
+    const msg = r.added.length ? `Added ${one ? "1 company" : r.added.length + " companies"}. ${one ? "Its" : "Their"} jobs show after the next search.` : "";
+    if (r.undo) undoable(msg, "adding those companies", async () => {
+      await serverUndo(r.undo)();
+      cfg.companies = await api("/api/companies");
+      if (state.view === "settings") { keepDraft(); renderSettings(); }
+    });
+    else if (!failed.length) toast(msg);
+  } catch (e) {
+    fail(e);
+    if (btn) { btn.disabled = false; btn.textContent = "Add companies"; }
+  }
 }
 
 function boardList(boards) {

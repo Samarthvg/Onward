@@ -511,8 +511,15 @@ class EndpointTests(Base):
         key = self.items()["Tailorco"]["key"]
         self.prep.keep_sent(key, wait=True)           # not applied yet: nothing kept
         self.assertEqual(self.call("/api/sent"), (200, {}))
-        self.prep.mark(key, "applied")
+        self.prep.mark(key, "applied")              # starts its own copy in the background
+        # Copies made at once keep one file, not race on it.
+        runs = [threading.Thread(target=self.prep.keep_sent, args=(key,), kwargs={"wait": True}) for _ in range(4)]
+        for t in runs:
+            t.start()
         self.prep.keep_sent(key, wait=True)
+        for t in runs:
+            t.join()
+        self.assertEqual(len([f for f in self.prep.sent_dir().iterdir()]), 1, "one copy, no .tmp left behind")
         status, sent = self.call("/api/sent")
         self.assertEqual(list(sent), [key])
         get = lambda p: urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{self.port}{p}",
