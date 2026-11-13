@@ -340,6 +340,90 @@ class SimplifyTests(SourceTestCase):
         self.assertEqual(web.calls, [radar.SIMPLIFY_URL])
 
 
+class CompanyPageTests(SourceTestCase):
+    PAGE = ('<html><script src="https://boards.greenhouse.io/embed/job_board/js?for=jamf"></script>'
+            '<div id="grnhse_app"></div></html>')
+
+    def test_gh_jid_page_reads_the_greenhouse_posting(self):
+        url = "https://www.jamf.com/about/careers/jobs/?gh_jid=6254227004&gh_jid=6254227004"
+        job = {"id": 6254227004, "title": "Associate Software Engineer (Full Stack)",
+               "absolute_url": url, "location": {"name": "US Remote"},
+               "first_published": "2026-11-11T18:07:48-05:00", "content": "&lt;p&gt;Build things&lt;/p&gt;"}
+        web = self.web({"boards-api.greenhouse.io": job}, text={"jamf.com": self.PAGE})
+        p = radar.posting_loader(url)()
+        self.assertEqual(web.calls, ["https://boards-api.greenhouse.io/v1/boards/jamf/jobs/6254227004"])
+        self.assertEqual((p["source"], p["posted_field"], p["description"]),
+                         ("greenhouse", "first_published", "Build things"))
+
+    def test_page_without_a_board_falls_back_to_jsonld(self):
+        page = ('<script type="application/ld+json">{"@type": "JobPosting", "title": "Software Engineer", '
+                '"datePosted": "2026-11-10", "jobLocation": {"address": {"addressLocality": "Boston", '
+                '"addressCountry": "US"}}, "description": "<p>Code</p>"}</script>')
+        web = self.web({}, text={"3ds.com": page})
+        p = radar.posting_loader("https://www.3ds.com/careers/jobs/software-engineer-550656?gh_jid=1")()
+        self.assertEqual(web.calls, [])
+        self.assertEqual((p["source"], p["title"], p["posted_raw"]), ("careerpage", "Software Engineer", "2026-11-10"))
+
+
+class StillOpenTests(unittest.TestCase):
+    NOW = 2_000_000_000.0
+
+    def setUp(self) -> None:
+        self.conn = sqlite3.connect(":memory:")
+        radar.migrate(self.conn)
+        for name, value in (("DASHBOARD_DAYS", 30), ("PROGRAM_DAYS", 60)):
+            p = mock.patch.object(radar, name, value)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def add(self, key: str, source: str = "workday", last_seen_days: float = 3, posted_days: float = 10) -> None:
+        self.conn.execute(
+            "INSERT INTO jobs (key, company, title, location, remote, url, source, posted_at, posted_exact, "
+            "sponsorship, sponsor_note, entry_hint, first_seen, last_seen) "
+            "VALUES (?, 'Acme', 't', 'l', 0, ?, ?, ?, 0, 'unknown', '', 0, ?, ?)",
+            (key, f"https://acme.example/{key}", source, self.NOW - posted_days * 86400,
+             self.NOW - posted_days * 86400, self.NOW - last_seen_days * 86400))
+
+    def run_check(self, answers: dict[str, bool | None], seen: set[str] = frozenset(), now: float | None = None):
+        asked: list[str] = []
+
+        def still_open(url):
+            key = url.rsplit("/", 1)[1]
+            asked.append(key)
+            return answers.get(key)
+        with mock.patch.object(radar, "_still_open", still_open):
+            tally = radar.confirm_open(self.conn, set(seen), now or self.NOW)
+        return sorted(asked), tally
+
+    def last_seen(self, key: str) -> float:
+        return self.conn.execute("SELECT last_seen FROM jobs WHERE key = ?", (key,)).fetchone()[0]
+
+    def test_asks_only_unseen_windowed_postings_in_the_window(self):
+        self.add("open")
+        self.add("gone")
+        self.add("dunno")
+        self.add("seen-this-run")
+        self.add("recently-seen", last_seen_days=0.2)
+        self.add("full-list-source", source="greenhouse")
+        self.add("too-old", posted_days=90)
+        asked, tally = self.run_check({"open": True, "gone": False}, seen={"seen-this-run"})
+        self.assertEqual(asked, ["dunno", "gone", "open"])
+        self.assertEqual(tally, {"open": 1, "closed": 1, "unknown": 1, "waiting": 0})
+        self.assertEqual(self.last_seen("open"), self.NOW)
+        self.assertEqual(self.last_seen("gone"), self.NOW - 3 * 86400)
+
+        # Twelve hours later every unseen one is due again, except the closed one.
+        asked, _ = self.run_check({"open": True}, now=self.NOW + radar.CONFIRM_EVERY + 1)
+        self.assertEqual(asked, ["dunno", "open", "recently-seen", "seen-this-run"])
+
+    def test_a_closed_posting_seen_again_is_asked_again(self):
+        self.add("back")
+        self.run_check({"back": False})
+        self.conn.execute("UPDATE jobs SET last_seen = ? WHERE key = 'back'", (self.NOW + 3600,))
+        asked, _ = self.run_check({}, now=self.NOW + 3600 + radar.CONFIRM_EVERY + 1)
+        self.assertEqual(asked, ["back"])
+
+
 class GreenhouseTests(SourceTestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -566,6 +650,14 @@ class HttpTests(unittest.TestCase):
 
     def script(self, path: str, *responses) -> None:
         self.server.script[path] = list(responses)
+
+    def test_workday_taken_down_posting_is_gone(self):
+        self.script("/wday/cxs/t/s/job/a_1", (403, {}, b'{"errorCode":"S22","httpStatus":403,"message":"permission denied"}'))
+        self.script("/wday/cxs/t/s/job/b_2", (403, {}, b'{"errorCode":"X1","httpStatus":403}'))
+        with self.assertRaises(radar.BoardMissing):
+            radar._workday_posting(self.base, f"{self.base}/wday/cxs/t/s", "s", "/job/a_1")
+        with self.assertRaises(radar.urllib.error.HTTPError):       # any other 403 isn't read as closed
+            radar._workday_posting(self.base, f"{self.base}/wday/cxs/t/s", "s", "/job/b_2")
 
     def test_retry_after_pauses_then_succeeds(self):
         self.script("/robots.txt", (200, {"Content-Type": "text/plain"}, b"User-agent: *\nAllow: /\n"))

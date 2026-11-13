@@ -1055,7 +1055,14 @@ def _workday_days(posted_on: str | None) -> int | None:
 def _workday_posting(base: str, cxs: str, site: str, path: str, list_location: str = "") -> dict:
     """base: public site root ("https://nvidia.wd5.myworkdayjobs.com"),
     cxs: its JSON API root, path: "/job/<location>/<title>_<req id>"."""
-    info = get_json(f"{cxs}{path}").get("jobPostingInfo") or {}
+    try:
+        info = get_json(f"{cxs}{path}").get("jobPostingInfo") or {}
+    except urllib.error.HTTPError as e:
+        # A posting the company took down answers 403 "permission denied"
+        # (error code S22) rather than 404; its own search no longer lists it.
+        if e.code == 403 and b'"S22"' in (e.read() or b""):
+            raise BoardMissing(f"{cxs}{path}") from e
+        raise
     locs = [info.get("location") or list_location] + list(info.get("additionalLocations") or [])
     location = " / ".join(l for l in locs if l)
     start = info.get("startDate") or ""
@@ -1541,7 +1548,10 @@ def _ld_text(v) -> str:
 def jsonld_posting(url: str, source: str = "careerpage", page_url: str | None = None) -> dict | None:
     """A posting from the schema.org JobPosting most career pages embed for
     search engines. None when the page has none."""
-    page = get_text(url)
+    return _jsonld_in_page(get_text(url), page_url or url, source)
+
+
+def _jsonld_in_page(page: str, url: str, source: str) -> dict | None:
     for m in LD_JSON.finditer(page):
         try:
             data = json.loads(m.group(1).strip())
@@ -1550,7 +1560,7 @@ def jsonld_posting(url: str, source: str = "careerpage", page_url: str | None = 
         for item in _ld_items(data):
             types = item.get("@type")
             if "JobPosting" in (types if isinstance(types, list) else [types]):
-                return _jsonld_job(item, page_url or url, source)
+                return _jsonld_job(item, url, source)
     return None
 
 
@@ -1642,6 +1652,25 @@ def _ashby_by_id(token: str, pid: str) -> dict:
     raise BoardMissing(f"ashby:{token}/{pid}")
 
 
+GH_JID = re.compile(r"[?&]gh_jid=(\d+)")
+
+
+def _company_page_posting(url: str) -> dict | None:
+    """A posting on a company's own careers page. Pages with ?gh_jid= wrap a
+    Greenhouse posting: the board the page embeds gives the token, and the
+    posting comes from Greenhouse's API with its real description and date.
+    Otherwise the page's schema.org JobPosting, if it has one."""
+    jid = GH_JID.search(url)
+    page = get_text(url)
+    if jid:
+        import ats      # imports radar itself
+        board = ats.find_in_page(page)
+        if board and board.source == "greenhouse":
+            return _greenhouse_posting(board.token, get_json(
+                f"https://boards-api.greenhouse.io/v1/boards/{board.token}/jobs/{jid.group(1)}"))
+    return _jsonld_in_page(page, url, "careerpage")
+
+
 def posting_loader(url: str) -> Callable[[], dict | None] | None:
     parts = urllib.parse.urlsplit(url or "")
     host = parts.hostname or ""
@@ -1652,7 +1681,7 @@ def posting_loader(url: str) -> Callable[[], dict | None] | None:
         m = rx.match(url)
         if m:
             return lambda: load(m)
-    return lambda: jsonld_posting(url)
+    return lambda: _company_page_posting(url)
 
 
 SIMPLIFY_SPONSOR = {
@@ -1791,6 +1820,78 @@ def fetch_all(companies: dict[str, list[str]], skip: set[str] = frozenset(),
     return res
 
 
+# --------------------------------------------------------------------------
+# Still open?
+#
+# Workday, Oracle, SmartRecruiters, Eightfold, Amazon and iCIMS are read only
+# FETCH_DAYS deep (newest first), so a posting older than that stops being
+# seen while it is still open, and would read as closed STALE_AFTER_DAYS
+# later. Each run, such postings that weren't seen are asked about one by one
+# at their source, least recently asked first and each at most every
+# CONFIRM_EVERY: still there keeps them open, gone lets them close. A posting
+# its source called gone isn't asked again unless a fetch sees it again.
+
+WINDOWED = ("workday", "oracle", "smartrecruiters", "eightfold", "amazon", "icims")
+CONFIRM_EVERY = 12 * 3600
+CONFIRM_BUDGET = 90             # seconds per run
+CONFIRM_WORKERS = 16
+
+
+def _still_open(url: str) -> bool | None:
+    """True or False from the posting's own record; None when that can't be
+    told (no reader for the URL, a network error, an answer without a posting)."""
+    load = posting_loader(url)
+    if not load:
+        return None
+    try:
+        return True if is_posting(load()) else None
+    except BoardMissing:
+        return False
+    except Exception:
+        return None
+
+
+def confirm_open(conn: sqlite3.Connection, seen: set[str], now: float,
+                 budget: float = CONFIRM_BUDGET) -> dict[str, int]:
+    """Asks the sources about unseen postings from WINDOWED sources that are
+    still inside the shown window, and records the answers."""
+    window = now - max(DASHBOARD_DAYS, PROGRAM_DAYS) * 86400
+    rows = conn.execute(
+        f"""SELECT j.key, j.url FROM jobs j LEFT JOIN open_checks c ON c.key = j.key
+            WHERE j.source IN ({", ".join("?" * len(WINDOWED))})
+              AND j.last_seen < ? AND COALESCE(j.posted_at, j.first_seen) >= ?
+              AND (c.asked IS NULL OR c.asked < ?)
+              AND (c.closed_at IS NULL OR c.closed_at < j.last_seen)
+            ORDER BY COALESCE(c.asked, 0), j.last_seen""",
+        (*WINDOWED, now - CONFIRM_EVERY, window, now - CONFIRM_EVERY)).fetchall()
+    rows = [r for r in rows if r[0] not in seen]
+    tally = {"open": 0, "closed": 0, "unknown": 0}
+    answers: list[tuple[str, bool | None]] = []
+    deadline = time.monotonic() + budget
+    with ThreadPoolExecutor(max_workers=CONFIRM_WORKERS) as pool:
+        it = iter(rows)
+        pending = {pool.submit(_still_open, url): key for key, url in
+                   (next(it, (None, None)) for _ in range(CONFIRM_WORKERS * 2)) if key}
+        while pending:
+            fut = next(as_completed(pending))
+            answers.append((pending.pop(fut), fut.result()))
+            if time.monotonic() < deadline:
+                key, url = next(it, (None, None))
+                if key:
+                    pending[pool.submit(_still_open, url)] = key
+    with conn:
+        for key, state in answers:
+            tally["open" if state else "closed" if state is False else "unknown"] += 1
+            if state:
+                conn.execute("UPDATE jobs SET last_seen = ? WHERE key = ?", (now, key))
+            conn.execute("INSERT INTO open_checks (key, asked, closed_at) VALUES (?, ?, ?) "
+                         "ON CONFLICT(key) DO UPDATE SET asked = excluded.asked, closed_at = excluded.closed_at",
+                         (key, now, now if state is False else None))
+        conn.execute("DELETE FROM open_checks WHERE key NOT IN (SELECT key FROM jobs)")
+    tally["waiting"] = len(rows) - len(answers)
+    return tally
+
+
 def dedupe(jobs: list[Job]) -> list[Job]:
     """Same role can arrive from an ATS board and from the Simplify feed.
     Keep the ATS copy (it carries the real description) and borrow the
@@ -1859,6 +1960,11 @@ CREATE TABLE IF NOT EXISTS robots (
     host    TEXT PRIMARY KEY,
     fetched REAL NOT NULL,
     body    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS open_checks (
+    key       TEXT PRIMARY KEY,     -- jobs.key
+    asked     REAL NOT NULL,        -- last time its source was asked (confirm_open)
+    closed_at REAL                  -- when the source said it's gone
 );
 CREATE TABLE IF NOT EXISTS run_funnel (
     started REAL NOT NULL,          -- runs.started of the run
@@ -2733,6 +2839,9 @@ def locked_main(args: argparse.Namespace) -> int:
         prev, first_run = conn.execute("SELECT MAX(finished), MIN(started) FROM runs").fetchone()
         with conn:
             new = store(conn, jobs, started)
+            if not pulled:      # this copy searched the boards itself
+                confirmed = confirm_open(conn, {j.key for j in jobs}, started)
+                log("  still open: " + ", ".join(f"{n} {k}" for k, n in confirmed.items()))
             save_state(conn, res, started)
             discover.record_run(conn, [b for b in res.attempted if b in res.kept or b in res.failed],
                                 res.kept, res.missing, started)
