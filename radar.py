@@ -392,7 +392,7 @@ def extract_skills(title: str, description: str) -> dict[str, list[str]]:
 # within the last 7 days, which is what decides how many new jobs a week
 # the radar can find.
 
-FUNNEL_STAGES = ("seen", "title", "level", "location", "details", "kept")
+FUNNEL_STAGES = ("seen", "title", "level", "location", "details", "near", "kept")
 FRESH_DAYS = 7
 
 
@@ -451,19 +451,50 @@ def is_fresh(posted_at: float | None) -> bool:
     return posted_at is not None and posted_at >= time.time() - FRESH_DAYS * 86400
 
 
+# Near misses: a title no role's keywords take but that looks like technical
+# work (filters.near_miss), at a level and place some role wants. Its
+# description is read too, so each copy can judge it against its resume
+# (description_fits); the posting is stored with no roles. Reading a new one's
+# details costs a request, so at most NEAR_PER_RUN are read per run, and none
+# from a host that has answered 429 this run.
+NEAR = "near"                   # screen()'s answer for a near miss: truthy, but not True
+NEAR_PER_RUN = 300
+PUSHED_BACK: set[str] = set()   # hosts that answered 429 this run
+
+
+class Budget:
+    def __init__(self, n: int) -> None:
+        self.lock = threading.Lock()
+        self.left = n
+
+    def take(self) -> bool:
+        with self.lock:
+            if self.left <= 0:
+                return False
+            self.left -= 1
+            return True
+
+
+NEAR_BUDGET = Budget(NEAR_PER_RUN)
+
+
 def screen(source: str, title: str, location: str | None = None, country: str | None = None,
-           remote: bool = False, fresh: bool = False) -> bool:
+           remote: bool = False, fresh: bool = False) -> bool | str:
     """The listing-only checks (title, level, and location when the listing
     gives one), counted in the funnel. Fetchers call it before paying for a
-    posting's details; build_job() calls it for postings that came whole."""
+    posting's details; build_job() calls it for postings that came whole.
+    True when a role takes the title, NEAR for a near miss, else False."""
     FUNNEL.add(source, "seen", fresh)
     stage = SEARCH.title_stage(title)
     if stage is None and location is not None and not SEARCH.location_wanted(location, country, remote):
         stage = "location"
     if stage:
-        FUNNEL.add(source, stage, fresh)
-        if stage == "title" and fresh and SEARCH.level_and_place_fit(title, location, country, remote):
+        fits = stage == "title" and SEARCH.level_and_place_fit(title, location, country, remote)
+        if fits and fresh:
             MISSES.add(title)
+        if fits and filters.near_miss(title):
+            return NEAR
+        FUNNEL.add(source, stage, fresh)
         return False
     return True
 
@@ -490,12 +521,16 @@ def build_job(*, company, title, location, country, remote, url, source,
     yoe = min_years(description)
     entry = bool(ENTRY_HINT.search(title))
     pay = filters.pay_range(description)
-    roles = SEARCH.matching(filters.Facts(company, title, location, country, bool(remote or REMOTE.search(location)),
-                                             description or "", yoe, entry, pay))
-    if not roles:
+    facts = filters.Facts(company, title, location, country, bool(remote or REMOTE.search(location)),
+                          description or "", yoe, entry, pay)
+    roles = SEARCH.matching(facts)
+    if roles:
+        FUNNEL.add(src, "kept", fresh)
+    elif filters.near_miss(title) and description and SEARCH.matching_besides_title(facts):
+        FUNNEL.add(src, "near", fresh)      # kept with no roles; each copy judges the description
+    else:
         FUNNEL.add(src, "details", fresh)
         return None
-    FUNNEL.add(src, "kept", fresh)
     spons, note = sponsorship(description)
     # "e.g." / "i.e." would end the sentence early for the [^.] window.
     no_opt = bool(NO_OPT.search(re.sub(r"\b(e\.g|i\.e)\.", "eg", description or "", flags=re.I)))
@@ -765,6 +800,8 @@ def fetch(url: str, body: dict | None = None, *, accept: str = "application/json
                 raise BoardMissing(url) from e
             if e.code not in RETRY_STATUS:
                 raise
+            if e.code == 429:
+                PUSHED_BACK.add(parts.hostname)
             asked = retry_after(e.headers.get("Retry-After"))
             # Without a Retry-After, back off from at least twice the host's own spacing.
             wait = asked if asked is not None else max(delay, 2 * gate.interval)
@@ -830,11 +867,16 @@ GONE = {"gone": True}                   # 404/410 at the source: the posting clo
 UNAVAILABLE = {"unavailable": True}     # page exists but carries no posting record
 
 
-def cached_posting(key: str, load: Callable[[], dict | None]) -> dict:
-    """build_job() keyword arguments (minus company) for one posting, or GONE / UNAVAILABLE."""
+def cached_posting(key: str, load: Callable[[], dict | None], near: bool = False) -> dict:
+    """build_job() keyword arguments (minus company) for one posting, or GONE / UNAVAILABLE.
+    near: a near miss (screen() said NEAR), read only within this run's
+    budget and not from a host that pushed back; one left unread is asked
+    for again next run."""
     hit = DETAILS.get(key)
     if hit is not None:
         return hit
+    if near and (urllib.parse.urlsplit(key).hostname in PUSHED_BACK or not NEAR_BUDGET.take()):
+        return UNAVAILABLE
     try:
         posting = load() or UNAVAILABLE
     except BoardMissing:
@@ -950,9 +992,11 @@ def fetch_greenhouse(token: str) -> list[Job]:
     out = []
     for j in data.get("jobs", []):
         live = _greenhouse_posting(token, j)
-        if not screen("greenhouse", live["title"] or "", live["location"], fresh=is_fresh(live["posted_at"])):
+        ok = screen("greenhouse", live["title"] or "", live["location"], fresh=is_fresh(live["posted_at"]))
+        if not ok:
             continue
-        detail = cached_posting(live["verify_url"], lambda: _greenhouse_posting(token, get_json(live["verify_url"])))
+        detail = cached_posting(live["verify_url"], lambda: _greenhouse_posting(token, get_json(live["verify_url"])),
+                                near=ok == NEAR)
         if not is_posting(detail):
             continue
         job = build_job(company=j.get("company_name") or token, **{**live, "description": detail["description"]},
@@ -1127,11 +1171,12 @@ def fetch_workday(token: str) -> list[Job]:
             if days is not None and days > FETCH_DAYS:
                 continue
             title = p.get("title") or ""
-            if not screen("workday", title, fresh=days is not None and days <= FRESH_DAYS):
+            ok = screen("workday", title, fresh=days is not None and days <= FRESH_DAYS)
+            if not ok:
                 continue
             path = p.get("externalPath") or ""
             posting = cached_posting(f"{base}/{site}{path}", lambda: _workday_posting(
-                base, cxs, site, path, p.get("locationsText") or ""))
+                base, cxs, site, path, p.get("locationsText") or ""), near=ok == NEAR)
             if not is_posting(posting):
                 continue
             posted = posting["posted_at"]
@@ -1200,12 +1245,14 @@ def fetch_smartrecruiters(token: str) -> list[Job]:
         for p in content:
             released = parse_iso(p.get("releasedDate"))
             title = p.get("name") or ""
-            if (released and released < cutoff) or not screen(
-                    "smartrecruiters", title, fresh=is_fresh(released)):
+            if released and released < cutoff:
+                continue
+            ok = screen("smartrecruiters", title, fresh=is_fresh(released))
+            if not ok:
                 continue
             pid = p.get("id")
             posting = cached_posting(f"https://jobs.smartrecruiters.com/{token}/{pid}", lambda: _smartrecruiters_posting(
-                token, get_json(f"{SR_API}/{token}/postings/{pid}")))
+                token, get_json(f"{SR_API}/{token}/postings/{pid}")), near=ok == NEAR)
             if not is_posting(posting):
                 continue
             company = DISPLAY_NAMES.get(token) or (p.get("company") or {}).get("name") or token
@@ -1293,11 +1340,13 @@ def fetch_oracle(token: str) -> list[Job]:
             title = r.get("Title") or ""
             locs = [r.get("PrimaryLocation") or ""] + [s.get("Name") or "" for s in r.get("secondaryLocations") or []]
             country = r.get("PrimaryLocationCountry") if len(locs) == 1 else None
-            if not screen("oracle", title, " / ".join(l for l in locs if l), country,
-                          fresh=ORACLE_DATE_FACET <= FRESH_DAYS):
+            ok = screen("oracle", title, " / ".join(l for l in locs if l), country,
+                        fresh=ORACLE_DATE_FACET <= FRESH_DAYS)
+            if not ok:
                 continue
             rid = str(r.get("Id"))
-            posting = cached_posting(_oracle_page(host, site, rid), lambda: _oracle_posting(host, number, rid, site))
+            posting = cached_posting(_oracle_page(host, site, rid), lambda: _oracle_posting(host, number, rid, site),
+                                     near=ok == NEAR)
             if is_posting(posting):
                 job = build_job(company=display_name(token), **posting, screened=True)
                 if job:
@@ -1360,11 +1409,14 @@ def fetch_eightfold(token: str) -> list[Job]:
             ts = p.get("postedTs")
             title = p.get("name") or ""
             location = " / ".join(p.get("locations") or [])
-            if (ts and ts < cutoff) or not screen("eightfold", title, location,
-                                                  fresh=is_fresh(float(ts) if ts else None)):
+            if ts and ts < cutoff:
+                continue
+            ok = screen("eightfold", title, location, fresh=is_fresh(float(ts) if ts else None))
+            if not ok:
                 continue
             pid = str(p.get("id"))
-            posting = cached_posting(f"https://{host}/careers/job/{pid}", lambda: _eightfold_posting(host, pid))
+            posting = cached_posting(f"https://{host}/careers/job/{pid}", lambda: _eightfold_posting(host, pid),
+                                     near=ok == NEAR)
             if is_posting(posting):
                 job = build_job(company=company, **posting, screened=True)
                 if job:
@@ -1513,10 +1565,12 @@ def _fetch_icims_portal(host: str) -> list[Job]:
         if not m or (modified and modified < cutoff):
             continue
         slug_title = urllib.parse.unquote(m.group(2)).replace("-", " ")
-        if not screen("icims", slug_title, fresh=is_fresh(modified)):
+        ok = screen("icims", slug_title, fresh=is_fresh(modified))
+        if not ok:
             continue
         page = html.unescape(loc)
-        posting = cached_posting(page, lambda: jsonld_posting(f"{page}?in_iframe=1", "icims", page))
+        posting = cached_posting(page, lambda: jsonld_posting(f"{page}?in_iframe=1", "icims", page),
+                                 near=ok == NEAR)
         if is_posting(posting):
             job = build_job(company=display_name(host), **posting, screened=True)
             if job:
@@ -2976,7 +3030,7 @@ def discover_step(discover) -> None:
 
 def funnel_line(t: dict[str, int]) -> str:
     return (f"{t['seen']} seen, -{t['title']} title, -{t['level']} level, -{t['location']} location, "
-            f"-{t['details']} details, {t['kept']} kept")
+            f"-{t['details']} details, {t['near']} near misses, {t['kept']} kept")
 
 
 def funnel_report(started: float | None = None) -> str:

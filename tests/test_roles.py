@@ -414,7 +414,8 @@ class DescriptionFitTests(unittest.TestCase):
         self.store("Agentic AI Builder, Senior Officer", self.FIT)                # senior: level still applies
         self.store("Agentic AI Builder, Officer", self.FIT, location="London, UK")  # location still applies
         self.store("Research Scientist", self.FIT + "• PhD in Computer Science required\n")
-        self.assertEqual(self.shown(), {"Agentic AI Builder, Officer": ["software"]})
+        self.store("Applied Scientist", self.FIT + "• Master's or PhD in Computer Science\n")
+        self.assertEqual(self.shown(), {"Agentic AI Builder, Officer": ["software"], "Applied Scientist": ["software"]})
 
     def test_no_resume_no_fit(self):
         (radar.RESUME_DIR / "scoring.json").unlink()

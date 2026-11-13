@@ -483,11 +483,21 @@ class FunnelTests(SourceTestCase):
         self.assertIsNone(self.job(title="Senior Software Engineer"))                # level
         self.assertIsNone(self.job(location="Berlin, Germany"))                      # location
         self.assertIsNone(self.job(description="Requirements\n• 5+ years of experience with Go"))   # details
-        self.assertIsNone(self.job(title="Data Analyst", posted_at=time.time() - 30 * 86400))      # old
+        self.assertIsNone(self.job(title="Barista", posted_at=time.time() - 30 * 86400))           # old
+        near = self.job(title="Agentic AI Builder, Officer", description="Requirements\n• Python, LLMs")
+        self.assertEqual(near.roles, "[]")                                            # near miss, kept unroled
         self.assertEqual(radar.FUNNEL.totals(),
-                         {"seen": 6, "title": 2, "level": 1, "location": 1, "details": 1, "kept": 1})
+                         {"seen": 7, "title": 2, "level": 1, "location": 1, "details": 1, "near": 1, "kept": 1})
         self.assertEqual(radar.FUNNEL.totals(fresh=True),
-                         {"seen": 5, "title": 1, "level": 1, "location": 1, "details": 1, "kept": 1})
+                         {"seen": 6, "title": 1, "level": 1, "location": 1, "details": 1, "near": 1, "kept": 1})
+
+    def test_near_miss_needs_a_description_and_the_other_rules(self):
+        self.assertIsNone(self.job(title="Agentic AI Builder, Officer"))                          # nothing to judge
+        self.assertIsNone(self.job(title="Agentic AI Builder, Officer", description="Python",
+                                   location="London, UK"))
+        self.assertIsNone(self.job(title="Senior Agentic AI Builder", description="Python"))
+        self.assertIsNone(self.job(title="Account Executive, AI", description="Python"))       # not technical
+
 
     def test_screened_postings_are_not_seen_twice(self):
         self.assertTrue(radar.screen("workday", "Software Engineer", fresh=True))
@@ -503,6 +513,48 @@ class FunnelTests(SourceTestCase):
         self.assertEqual(search.title_stage("Barista"), "title")
         self.assertEqual(search.title_stage("Staff Software Engineer"), "level")
         self.assertIsNone(search.title_stage("Software Engineer I"))
+
+
+class NearMissTests(SourceTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        for name, value in (("FUNNEL", radar.Funnel()), ("NEAR_BUDGET", radar.Budget(2)), ("PUSHED_BACK", set())):
+            p = mock.patch.object(radar, name, value)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_screen_answers(self):
+        self.assertIs(radar.screen("workday", "Software Engineer"), True)
+        self.assertEqual(radar.screen("workday", "Agentic AI Builder, Officer"), radar.NEAR)
+        self.assertIs(radar.screen("workday", "Agentic AI Builder, Officer", "London, UK"), False)
+        self.assertIs(radar.screen("workday", "Barista"), False)
+
+    def test_new_near_misses_read_within_budget_and_not_from_hosts_that_pushed_back(self):
+        loaded = []
+
+        def load(key):
+            return lambda: loaded.append(key) or {"title": key}
+        radar.PUSHED_BACK.add("busy.example")
+        self.assertEqual(radar.cached_posting("https://busy.example/1", load("b1"), near=True), radar.UNAVAILABLE)
+        self.assertEqual(radar.cached_posting("https://a.example/1", load("a1"), near=True), {"title": "a1"})
+        self.assertEqual(radar.cached_posting("https://a.example/2", load("a2"), near=True), {"title": "a2"})
+        self.assertEqual(radar.cached_posting("https://a.example/3", load("a3"), near=True), radar.UNAVAILABLE)
+        self.assertNotIn("https://a.example/3", radar.DETAILS)             # asked again next run
+        # Cached ones cost nothing, and postings a role takes have no budget.
+        self.assertEqual(radar.cached_posting("https://a.example/1", load("x"), near=True), {"title": "a1"})
+        self.assertEqual(radar.cached_posting("https://a.example/4", load("a4")), {"title": "a4"})
+        self.assertEqual(loaded, ["a1", "a2", "a4"])
+
+    def test_workday_near_miss_is_read_and_stored_unroled(self):
+        listing = {"total": 1, "jobPostings": [{"title": "Agentic AI Builder, Officer", "postedOn": "Posted Today",
+                                                "externalPath": "/job/Boston/Agentic-AI-Builder_R-1",
+                                                "locationsText": "Boston, Massachusetts"}]}
+        detail = {"jobPostingInfo": {"title": "Agentic AI Builder, Officer", "location": "Boston, Massachusetts",
+                                     "startDate": time.strftime("%Y-%m-%d"),
+                                     "jobDescription": "<p>Requirements</p><ul><li>Python and LLMs</li></ul>"}}
+        self.web({"/job/Boston": detail, "/jobs": listing})
+        jobs = radar.fetch_workday("statestreet.wd1/Global")
+        self.assertEqual([(j.title, j.roles) for j in jobs], [("Agentic AI Builder, Officer", "[]")])
 
 
 # --------------------------------------------------------------------------

@@ -342,6 +342,20 @@ ROLE_TEMPLATES: dict[str, tuple[str, list[str]]] = {
 
 _SOFTWARE = TitleRules(SOFTWARE_KEYWORDS)
 
+# Titles no role's keywords take that may still be technical work ("Agentic
+# AI Builder, Officer", "Research Scientist", "Quantitative Researcher"). The
+# search reads their descriptions too, within a budget per run, so each copy
+# can judge them against its own resume (radar.description_fits).
+NEAR_MISS = re.compile(
+    r"\b(ai|ml|machine learning|deep learning|llms?|genai|generative|agentic|agents?|automation|data|analytics|"
+    r"scientist|research(?:er)?|quant(?:itative)?|algorithms?|modell?ing|robotics?|computer vision|nlp|"
+    r"perception|software|developer|engineer(?:ing)?|platform|cloud|builder|programmer|computational)\b", re.I)
+_NOT_TECH = TitleRules([NOT_TECH.lstrip("- ") + "/data entry/business development/audit/grc/compliance"])
+
+
+def near_miss(title: str) -> bool:
+    return bool(NEAR_MISS.search(title or "")) and not _NOT_TECH.matches(title)
+
 
 def is_swe_title(title: str) -> bool:
     return _SOFTWARE.matches(title)
