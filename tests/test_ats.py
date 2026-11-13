@@ -109,6 +109,73 @@ class DetectTests(unittest.TestCase):
         self.assertIn("No supported job board", r["error"])
 
 
+class CareersPageTests(unittest.TestCase):
+    """Careers pages whose board takes more than one look to find."""
+
+    def pages(self, pages):
+        def get_text(url):
+            if url not in pages:
+                raise AssertionError(f"unexpected request {url}")
+            if isinstance(pages[url], Exception):
+                raise pages[url]
+            return pages[url]
+        return mock.patch.object(radar, "get_text", get_text)
+
+    def test_icims_links_that_arent_a_portal(self):
+        for url in ("https://www.icims.com/legal/privacy-notice-website", "https://icims.com/",
+                    "https://cookie-policy-scripts.icims.com/sig/careers.sig.com/script.js"):
+            self.assertIsNone(ats.detect(url), url)
+        self.assertEqual(ats.detect("https://careers-gdms.icims.com/jobs/search").token, "careers-gdms.icims.com")
+
+    def test_an_icims_site_on_the_company_domain(self):
+        # careers.sig.com: iCIMS runs it, and its page links to sig.icims.com
+        # downloads and iCIMS's own privacy notice; the board is the page's own host.
+        page = ('<script src="https://cookie-policy-scripts.icims.com/sig/careers.sig.com/script.js"></script>'
+                '<a href="https://sig.icims.com/icims2/servlet/icims2?module=AppInert&id=1">PDF</a>' * 3 +
+                '<a href="https://www.icims.com/legal/privacy-notice-website/">Privacy</a>')
+        with self.pages({"https://careers.sig.com/jobs": page}):
+            b = ats.find_board("https://careers.sig.com/jobs")
+        self.assertEqual((b.source, b.token), ("icims", "careers.sig.com"))
+        self.assertEqual(ats.default_name(b), "SIG")
+
+    def test_the_board_a_listings_page_down(self):
+        # acadian-asset.com/careers names no board; its "open positions" page embeds Greenhouse.
+        careers = ('<a href="/about-us">About</a><a href="/careers/open-positions">Open positions</a>'
+                   '<a href="https://other.example/jobs">elsewhere</a><a href="/careers/life-here">Life</a>')
+        with self.pages({"https://www.acadian.example/careers": careers,
+                         "https://www.acadian.example/careers/open-positions":
+                             '<script src="https://boards.greenhouse.io/embed/job_board/js?for=acadianllc"></script>'}):
+            b = ats.find_board("https://www.acadian.example/careers")
+        self.assertEqual((b.source, b.token), ("greenhouse", "acadianllc"))
+
+    def test_listing_links_stay_on_the_site_and_come_in_order(self):
+        page = ('<a href="/jobs">Jobs</a><a href="https://jobs.acme.example/search-jobs">Search</a>'
+                '<a href="https://elsewhere.example/open-positions">no</a><a href="/careers">self</a>'
+                '<a href="/careers/brochure.pdf">pdf</a><a href="/team">team</a>')
+        self.assertEqual(ats.listing_links("https://acme.example/careers", page),
+                         ["https://jobs.acme.example/search-jobs", "https://acme.example/jobs"])
+        self.assertEqual(ats._site("careers.acme.co.uk"), "acme.co.uk")
+
+    def test_followed_pages_are_capped_and_may_fail(self):
+        links = "".join(f'<a href="/jobs/{i}">Jobs {i}</a>' for i in range(6))
+        opened = []
+        def get_text(url):
+            opened.append(url)
+            if url.endswith("/jobs/0"):
+                raise urllib.error.URLError("down")
+            return links if url.endswith("careers") else "<html>nothing</html>"
+        with mock.patch.object(radar, "get_text", get_text):
+            self.assertIsNone(ats.find_board("https://acme.example/careers"))
+        self.assertEqual(len(opened), 1 + ats.MAX_FOLLOWED)
+
+    def test_a_site_that_turns_readers_away(self):
+        err = urllib.error.HTTPError("https://www.citadel.example/careers", 403, "Forbidden", {}, None)
+        with self.pages({"https://www.citadel.example/careers": err}):
+            r = ats.lookup("https://www.citadel.example/careers")
+        self.assertFalse(r["ok"])
+        self.assertIn("turns away automated readers (HTTP 403)", r["error"])
+
+
 class FakeApi:
     def __init__(self, routes):
         self.routes, self.calls = routes, []
@@ -287,6 +354,20 @@ class EndpointTests(unittest.TestCase):
         st, u = self.call("/api/undo", {"id": r["undo"]})
         self.assertEqual(st, 200, u)
         self.assertEqual(self.store.load()["companies"]["added"], {})
+
+    def test_a_tracked_workday_board_whatever_its_case(self):
+        # Bank of America's careers page links to ghr.wd1/lateral-us; Onward ships ghr.wd1/Lateral-US.
+        with mock.patch.object(ats, "find_board", lambda url: ats.Board("workday", "ghr.wd1/lateral-us")):
+            st, r = self.call("/api/companies/lookup", {"url": "https://careers.bankofamerica.com/en-us"})
+        self.assertEqual((r["tracked"], r["board"], r["name"]), (True, "workday:ghr.wd1/Lateral-US", "Bank of America"))
+        st, r = self.call("/api/companies/add", {"source": "workday", "token": "ghr.wd1/LATERAL-us"})
+        self.assertEqual(self.store.load()["companies"]["added"], {}, "not added a second time")
+
+    def test_a_new_board_takes_a_name_onward_knows(self):
+        # A Workday tenant named in companies.json ("ghr": Bank of America), on another site of its.
+        with mock.patch.object(ats, "find_board", lambda url: ats.Board("workday", "ghr.wd1/Campus")):
+            st, r = self.call("/api/companies/lookup", {"url": "https://ghr.wd1.myworkdayjobs.com/Campus"})
+        self.assertEqual((r["tracked"], r["name"]), (False, "Bank of America"))
 
     def test_undo_takes_a_first_added_company_back_out(self):
         # The section as it was is put back whole: merging it in would keep

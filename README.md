@@ -30,7 +30,9 @@ It runs on your own computer. Your resume, details and applications stay there; 
 ### Fresh postings, with proof
 
 Onward checks about 2,800 companies' own job boards every 30 minutes (Greenhouse, Lever, Ashby, Workday,
-SmartRecruiters, iCIMS, Oracle, Eightfold, and Amazon's, Google's and Microsoft's own sites), and finds more
+SmartRecruiters, iCIMS, Oracle, Eightfold, Workable, BambooHR, Rippling, Breezy HR, Paylocity, ADP, Jobvite,
+JazzHR, Pinpoint, Comeet, SAP SuccessFactors, Avature, Taleo, and Amazon's, Google's and Microsoft's own
+sites), and finds more
 each day in public lists of new-grad and internship postings. Each posting shows when the company posted it,
 with a link to the raw record so you can check, how long it has been up, and whether it was reposted. Postings
 older than 30 days are left out (60 for new-grad programs).

@@ -257,7 +257,9 @@ DRAFT_BACKENDS = ("chatgpt", "claude-code", "openai-api", "claude-api")
 # it again from everything its entry says.
 STRICTNESS = ("none", "reword", "rewrite")
 SETUP_STEPS = ("welcome", "resume", "profile", "role", "ai", "extension", "fetch")
-SOURCES = ("greenhouse", "lever", "ashby", "workday", "smartrecruiters", "oracle", "eightfold", "amazon", "icims")
+SOURCES = ("greenhouse", "lever", "ashby", "workday", "smartrecruiters", "oracle", "eightfold", "amazon", "icims",
+           "workable", "bamboohr", "rippling", "breezy", "paylocity", "adp", "jobvite", "jazzhr", "pinpoint", "comeet",
+           "successfactors", "avature", "taleo")
 
 ID = r"[a-z0-9][a-z0-9-]{0,39}"
 TIME = r"([01]?\d|2[0-3]):[0-5]\d"

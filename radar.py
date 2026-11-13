@@ -593,6 +593,18 @@ HOST_INTERVAL = {               # seconds between request starts, matched by hos
     "api.smartrecruiters.com": 0.25,
     "myworkdayjobs.com": 0.5,
     "myworkdaysite.com": 0.5,
+    "apply.workable.com": 0.5,
+    "bamboohr.com": 0.5,
+    "ats.rippling.com": 0.5,
+    "breezy.hr": 0.5,
+    "pinpointhq.com": 0.5,
+    "comeet.co": 0.5,
+    "recruiting.paylocity.com": 1.0,    # HTML pages, not an API
+    "workforcenow.adp.com": 1.0,
+    "jobs.jobvite.com": 1.0,
+    "applytojob.com": 1.0,
+    "avature.net": 1.0,
+    "taleo.net": 1.0,
     "oraclecloud.com": 0.5,
     "eightfold.ai": 3.0,        # Eightfold throttles bursts: 429s for ~20s after a few quick requests
     "careers.microsoft.com": 3.0,
@@ -773,7 +785,7 @@ def retry_after(value: str | None) -> float | None:
 
 
 def fetch(url: str, body: dict | None = None, *, accept: str = "application/json",
-          retries: int = 3) -> bytes:
+          retries: int = 3, extra: dict | None = None) -> bytes:
     parts = urllib.parse.urlsplit(url)
     netloc = parts.netloc
     if parts.hostname not in ROBOTS_EXEMPT:
@@ -781,7 +793,7 @@ def fetch(url: str, body: dict | None = None, *, accept: str = "application/json
         if not robots_for(parts.scheme, netloc).allowed(path):
             raise Disallowed(url)
     gate = gate_for(netloc)
-    headers = {"User-Agent": USER_AGENT, "Accept": accept, "Accept-Encoding": "gzip"}
+    headers = {"User-Agent": USER_AGENT, "Accept": accept, "Accept-Encoding": "gzip", **(extra or {})}
     data = None
     if body is not None:
         headers["Content-Type"] = "application/json"
@@ -821,12 +833,12 @@ def fetch(url: str, body: dict | None = None, *, accept: str = "application/json
             delay *= 2
 
 
-def get_json(url: str, retries: int = 3, body: dict | None = None):
-    return json.loads(fetch(url, body, retries=retries).decode("utf-8"))
+def get_json(url: str, retries: int = 3, body: dict | None = None, headers: dict | None = None):
+    return json.loads(fetch(url, body, retries=retries, extra=headers).decode("utf-8"))
 
 
-def post_json(url: str, body: dict, retries: int = 3):
-    return get_json(url, retries, body)
+def post_json(url: str, body: dict, retries: int = 3, headers: dict | None = None):
+    return get_json(url, retries, body, headers)
 
 
 def get_text(url: str) -> str:
@@ -1077,6 +1089,838 @@ def fetch_ashby(token: str) -> list[Job]:
         if (j.get("employmentType") or "") in skipped_commitments({"PartTime", "Contract", "Temporary"}, {"Intern"}):
             continue
         job = build_job(company=display_name(token), **_ashby_posting(token, j))
+        if job:
+            out.append(job)
+    return out
+
+
+WORKABLE_WIDGET = "https://apply.workable.com/api/v1/widget/accounts/{}"
+
+
+def _workable_location(loc: dict) -> str:
+    return ", ".join(x for x in (loc.get("city"), loc.get("region") or loc.get("state"), loc.get("country")) if x)
+
+
+def fetch_workable(token: str) -> list[Job]:
+    """token: the account in apply.workable.com/<token>/. The widget feed
+    sends the whole board, descriptions included, in one answer, with one
+    row per location of a job; rows are merged by shortcode."""
+    url = WORKABLE_WIDGET.format(urllib.parse.quote(token))
+    data = get_json_once(url + "?details=true")
+    company = DISPLAY_NAMES.get(token) or data.get("name") or display_name(token)
+    jobs: dict[str, dict] = {}
+    for j in data.get("jobs") or []:
+        code = j.get("shortcode")
+        if not code:
+            continue
+        seen = jobs.setdefault(code, {**j, "_locs": []})
+        locs = [l for l in j.get("locations") or [] if not l.get("hidden")] or [j]
+        for l in locs:
+            text = _workable_location(l)
+            if text and text not in seen["_locs"]:
+                seen["_locs"].append(text)
+    skip = {s.lower() for s in skipped_commitments({"Part-time", "Contract", "Temporary"}, {"Internship"})}
+    out = []
+    for j in jobs.values():
+        if (j.get("employment_type") or "").lower() in skip:
+            continue
+        countries = {l.get("countryCode") or l.get("country") for l in j.get("locations") or [] if not l.get("hidden")}
+        job = build_job(
+            company=company, title=j.get("title"), location=" / ".join(j["_locs"]),
+            country=j.get("country") if len(countries) <= 1 else None, remote=bool(j.get("telecommuting")),
+            # The feed's own links (/j/<code>) leave out the account, which reading one posting needs.
+            url=f"https://apply.workable.com/{token}/j/{j['shortcode']}/", source="workable",
+            posted_at=_day_start(j.get("published_on")), posted_exact=False,       # a date, no time
+            description=strip_html(j.get("description")),
+            apply_url=f"https://apply.workable.com/{token}/j/{j['shortcode']}/apply/",
+            verify_url=url, posted_field="published_on", posted_raw=j.get("published_on") or "")
+        if job:
+            out.append(job)
+    return out
+
+
+def _workable_posting(token: str, code: str) -> dict:
+    """One posting from Workable's own job API (what its careers page reads)."""
+    api = f"https://apply.workable.com/api/v2/accounts/{urllib.parse.quote(token)}/jobs/{code}"
+    j = get_json(api)
+    loc = j.get("location") or {}
+    published = j.get("published") or ""
+    url = f"https://apply.workable.com/{token}/j/{code}/"
+    return dict(
+        title=j.get("title") or "",
+        location=_workable_location(loc),
+        country=loc.get("country"),
+        remote=bool(j.get("remote")) or j.get("workplace") == "remote",
+        url=url, source="workable",
+        posted_at=_day_start(published), posted_exact=False,
+        description=strip_html(" ".join(j.get(k) or "" for k in ("description", "requirements", "benefits"))),
+        apply_url=url + "apply/", verify_url=api, posted_field="published", posted_raw=published)
+
+
+BAMBOO_ROOT = "https://{}.bamboohr.com/careers"
+
+
+def _bamboo_json(url: str):
+    """BambooHR answers an account that doesn't exist with a redirect to its
+    own home page, not a 404; anything but JSON means the board is missing."""
+    try:
+        return get_json(url)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise BoardMissing(url) from e
+
+
+def _bamboo_posting(token: str, jid: str) -> dict:
+    """One opening from the account's careers API: its date, country and
+    description are only in this detail record, not the list."""
+    root = BAMBOO_ROOT.format(token)
+    o = (_bamboo_json(f"{root}/{jid}/detail").get("result") or {}).get("jobOpening") or {}
+    loc = o.get("location") or {}
+    ats_loc = o.get("atsLocation") or {}
+    country = loc.get("addressCountry") or ats_loc.get("country")
+    place = ", ".join(x for x in (loc.get("city") or ats_loc.get("city"), loc.get("state") or ats_loc.get("state"),
+                                  country) if x)
+    posted = o.get("datePosted") or ""
+    url = o.get("jobOpeningShareUrl") or f"{root}/{jid}"
+    return dict(
+        title=o.get("jobOpeningName") or "",
+        location=place,
+        country=country,
+        remote=str(o.get("locationType")) == "1" or bool(o.get("isRemote")),
+        url=url, source="bamboohr",
+        posted_at=_day_start(posted), posted_exact=False,
+        description=strip_html(o.get("description")),
+        apply_url=url, verify_url=f"{root}/{jid}/detail", posted_field="datePosted", posted_raw=posted)
+
+
+def fetch_bamboohr(token: str) -> list[Job]:
+    """token: the account in <token>.bamboohr.com/careers. The list names
+    each opening without its date; details are read for titles that pass,
+    once each (cached_posting). Accounts still in their free trial show
+    BambooHR's sample openings, so they're left out."""
+    root = BAMBOO_ROOT.format(token)
+    info = _bamboo_json(f"{root}/company-info").get("result") or {}
+    if info.get("inTrial"):
+        return []
+    company = DISPLAY_NAMES.get(token) or info.get("name") or display_name(token)
+    skip = {s.lower() for s in skipped_commitments({"part-time", "part time", "pt", "contract", "contractor",
+                                                    "temporary", "seasonal"}, {"intern", "internship"})}
+    out = []
+    for j in _bamboo_json(f"{root}/list").get("result") or []:
+        if (j.get("employmentStatusLabel") or "").strip().lower() in skip:
+            continue
+        loc = j.get("location") or {}
+        place = ", ".join(x for x in (loc.get("city"), loc.get("state")) if x)
+        remote = str(j.get("locationType")) == "1"
+        title = j.get("jobOpeningName") or ""
+        # The list gives no country: a place is judged by its city and state.
+        ok = screen("bamboohr", title, place or None, None, remote)
+        if not ok:
+            continue
+        jid = str(j.get("id") or "")
+        posting = cached_posting(f"{root}/{jid}", lambda: _bamboo_posting(token, jid), near=ok == NEAR)
+        if not is_posting(posting):
+            continue
+        job = build_job(company=company, **{**posting, "title": title}, screened=True)
+        if job:
+            out.append(job)
+    return out
+
+
+RIPPLING_API = "https://ats.rippling.com/api/v2/board/{}/jobs"
+RIPPLING_PAGE = 500
+
+
+def _rippling_place(l: dict) -> str:
+    return ", ".join(x for x in (l.get("city"), l.get("stateCode") or l.get("state"), l.get("countryCode") or l.get("country"))
+                     if x) or l.get("name") or ""
+
+
+def _rippling_posting(token: str, jid: str, locs: list[dict]) -> dict:
+    """One job's detail record: its creation time, type and description
+    aren't in the board's list. Locations come from the list, which merges
+    every row of the job."""
+    api = f"{RIPPLING_API.format(urllib.parse.quote(token))}/{jid}"
+    d = get_json(api)
+    created = d.get("createdOn") or ""
+    kind = ((d.get("employmentType") or {}).get("label") or "").upper()
+    countries = {l.get("countryCode") for l in locs if l.get("countryCode")}
+    url = d.get("url") or f"https://ats.rippling.com/{token}/jobs/{jid}"
+    desc = d.get("description") or {}
+    return dict(
+        title=d.get("name") or "",
+        location=" / ".join(dict.fromkeys(_rippling_place(l) for l in locs)),
+        country=next(iter(countries)) if len(countries) == 1 else None,
+        remote=any(l.get("workplaceType") == "REMOTE" for l in locs),
+        url=url, source="rippling",
+        posted_at=parse_iso(created), posted_exact=True,
+        description=strip_html(" ".join(desc.get(k) or "" for k in ("company", "role")) if isinstance(desc, dict) else desc),
+        apply_url=url + "/apply", verify_url=api, posted_field="createdOn", posted_raw=created,
+        employment=kind)
+
+
+def fetch_rippling(token: str) -> list[Job]:
+    """token: the board slug in ats.rippling.com/<slug>/jobs. The list has
+    one row per location of a job (merged here by id) and no dates; the
+    detail record is read for titles that pass, once each."""
+    company = display_name(token)
+    rows: dict[str, list[dict]] = {}
+    titles: dict[str, str] = {}
+    for page in range(20):
+        data = get_json(f"{RIPPLING_API.format(urllib.parse.quote(token))}?page={page}&pageSize={RIPPLING_PAGE}")
+        for it in data.get("items") or []:
+            jid = it.get("id")
+            if not jid:
+                continue
+            titles[jid] = it.get("name") or ""
+            rows.setdefault(jid, []).extend(it.get("locations") or [])
+        if page + 1 >= (data.get("totalPages") or 1):
+            break
+    skip_kinds = ("PART", "CONTRACT", "TEMP", "SEASONAL") + (() if SEARCH.wants_level("intern") else ("INTERN",))
+    out = []
+    for jid, locs in rows.items():
+        place = " / ".join(dict.fromkeys(_rippling_place(l) for l in locs))
+        countries = {l.get("countryCode") for l in locs if l.get("countryCode")}
+        remote = any(l.get("workplaceType") == "REMOTE" for l in locs)
+        ok = screen("rippling", titles[jid], place, next(iter(countries)) if len(countries) == 1 else None, remote)
+        if not ok:
+            continue
+        posting = cached_posting(f"https://ats.rippling.com/{token}/jobs/{jid}",
+                                 lambda: _rippling_posting(token, jid, locs), near=ok == NEAR)
+        if not is_posting(posting):
+            continue
+        kind = posting.get("employment") or ""
+        if any(k in kind for k in skip_kinds):
+            continue
+        job = build_job(company=company, **{k: v for k, v in posting.items() if k != "employment"}, screened=True)
+        if job:
+            out.append(job)
+    return out
+
+
+def _breezy_place(l: dict) -> str:
+    country = (l.get("country") or {}).get("id") if isinstance(l.get("country"), dict) else l.get("country")
+    state = (l.get("state") or {}).get("id") if isinstance(l.get("state"), dict) else l.get("state")
+    return ", ".join(x for x in (l.get("city"), state, country) if x) or l.get("name") or ""
+
+
+def fetch_breezy(token: str) -> list[Job]:
+    """token: the company in <token>.breezy.hr. Its /json feed lists every
+    published position, descriptions included, in one answer."""
+    url = f"https://{token}.breezy.hr/json?verbose=true"
+    data = get_json_once(url)
+    skip = {"parttime", "contract", "temporary", "seasonal", "freelance"} | (
+        set() if SEARCH.wants_level("intern") else {"internship"})
+    out = []
+    for p in data if isinstance(data, list) else []:
+        if ((p.get("type") or {}).get("id") or "").lower() in skip:
+            continue
+        locs = p.get("locations") or ([p["location"]] if p.get("location") else [])
+        countries = {(l.get("country") or {}).get("id") for l in locs if isinstance(l.get("country"), dict)}
+        published = p.get("published_date") or ""
+        company = DISPLAY_NAMES.get(token) or ((p.get("company") or {}).get("name")) or display_name(token)
+        job = build_job(
+            company=company, title=p.get("name"), location=" / ".join(dict.fromkeys(_breezy_place(l) for l in locs)),
+            country=next(iter(countries)) if len(countries) == 1 else None,
+            remote=any(l.get("is_remote") for l in locs), url=p.get("url") or "", source="breezy",
+            posted_at=parse_iso(published), posted_exact=True, description=strip_html(p.get("description")),
+            apply_url=(p.get("url") or "").rstrip("/") + "/apply", verify_url=url,
+            posted_field="published_date", posted_raw=published)
+        if job:
+            out.append(job)
+    return out
+
+
+# Titles that say what boards without an employment-type field don't.
+NOT_FULL_TIME = re.compile(r"\b(part[- ]time|contract(?:or)?|temporary|temp\b|seasonal|per diem|prn)\b", re.I)
+
+
+def _skip_by_title(title: str) -> bool:
+    return bool(NOT_FULL_TIME.search(title or ""))
+
+
+def _page_json(page: str, marker: str):
+    """The JSON object a page assigns after `marker` ("window.pageData =")."""
+    i = page.find(marker)
+    if i < 0:
+        return None
+    start = page.find("{", i)
+    try:
+        return json.JSONDecoder().raw_decode(page[start:])[0]
+    except ValueError:
+        return None
+
+
+def _detail_with_list_date(page_url: str, source: str, posted_raw: str, posted_field: str, list_url: str,
+                           **fixed) -> dict | None:
+    """A posting's JSON-LD (its description), dated by the board's own list,
+    for boards whose posting pages stamp datePosted with today's date."""
+    p = jsonld_posting(page_url, source)
+    if not p:
+        return None
+    p.update(posted_at=parse_iso(posted_raw), posted_exact=_has_clock_time(posted_raw), posted_raw=posted_raw,
+             posted_field=posted_field, verify_url=list_url, **{k: v for k, v in fixed.items() if v})
+    return p
+
+
+PAYLOCITY_BOARD = "https://recruiting.paylocity.com/recruiting/jobs/All/{}"
+
+
+def fetch_paylocity(guid: str) -> list[Job]:
+    """token: the company's board id in recruiting.paylocity.com/recruiting/jobs/All/<id>.
+    The board page carries every job in window.pageData; a job's full
+    description is the JSON-LD on its own page, read for titles that pass."""
+    url = PAYLOCITY_BOARD.format(guid)
+    data = _page_json(get_text(url), "window.pageData")
+    if not isinstance(data, dict) or "Jobs" not in data:
+        raise BoardMissing(guid)
+    company = DISPLAY_NAMES.get(guid) or (data.get("ModuleTitle") or "").strip() or display_name(guid)
+    skip_intern = not SEARCH.wants_level("intern")
+    out = []
+    for j in data.get("Jobs") or []:
+        title = j.get("JobTitle") or ""
+        if j.get("IsInternal") or _skip_by_title(title) or (skip_intern and re.search(r"\bintern", title, re.I)):
+            continue
+        loc = j.get("JobLocation") or {}
+        place = ", ".join(x for x in (loc.get("City"), loc.get("State"), loc.get("Country")) if x) or j.get("LocationName") or ""
+        ok = screen("paylocity", title, place, loc.get("Country"), bool(j.get("IsRemote")))
+        if not ok:
+            continue
+        page = f"https://recruiting.paylocity.com/Recruiting/Jobs/Details/{j.get('JobId')}"
+        posting = cached_posting(page, lambda: _detail_with_list_date(
+            page, "paylocity", j.get("PublishedDate") or "", "PublishedDate", url, location=place,
+            country=loc.get("Country"), apply_url=f"https://recruiting.paylocity.com/Recruiting/Jobs/Apply/{j.get('JobId')}"),
+            near=ok == NEAR)
+        if not is_posting(posting):
+            continue
+        job = build_job(company=company, **{**posting, "title": title, "remote": bool(j.get("IsRemote"))}, screened=True)
+        if job:
+            out.append(job)
+    return out
+
+
+ADP_API = "https://workforcenow.adp.com/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions"
+ADP_PAGE = 20           # the most it sends per page
+ADP_MAX_PAGES = 25
+
+
+def _adp_query(token: str) -> str:
+    cid, _, cc = token.partition("|")
+    return urllib.parse.urlencode({"cid": cid, **({"ccId": cc} if cc else {}), "lang": "en_US", "locale": "en_US"})
+
+
+def _adp_place(r: dict) -> tuple[str, str | None]:
+    """("Austin, TX, US", "US") from a requisition's location names. ADP has
+    no country field: it ends the name (", US") or starts it ("USA - ")."""
+    names, countries = [], set()
+    for l in r.get("requisitionLocations") or []:
+        name = ((l.get("nameCode") or {}).get("shortName") or "").strip()
+        m = re.search(r",\s*([A-Z]{2,3})$", name) or re.match(r"([A-Z]{3})\s+-", name)
+        if m:
+            countries.add("US" if m.group(1) in ("US", "USA") else m.group(1))
+        names.append(name)
+    return " / ".join(n for n in names if n), (next(iter(countries)) if len(countries) == 1 else None)
+
+
+def _adp_field(r: dict, kind: str, code: str) -> str:
+    for f in (r.get("customFieldGroup") or {}).get(kind) or []:
+        if (f.get("nameCode") or {}).get("codeValue") == code:
+            return f.get("dateValue") or f.get("stringValue") or ""
+    return ""
+
+
+def fetch_adp(token: str) -> list[Job]:
+    """token: "<cid>" or "<cid>|<ccId>" from an ADP Workforce Now career center
+    (workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=...).
+    Its public requisition API pages 20 at a time; descriptions are read for
+    titles that pass, once each."""
+    q = _adp_query(token)
+    # The feed doesn't name the employer: the name is the one given when the board was added.
+    company = DISPLAY_NAMES.get(token) or DISPLAY_NAMES.get(token.split("|")[0]) or "ADP career center"
+    skip = re.compile(r"part|temp|contract|seasonal|per diem" + ("" if SEARCH.wants_level("intern") else r"|intern"), re.I)
+    reqs: dict[str, dict] = {}
+    for page in range(ADP_MAX_PAGES):
+        data = get_json(f"{ADP_API}?{q}&$top={ADP_PAGE}&$skip={page * ADP_PAGE}")
+        batch = data.get("jobRequisitions") or []
+        for r in batch:
+            reqs.setdefault(r.get("itemID"), r)
+        if not batch or len(reqs) >= ((data.get("meta") or {}).get("totalNumber") or 0):
+            break
+    out = []
+    for item, r in reqs.items():
+        title = r.get("requisitionTitle") or ""
+        if skip.search((r.get("workLevelCode") or {}).get("shortName") or "") or _skip_by_title(title):
+            continue
+        place, country = _adp_place(r)
+        remote = bool(re.search(r"virtual|remote", place, re.I))
+        ok = screen("adp", title, place, country, remote)
+        if not ok:
+            continue
+        posted = _adp_field(r, "dateFields", "PostingDate") or r.get("postDate") or ""
+        job_id = _adp_field(r, "stringFields", "ExternalJobID")
+        page = ("https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?" + q
+                + (f"&jobId={job_id}" if job_id else ""))
+        detail = f"{ADP_API}/{item}?{q}"
+        posting = cached_posting(detail, lambda: dict(
+            title=title, location=place, country=country, remote=remote, url=page, source="adp",
+            posted_at=parse_iso(posted), posted_exact=_has_clock_time(posted),
+            description=strip_html(get_json(detail).get("requisitionDescription")),
+            apply_url=page, verify_url=detail, posted_field="PostingDate", posted_raw=posted), near=ok == NEAR)
+        if not is_posting(posting):
+            continue
+        job = build_job(company=company, **posting, screened=True)
+        if job:
+            out.append(job)
+    return out
+
+
+JOBVITE_ROW = re.compile(r'class="jv-job-list-name">\s*<a href="(/[^"]+/job/[A-Za-z0-9]+)"[^>]*>(.*?)</a>.*?'
+                         r'class="jv-job-list-location">(.*?)</td>', re.S)
+JOBVITE_MAX_PAGES = 20
+
+
+def _cell(raw: str) -> str:
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", raw))).strip()
+
+
+def fetch_jobvite(token: str) -> list[Job]:
+    """token: the company in jobs.jobvite.com/<token>/. Its search pages list
+    50 jobs each (title and place only); a job's JSON-LD (date, place,
+    description) is read for titles that pass, once each."""
+    company = display_name(token)
+    rows: dict[str, tuple[str, str]] = {}
+    for page in range(JOBVITE_MAX_PAGES):
+        text = get_text(f"https://jobs.jobvite.com/{token}/search/?p={page}")
+        found = JOBVITE_ROW.findall(text)
+        for path, title, place in found:
+            rows.setdefault(path, (_cell(title), _cell(place)))
+        if not found or "jv-pagination-next" not in text:
+            break
+    skip_intern = not SEARCH.wants_level("intern")
+    out = []
+    for path, (title, place) in rows.items():
+        if _skip_by_title(title) or (skip_intern and re.search(r"\bintern", title, re.I)):
+            continue
+        # "4 Locations" tells nothing yet: the posting's own record has them.
+        listed = None if re.fullmatch(r"\d+ Locations?", place, re.I) else place
+        ok = screen("jobvite", title, listed)
+        if not ok:
+            continue
+        url = f"https://jobs.jobvite.com{path}"
+        posting = cached_posting(url, lambda: jsonld_posting(url, "jobvite"), near=ok == NEAR)
+        if not is_posting(posting):
+            continue
+        job = build_job(company=company, **{**posting, "title": title, "apply_url": url + "/apply"}, screened=True)
+        if job:
+            out.append(job)
+    return out
+
+
+JAZZ_ROW = re.compile(r"<h3 class='list-group-item-heading'>\s*<a href=\"(https://[\w-]+\.applytojob\.com/apply/"
+                      r"[A-Za-z0-9]+/[^\"]*)\">(.*?)</a>\s*</h3>\s*<ul[^>]*>(.*?)</ul>", re.S)
+
+
+def fetch_jazzhr(token: str) -> list[Job]:
+    """token: the company in <token>.applytojob.com. Its board lists every
+    job on one page; a job's JSON-LD (date, place, description) is read for
+    titles that pass, once each."""
+    text = get_text(f"https://{token}.applytojob.com/apply")
+    company = display_name(token)
+    skip_intern = not SEARCH.wants_level("intern")
+    out = []
+    for url, title, attrs in JAZZ_ROW.findall(text):
+        title = _cell(title)
+        if _skip_by_title(title) or (skip_intern and re.search(r"\bintern", title, re.I)):
+            continue
+        place = _cell(attrs.split("</li>")[0]) if attrs else ""
+        ok = screen("jazzhr", title, place or None)
+        if not ok:
+            continue
+        posting = cached_posting(url, lambda: jsonld_posting(url, "jazzhr"), near=ok == NEAR)
+        if not is_posting(posting):
+            continue
+        job = build_job(company=company, **{**posting, "title": title}, screened=True)
+        if job:
+            out.append(job)
+    return out
+
+
+def fetch_pinpoint(token: str) -> list[Job]:
+    """token: the company in <token>.pinpointhq.com. postings.json has every
+    posting with its description but no date or country; those come from
+    the posting page's JSON-LD, read for titles that pass, once each."""
+    data = get_json_once(f"https://{token}.pinpointhq.com/postings.json")
+    company = display_name(token)
+    skip = {"part_time", "contract", "temporary", "fixed_term", "freelance"} | (
+        set() if SEARCH.wants_level("intern") else {"internship", "intern"})
+    out = []
+    for p in data.get("data") or []:
+        if (p.get("employment_type") or "").lower() in skip:
+            continue
+        loc = p.get("location") or {}
+        place = ", ".join(x for x in (loc.get("city"), loc.get("province")) if x) or loc.get("name") or ""
+        remote = p.get("workplace_type") == "remote"
+        title = p.get("title") or ""
+        ok = screen("pinpoint", title, f"{place} {loc.get('name') or ''}".strip(), None, remote)
+        if not ok:
+            continue
+        url = p.get("url") or ""
+        desc = strip_html(" ".join(p.get(k) or "" for k in ("description", "key_responsibilities",
+                                                            "skills_knowledge_expertise", "benefits")))
+
+        def load(url=url, place=place, desc=desc):
+            try:
+                ld = jsonld_posting(url, "pinpoint") or {}
+            except Disallowed:          # a company can keep single postings from robots
+                ld = {}
+            return dict(title=title, location=ld.get("location") or place, country=ld.get("country"), remote=remote,
+                        url=url, source="pinpoint", posted_at=ld.get("posted_at"), posted_exact=ld.get("posted_exact", False),
+                        description=desc or ld.get("description", ""), apply_url=url, verify_url=url,
+                        posted_field=ld.get("posted_field", ""), posted_raw=ld.get("posted_raw", ""))
+        posting = cached_posting(url, load, near=ok == NEAR)
+        if not is_posting(posting):
+            continue
+        job = build_job(company=company, **posting, screened=True)
+        if job:
+            out.append(job)
+    return out
+
+
+def site_name(host: str) -> str:
+    """"Metlife" for www.metlifecareers.com, "Nomura" for careers.nomura.com:
+    a career site's company, from its host, when nothing names it."""
+    labels = [x for x in host.lower().split(".") if x not in ("www", "careers", "career", "jobs", "apply", "avature",
+                                                              "net", "com", "org", "co", "uk")]
+    word = re.sub(r"careers?$", "", labels[0]) if labels else host
+    return word.upper() if re.fullmatch(r"[a-z]{2,3}", word) else word.replace("-", " ").title()
+
+
+def _split_site(token: str) -> tuple[str, str]:
+    """"careers.nomura.com|/Nomura" -> ("https://careers.nomura.com", "/Nomura")."""
+    host, _, prefix = token.partition("|")
+    return f"https://{host}", prefix.rstrip("/")
+
+
+SF_ROW = re.compile(r'<tr class="data-row">(.*?)</tr>', re.S)
+SF_LINK = re.compile(r'<a href="([^"]+/job/[^"]+/\d+/)" class="jobTitle-link">(.*?)</a>', re.S)
+SF_TOTAL = re.compile(r"Results\s*<b>\s*\d+\s*[–-]\s*(\d+)\s*</b>\s*of\s*<b>\s*([\d,]+)\s*</b>")
+SF_MAX_PAGES = 20           # newest first: a big site's latest few hundred to a couple of thousand
+_PROP = r'itemprop="{}"[^>]*?content="([^"]*)"'
+
+
+def _sf_date(raw: str) -> float | None:
+    """"Fri Nov 13 08:00:00 UTC 2026" (Java's Date.toString)."""
+    try:
+        return datetime.strptime(raw.replace("UTC", "+0000"), "%a %b %d %H:%M:%S %z %Y").timestamp()
+    except ValueError:
+        return None
+
+
+def _sf_posting(url: str) -> dict | None:
+    """A SuccessFactors career-site posting from its schema.org microdata."""
+    page = get_text(url)
+    prop = lambda name: html.unescape((re.search(_PROP.format(name), page) or [None, ""])[1]).strip()
+    raw = prop("datePosted")
+    title = re.search(r'itemprop="title"[^>]*>(.*?)</', page, re.S)
+    body_class = (re.search(r'<body[^>]*class="([^"]*)"', page) or [None, ""])[1]
+    if not title:
+        # A posting that closed redirects to an error page that looks like the home
+        # page: a Career Site Builder page that isn't a job page.
+        if "coreCSB" in body_class and "job-page" not in body_class:
+            raise BoardMissing(url)
+        return None
+    # The description runs on to the job-market and apply blocks below it.
+    start = page.find('itemprop="description"')
+    ends = [page.rfind("<", 0, i) for i in (page.find(m, start) for m in (
+        'class="jobmarkets', 'class="applylink', 'class="clear clearfix', 'footer-fullwidth')) if i > start]
+    body = page[page.find(">", start) + 1:min(ends or [start + 60000])] if start >= 0 else ""
+    country = prop("addressCountry")
+    return dict(
+        title=_cell(title.group(1)),
+        location=", ".join(x for x in (prop("addressLocality"), prop("addressRegion"), country) if x),
+        country=country or None, remote=False, url=url, source="successfactors",
+        posted_at=_sf_date(raw), posted_exact=False,     # the time is always 08:00 UTC: a date
+        description=strip_html(body), apply_url=url, verify_url=url,
+        posted_field="datePosted", posted_raw=raw)
+
+
+def fetch_successfactors(token: str) -> list[Job]:
+    """token: the career site's host, "|/<brand>" when its pages sit under
+    one ("careers.nomura.com|/Nomura"). SAP's Career Site Builder serves
+    its search as pages (its JSON routes are under /services/, which its
+    robots.txt keeps out), newest first; a posting's microdata (date,
+    place, description) is read for titles that pass, once each."""
+    root, prefix = _split_site(token)
+    company = DISPLAY_NAMES.get(token) or site_name(token.split("|")[0])
+    out, start = [], 0
+    for _ in range(SF_MAX_PAGES):
+        page = get_text(f"{root}{prefix}/search/?q=&sortColumn=referencedate&sortDirection=desc&startrow={start}")
+        rows = SF_ROW.findall(page)
+        total = SF_TOTAL.search(page)
+        if not rows and start == 0 and not total:
+            raise BoardMissing(token)
+        for row in rows:
+            link = SF_LINK.search(row)
+            if not link:
+                continue
+            title = _cell(link.group(2))
+            place = _cell((re.search(r'class="jobLocation">(.*?)</span>', row, re.S) or [None, ""])[1])
+            if _skip_by_title(title) or (not SEARCH.wants_level("intern") and re.search(r"\bintern", title, re.I)):
+                continue
+            ok = screen("successfactors", title, place or None)
+            if not ok:
+                continue
+            url = urllib.parse.urljoin(root, link.group(1))
+            posting = cached_posting(url, lambda: _sf_posting(url), near=ok == NEAR)
+            if not is_posting(posting):
+                continue
+            job = build_job(company=company, **{**posting, "title": title}, screened=True)
+            if job:
+                out.append(job)
+        shown, of = (int(total.group(1)), int(total.group(2).replace(",", ""))) if total else (0, 0)
+        if not rows or shown >= of:
+            break
+        start = shown
+    return out
+
+
+AVATURE_JOB = re.compile(r"/JobDetail/([^/<\s]+)/(\d+)")
+
+
+def _avature_posting(url: str) -> dict | None:
+    """An Avature posting: its JSON-LD when the site has one, else the page's
+    own fields (Location, ...) and description blocks."""
+    page = get_text(url)
+    ld = _jsonld_in_page(page, url, "avature") or {}
+    fields = {re.sub(r"\s+", " ", k).strip(): _cell(v) for k, v in re.findall(
+        r'field__label">\s*(.*?)\s*</div>\s*<div class="article__content__view__field__value[^"]*">\s*(.*?)\s*</div>',
+        page, re.S)}
+    head = re.search(r"<title>(.*?)</title>", page, re.S)
+    full = _cell(head.group(1)) if head else ""
+    if re.match(r"error\b", full, re.I) and not ld:
+        raise BoardMissing(url)         # a posting that closed: the portal's error page
+    title, place = _avature_title(full, url)
+    if not (title or ld.get("title")):
+        return None
+    listed = fields.get("Location") or fields.get("Locations") or ""
+    if listed.lower() in ("location", "locations"):     # a label left as the value
+        listed = ""
+    place = ld.get("location") or listed or place
+    # The description: rich-text blocks, else the page's longest field.
+    rich = re.findall(r'field--rich-text">(.*?)</div>\s*</div>', page, re.S)
+    desc = strip_html(" ".join(rich))
+    if not desc:
+        values = re.findall(r'class="article__content__view__field__value[^"]*"[^>]*>(.*?)</div>', page, re.S)
+        desc = max((strip_html(v) for v in values), key=len, default="")
+        desc = desc if len(desc) > 200 else ""
+    return dict(
+        title=ld.get("title") or title, location=place, country=ld.get("country"),
+        remote=bool(re.search(r"\bremote\b", place, re.I)), url=url, source="avature",
+        posted_at=ld.get("posted_at"), posted_exact=ld.get("posted_exact", False),
+        description=desc or ld.get("description", ""), apply_url=url, verify_url=url,
+        posted_field=ld.get("posted_field", ""), posted_raw=ld.get("posted_raw", ""))
+
+
+def _avature_title(full: str, url: str) -> tuple[str, str]:
+    """(title, place) from an Avature page's <title>: "<title>[ - <place>] -
+    <id> - <company>". A title can hold " - " too ("Senior Software Engineer
+    - Hadoop Infrastructure"), so the posting's address, which spells the
+    title, tells where it ends."""
+    segs = [s.strip() for s in full.split(" - ") if s.strip()]
+    if len(segs) >= 3 and segs[-2].isdigit():
+        segs = segs[:-2]
+    slug = AVATURE_JOB.search(url)
+    if not segs:
+        return (urllib.parse.unquote(slug.group(1)).replace("-", " ") if slug else ""), ""
+    want = re.sub(r"[^a-z0-9]", "", urllib.parse.unquote(slug.group(1)).lower()) if slug else ""
+    norm = lambda parts: re.sub(r"[^a-z0-9]", "", " ".join(parts).lower())
+    for n in range(len(segs), 0, -1):
+        if want and norm(segs[:n]) == want:
+            return " - ".join(segs[:n]), " - ".join(segs[n:])
+    # No address to go by: all of it is the title.
+    return (" - ".join(segs) if segs else (urllib.parse.unquote(slug.group(1)).replace("-", " ") if slug else "")), ""
+
+
+def fetch_avature(token: str) -> list[Job]:
+    """token: the site's host and portal path, "bloomberg.avature.net|/careers"
+    or "www.metlifecareers.com|/en_US/ml". The portal's sitemap lists every
+    posting, its title in the address; a posting is read for titles that
+    pass, once each."""
+    root, prefix = _split_site(token)
+    company = DISPLAY_NAMES.get(token) or site_name(token.split("|")[0])
+    seen: dict[str, str] = {}
+    for loc in SITEMAP_URL.findall(get_text(f"{root}{prefix}/sitemap.xml")):
+        loc = html.unescape(loc[0] if isinstance(loc, tuple) else loc)
+        m = AVATURE_JOB.search(loc)
+        if m and m.group(2) not in seen:
+            seen[m.group(2)] = loc
+    out = []
+    for jid, url in seen.items():
+        title = urllib.parse.unquote(AVATURE_JOB.search(url).group(1)).replace("-", " ")
+        if _skip_by_title(title) or re.search(r"\b\d+ month contract\b", title, re.I):
+            continue
+        ok = screen("avature", title)
+        if not ok:
+            continue
+        posting = cached_posting(url, lambda: _avature_posting(url), near=ok == NEAR)
+        if not is_posting(posting):
+            continue
+        if _skip_by_title(posting["title"]):
+            continue
+        job = build_job(company=company, **posting, screened=True)
+        if job:
+            out.append(job)
+    return out
+
+
+TALEO_BODY = {
+    "multilineEnabled": False,
+    "sortingSelection": {"sortBySelectionParam": "3", "ascendingSortingOrder": "false"},
+    "fieldData": {"fields": {"KEYWORD": "", "LOCATION": ""}, "valid": True},
+    "filterSelectionParam": {"searchFilterSelections": [{"id": i, "selectedValues": []}
+                                                        for i in ("POSTING_DATE", "LOCATION", "JOB_FIELD")]},
+    "advancedSearchFiltersSelectionParam": {"searchFilterSelections": [
+        {"id": i, "selectedValues": []} for i in ("ORGANIZATION", "LOCATION", "JOB_FIELD", "JOB_NUMBER", "URGENT_JOB",
+                                                  "EMPLOYEE_STATUS", "STUDY_LEVEL", "WILL_TRAVEL", "JOB_SHIFT")]},
+}
+TALEO_MAX_PAGES = 40        # 25 a page
+
+
+def _taleo_place(raw: str) -> tuple[str, str | None]:
+    """'["UNITED STATES-MN-Minneapolis"]' -> ("Minneapolis, MN, United States", "United States")."""
+    try:
+        places = json.loads(raw) if raw.startswith("[") else [raw]
+    except ValueError:
+        places = [raw]
+    out, countries = [], set()
+    for p in places:
+        bits = [b.strip() for b in str(p).split("-") if b.strip()]
+        if len(bits) >= 2:
+            country = bits[0].title() if len(bits[0]) > 3 else bits[0]
+            countries.add(country)
+            out.append(", ".join(list(reversed(bits[1:])) + [country]))
+        elif bits:
+            out.append(bits[0])
+    return " / ".join(out), (next(iter(countries)) if len(countries) == 1 else None)
+
+
+def _taleo_detail(url: str, page: str | None = None) -> tuple[str, str]:
+    """(description, employment type) from a posting page, where Taleo keeps
+    them in its initialHistory field ("!|!"-separated; "!*!" opens HTML)."""
+    page = get_text(url) if page is None else page
+    m = re.search(r'id="initialHistory"[^>]*value="([^"]*)"', page) or re.search(r'value="([^"]*)"[^>]*id="initialHistory"', page)
+    if not m:
+        return "", ""
+    parts = urllib.parse.unquote(html.unescape(m.group(1))).replace("\\:", ":").split("!|!")
+    blocks = list(dict.fromkeys(p[3:] for p in parts if p.startswith("!*!")))
+    kind = next((p for p in parts if re.fullmatch(r"(?:Full|Part)[- ]time|Temporary|Contract(?:or)?|Intern(?:ship)?", p, re.I)), "")
+    return strip_html(" ".join(blocks)), kind
+
+
+def _taleo_posting(url: str) -> dict:
+    """A Taleo posting from its page, for asking whether it's still open: a
+    closed one no longer carries its description."""
+    page = get_text(url)
+    desc, _ = _taleo_detail(url, page)
+    if not desc:
+        raise BoardMissing(url)
+    page_title = re.search(r"<title>(.*?)</title>", page, re.S)
+    return dict(title=_cell(page_title.group(1)) if page_title else "", location="", country=None, remote=False,
+                url=url, source="taleo", posted_at=None, posted_exact=False, description=desc, apply_url=url,
+                verify_url=url, posted_field="", posted_raw="")
+
+
+def fetch_taleo(token: str) -> list[Job]:
+    """token: "<tenant>|<career section>|<portal>" of <tenant>.taleo.net. The
+    career section's own search API pages 25 at a time, newest first, with
+    title, place and posting date; a posting's page is read for titles that
+    pass, once each, for its description."""
+    tenant, section, portal = (token.split("|") + ["", ""])[:3]
+    api = f"https://{tenant}.taleo.net/careersection/rest/jobboard/searchjobs?lang=en&portal={portal}"
+    company = DISPLAY_NAMES.get(token) or DISPLAY_NAMES.get(tenant) or display_name(tenant)
+    out = []
+    for page_no in range(1, TALEO_MAX_PAGES + 1):
+        data = post_json(api, {**TALEO_BODY, "pageNo": page_no}, headers={"tz": "GMT-05:00"})
+        if data.get("careerSectionUnAvailable"):
+            raise BoardMissing(token)
+        rows = data.get("requisitionList") or []
+        for r in rows:
+            cols = r.get("column") or []
+            title = cols[r.get("linkedColumn") or 0] if cols else ""
+            loc_col = (r.get("locationsColumns") or [None])[0]
+            place, country = _taleo_place(cols[loc_col]) if loc_col is not None and loc_col < len(cols) else ("", None)
+            raw = next((c for c in cols if isinstance(c, str) and re.fullmatch(r"[A-Z][a-z]{2} \d{1,2}, \d{4}", c)), "")
+            try:
+                posted = datetime.strptime(raw, "%b %d, %Y").timestamp() if raw else None
+            except ValueError:
+                posted = None
+            if posted is not None and posted < time.time() - FETCH_DAYS * 86400:
+                return out          # newest first: the rest are older than the window
+            if _skip_by_title(title):
+                continue
+            ok = screen("taleo", title, place, country, fresh=is_fresh(posted))
+            if not ok:
+                continue
+            url = f"https://{tenant}.taleo.net/careersection/{section}/jobdetail.ftl?job={r.get('contestNo')}&lang=en"
+
+            def load(url=url, title=title, place=place, country=country, posted=posted, raw=raw):
+                desc, kind = _taleo_detail(url)
+                return dict(title=title, location=place, country=country, remote=bool(re.search(r"remote", f"{title} {place}", re.I)),
+                            url=url, source="taleo", posted_at=posted, posted_exact=False, description=desc,
+                            apply_url=url, verify_url=api, posted_field="Posting Date", posted_raw=raw, employment=kind)
+            posting = cached_posting(url, load, near=ok == NEAR)
+            if not is_posting(posting):
+                continue
+            kind = posting.get("employment") or ""
+            if re.search(r"part|temp|contract" + ("" if SEARCH.wants_level("intern") else "|intern"), kind, re.I):
+                continue
+            job = build_job(company=company, **{k: v for k, v in posting.items() if k != "employment"}, screened=True)
+            if job:
+                out.append(job)
+        paging = data.get("pagingData") or {}
+        if not rows or page_no * (paging.get("pageSize") or 25) >= (paging.get("totalCount") or 0):
+            break
+    return out
+
+
+COMEET_API = "https://www.comeet.co/careers-api/2.0/company/{}/positions"
+
+
+def fetch_comeet(token: str) -> list[Job]:
+    """token: "<company uid>|<public token>" (the careers page names both).
+    Comeet's documented Careers API sends every position with details in
+    one answer. It dates them only by their last update, which says nothing
+    about when a job went up, so they're dated by when Onward first sees them."""
+    uid, _, key = token.partition("|")
+    url = f"{COMEET_API.format(urllib.parse.quote(uid))}?" + urllib.parse.urlencode({"token": key, "details": "true"})
+    data = get_json_once(url)
+    company = DISPLAY_NAMES.get(token) or DISPLAY_NAMES.get(uid) or display_name(uid)
+    skip = re.compile(r"part|contract|temp|freelance" + ("" if SEARCH.wants_level("intern") else r"|intern"), re.I)
+    # A job open in several places is a position per place: one job here, its places together.
+    merged: dict[str, dict] = {}
+    for p in data if isinstance(data, list) else []:
+        if skip.search(p.get("employment_type") or ""):
+            continue
+        loc = p.get("location") or {}
+        place = loc.get("name") or ", ".join(x for x in (loc.get("city"), loc.get("country")) if x)
+        m = merged.setdefault((p.get("name") or "").strip().lower(), {**p, "_places": [], "_countries": set(), "_remote": False})
+        if place and place not in m["_places"]:
+            m["_places"].append(place)
+        if loc.get("country"):
+            m["_countries"].add(loc["country"])
+        m["_remote"] |= bool(loc.get("is_remote")) or (p.get("workplace_type") or "").lower() == "remote"
+    out = []
+    for p in merged.values():
+        details = p.get("details") or []
+        job = build_job(
+            company=company, title=p.get("name"), location=" / ".join(p["_places"]),
+            country=next(iter(p["_countries"])) if len(p["_countries"]) == 1 else None,
+            remote=p["_remote"],
+            url=p.get("url_active_page") or p.get("url_comeet_hosted_page") or "", source="comeet",
+            posted_at=None, posted_exact=False,
+            description=strip_html(" ".join(d.get("value") or "" for d in details if isinstance(d, dict))),
+            apply_url=p.get("url_active_page") or p.get("url_comeet_hosted_page") or "",
+            verify_url=url,
+            posted_field="time_updated", posted_raw=p.get("time_updated") or "")
         if job:
             out.append(job)
     return out
@@ -1670,6 +2514,15 @@ POSTING_URLS: list[tuple[re.Pattern, Callable[[re.Match], dict | None]]] = [
          f"https://api.{m['eu'] or ''}lever.co")),
     (re.compile(r"https?://jobs\.ashbyhq\.com/(?P<token>[^/?#]+)/(?P<id>[0-9a-f-]{36})"),
      lambda m: _ashby_by_id(urllib.parse.unquote(m["token"]), m["id"])),
+    (re.compile(r"https?://apply\.workable\.com/(?P<token>[\w-]+)/j/(?P<code>[0-9A-F]{6,12})", re.I),
+     lambda m: _workable_posting(m["token"], m["code"].upper())),
+    (re.compile(r"https?://[\w-]+\.taleo\.net/careersection/[^/]+/jobdetail\.ftl\?job=\w+"),
+     lambda m: _taleo_posting(m.string)),
+    # Avature portals: [/<locale>]/<portal>/JobDetail/<slug>/<id>
+    (re.compile(r"https?://[^/]+/(?:[a-z]{2}_[A-Z]{2}/)?[A-Za-z0-9]+/JobDetail/[^/?#]+/\d+"),
+     lambda m: _avature_posting(m.string)),
+    # SAP's Career Site Builder: [/<brand>]/job/<slug>/<id>/
+    (re.compile(r"https?://[^/]+/(?:[A-Za-z0-9]+/)?job/[^/?#]+/\d{6,}/?$"), lambda m: _sf_posting(m.string)),
     (re.compile(r"https?://(?P<tenant>[\w-]+)\.(?P<wd>wd\d+)\.myworkdayjobs\.com/(?:[a-z]{2}-[A-Z]{2}/)?"
                 r"(?P<site>[^/?#]+)(?P<path>/job/[^?#]+)"),
      lambda m: _workday_posting(f"https://{m['tenant']}.{m['wd']}.myworkdayjobs.com",
@@ -1820,7 +2673,11 @@ def display_name(token: str) -> str:
 
 FETCHERS = {"greenhouse": fetch_greenhouse, "lever": fetch_lever, "ashby": fetch_ashby,
             "workday": fetch_workday, "smartrecruiters": fetch_smartrecruiters, "oracle": fetch_oracle,
-            "eightfold": fetch_eightfold, "amazon": fetch_amazon, "icims": fetch_icims}
+            "eightfold": fetch_eightfold, "amazon": fetch_amazon, "icims": fetch_icims,
+            "workable": fetch_workable, "bamboohr": fetch_bamboohr, "rippling": fetch_rippling,
+            "breezy": fetch_breezy, "paylocity": fetch_paylocity, "adp": fetch_adp, "jobvite": fetch_jobvite,
+            "jazzhr": fetch_jazzhr, "pinpoint": fetch_pinpoint, "comeet": fetch_comeet,
+            "successfactors": fetch_successfactors, "avature": fetch_avature, "taleo": fetch_taleo}
 
 
 @dataclass
@@ -1878,15 +2735,16 @@ def fetch_all(companies: dict[str, list[str]], skip: set[str] = frozenset(),
 # --------------------------------------------------------------------------
 # Still open?
 #
-# Workday, Oracle, SmartRecruiters, Eightfold, Amazon and iCIMS are read only
-# FETCH_DAYS deep (newest first), so a posting older than that stops being
+# Workday, Oracle, SmartRecruiters, Eightfold, Amazon, iCIMS, Taleo and
+# SuccessFactors are read only FETCH_DAYS deep (newest first; SuccessFactors
+# its newest SF_MAX_PAGES), so a posting older than that stops being
 # seen while it is still open, and would read as closed STALE_AFTER_DAYS
 # later. Each run, such postings that weren't seen are asked about one by one
 # at their source, least recently asked first and each at most every
 # CONFIRM_EVERY: still there keeps them open, gone lets them close. A posting
 # its source called gone isn't asked again unless a fetch sees it again.
 
-WINDOWED = ("workday", "oracle", "smartrecruiters", "eightfold", "amazon", "icims")
+WINDOWED = ("workday", "oracle", "smartrecruiters", "eightfold", "amazon", "icims", "successfactors", "taleo")
 CONFIRM_EVERY = 12 * 3600
 CONFIRM_BUDGET = 90             # seconds per run
 CONFIRM_WORKERS = 16

@@ -452,14 +452,28 @@ CHECKED: dict[str, float] = {}      # "source:token" -> when a lookup found it a
 CHECKED_LOCK = threading.Lock()
 
 
+def board_key(source: str, token: str) -> str:
+    """What makes two boards the same: Workday's site names don't go by case
+    (a careers page's "ghr.wd1/lateral-us" is the "ghr.wd1/Lateral-US" tracked)."""
+    return f"{source}:{token.lower() if source == 'workday' else token}"
+
+
 def lookup_link(url: str) -> dict:
     """ats.lookup for one pasted link, with whether the board is tracked
-    already. A board that answered is remembered for a while, so adding it
-    right after needn't ask it again."""
+    already, as the tracked board and under the name it's known by. A board
+    that answered is remembered for a while, so adding it right after
+    needn't ask it again."""
     res = ats.lookup(str(url)[:2000])
     if res.get("board"):
-        tracked = next((b for b in company_list()["boards"] if f"{b['source']}:{b['token']}" == res["board"]), None)
+        key = board_key(res["source"], res["token"])
+        tracked = next((b for b in company_list()["boards"] if board_key(b["source"], b["token"]) == key), None)
         res["tracked"] = bool(tracked and not tracked["removed"])
+        if tracked:
+            res.update(token=tracked["token"], board=f"{tracked['source']}:{tracked['token']}", name=tracked["name"])
+        else:
+            known = known_names().get(_name_key(res["source"], res["token"]))
+            if known and res.get("name") == ats.default_name(ats.Board(res["source"], res["token"])):
+                res["name"] = known
         if res.get("ok"):
             with CHECKED_LOCK:
                 CHECKED[res["board"]] = time.time()
@@ -501,9 +515,9 @@ def recently_checked(board: str) -> bool:
 def add_board(c: dict, source: str, token: str, name: str) -> None:
     """Puts one board into the companies settings `c` (saved by the caller)."""
     board = f"{source}:{token}"
-    if token not in c["added"].get(source, []) and not any(
-            b["source"] == source and b["token"] == token and b["origin"] == "builtin"
-            for b in company_list()["boards"]):
+    key = board_key(source, token)
+    if not any(board_key(source, t) == key for t in c["added"].get(source, [])) and not any(
+            b["origin"] == "builtin" and board_key(b["source"], b["token"]) == key for b in company_list()["boards"]):
         c["added"].setdefault(source, []).append(token)
     if name:
         c["display_names"][_name_key(source, token)] = name
@@ -531,10 +545,16 @@ def seen_names() -> dict[str, str]:
     return out
 
 
+def known_names() -> dict[str, str]:
+    """Company names by _name_key: seen on postings, shipped, then the user's own."""
+    builtin = json.loads(radar.COMPANIES_PATH.read_text(encoding="utf-8"))
+    return {**seen_names(), **builtin.get("display_names", {}), **STORE.section("companies")["display_names"]}
+
+
 def company_list() -> dict:
     builtin = json.loads(radar.COMPANIES_PATH.read_text(encoding="utf-8"))
     c = STORE.section("companies")
-    names = {**seen_names(), **builtin.get("display_names", {}), **c["display_names"]}
+    names = known_names()
     removed = set(c["removed"])
     rows = []
     for origin, boards in (("builtin", builtin), ("added", c["added"])):

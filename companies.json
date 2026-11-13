@@ -421,7 +421,45 @@
     "vanguard": "Vanguard",
     "visa": "Visa",
     "wellington": "Wellington Management",
-    "wf": "Wells Fargo"
+    "wf": "Wells Fargo",
+    "08f195f0-beb6-4255-a019-dbc8691ab8e8|19000101_000001": "11:11 Systems",
+    "28fc6ff1-6758-43a7-8595-3a839d506c4f": "TradeZero",
+    "2e301a57-4e50-43a1-b06e-c4d1c2292399": "Radius Financial Group",
+    "43.001|34110453411D4968234168209C31D49": "VAST Data",
+    "62.002|262988131015727264C41572E4C10AE10AE": "Global-e",
+    "7935bb0d-21dc-4cf4-8c00-7c1c6639d363": "Aspirion",
+    "89.005|98542A398504C28391E130A391E391E2614": "Exodigo",
+    "analyticallc": "Analytica",
+    "anthology": "Anthology",
+    "bloomberg.avature.net|/careers": "Bloomberg",
+    "careers.ey.com|/ey": "EY",
+    "careers.nomura.com|/Nomura": "Nomura",
+    "ce35ef51-5752-4310-b3bc-cd8d405a1de1": "Spatial Front",
+    "daloopa": "Daloopa",
+    "db": "Deutsche Bank",
+    "E6.007|6E7296ADCE3051228322832283373814B5296A": "Solidus Labs",
+    "edgehog-trading": "Edgehog Trading",
+    "egnyte": "Egnyte",
+    "equitable|eqh_1|36105020509": "Equitable",
+    "fcd47a55-549b-413b-a4e7-c18e32d48625": "Dovenmuehle Mortgage",
+    "fiserv": "Fiserv",
+    "gpfs": "GP Fund Solutions",
+    "groupo": "Group O",
+    "huggingface": "Hugging Face",
+    "iboss": "iboss",
+    "isoftstone": "iSoftStone",
+    "jobs.scotiabank.com": "Scotiabank",
+    "lava": "Lava",
+    "lplfinancial": "LPL Financial",
+    "nutanix": "Nutanix",
+    "open-roles": "Tidal Financial Group",
+    "reveleer": "Reveleer",
+    "rippling": "Rippling",
+    "skillable-careers": "Skillable",
+    "steno-careers-page": "Steno",
+    "trexquant": "Trexquant",
+    "www.metlifecareers.com|/en_US/ml": "MetLife",
+    "zero-hash": "Zero Hash"
   },
   "h1b_aliases": {
     "SpaceX": "SPACE EXPLORATION TECHNOLOGIES CORP",
@@ -482,10 +520,12 @@
     "citi.wd5/2",
     "cmegroup.wd1/cme_careers",
     "crowdstrike.wd5/crowdstrikecareers",
+    "db.wd3/DBWebsite",
     "disney.wd5/disneycareer",
     "ebay.wd5/apply",
     "fifththird.wd5/53careers",
     "fis.wd5/SearchJobs",
+    "fiserv.wd5/EXT",
     "fmr.wd1/FidelityCareers",
     "freddiemac.wd5/External",
     "geico.wd1/External",
@@ -498,6 +538,7 @@
     "invesco.wd1/IVZ",
     "keybank.wd5/External_Career_Site",
     "kla.wd1/Search",
+    "lplfinancial.wd1/External",
     "marvell.wd1/MarvellCareers",
     "mastercard.wd1/CorporateCareers",
     "medtronic.wd1/MedtronicCareers",
@@ -601,5 +642,64 @@
     "careers.rivian.com",
     "careers.viasat.com",
     "jobs.keysight.com"
+  ],
+  "workable": [
+    "huggingface",
+    "trexquant"
+  ],
+  "rippling": [
+    "daloopa",
+    "edgehog-trading",
+    "open-roles",
+    "rippling",
+    "skillable-careers",
+    "steno-careers-page"
+  ],
+  "breezy": [
+    "gpfs",
+    "lava",
+    "reveleer",
+    "zero-hash"
+  ],
+  "paylocity": [
+    "28fc6ff1-6758-43a7-8595-3a839d506c4f",
+    "2e301a57-4e50-43a1-b06e-c4d1c2292399",
+    "7935bb0d-21dc-4cf4-8c00-7c1c6639d363",
+    "ce35ef51-5752-4310-b3bc-cd8d405a1de1"
+  ],
+  "adp": [
+    "08f195f0-beb6-4255-a019-dbc8691ab8e8|19000101_000001",
+    "fcd47a55-549b-413b-a4e7-c18e32d48625"
+  ],
+  "jobvite": [
+    "anthology",
+    "egnyte",
+    "iboss",
+    "isoftstone",
+    "nutanix"
+  ],
+  "jazzhr": [
+    "analyticallc"
+  ],
+  "pinpoint": [
+    "groupo"
+  ],
+  "comeet": [
+    "43.001|34110453411D4968234168209C31D49",
+    "62.002|262988131015727264C41572E4C10AE10AE",
+    "89.005|98542A398504C28391E130A391E391E2614",
+    "E6.007|6E7296ADCE3051228322832283373814B5296A"
+  ],
+  "successfactors": [
+    "careers.ey.com|/ey",
+    "careers.nomura.com|/Nomura",
+    "jobs.scotiabank.com"
+  ],
+  "avature": [
+    "bloomberg.avature.net|/careers",
+    "www.metlifecareers.com|/en_US/ml"
+  ],
+  "taleo": [
+    "equitable|eqh_1|36105020509"
   ]
 }

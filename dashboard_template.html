@@ -1602,12 +1602,19 @@ function sourceLabel(j) {
     workday: "Workday career site API", simplify: "SimplifyJobs New-Grad listings feed",
     smartrecruiters: "SmartRecruiters Posting API", oracle: "Oracle Recruiting Cloud API",
     eightfold: "Eightfold careers API", amazon: "Amazon Jobs search API", icims: "iCIMS career site",
+    workable: "Workable job board feed", bamboohr: "BambooHR careers API", rippling: "Rippling job board API",
+    breezy: "Breezy HR job feed", paylocity: "Paylocity job board", adp: "ADP career center API",
+    jobvite: "Jobvite job page (schema.org JobPosting)", jazzhr: "JazzHR job page (schema.org JobPosting)",
+    pinpoint: "Pinpoint job page (schema.org JobPosting)", comeet: "Comeet Careers API",
+    successfactors: "SAP SuccessFactors job page (schema.org)", avature: "Avature career site",
+    taleo: "Taleo career section search",
     careerpage: "Company careers page (schema.org JobPosting)" }[j.source] || j.source;
 }
 
 // Some sources report the day a job was posted, never the time (Workday,
 // Amazon, and others whose timestamps are bare dates).
-const DATE_ONLY_FIELDS = new Set(["startDate", "posted_date", "datePosted", "ExternalPostedStartDate", "postedTs"]);
+const DATE_ONLY_FIELDS = new Set(["startDate", "posted_date", "datePosted", "ExternalPostedStartDate", "postedTs",
+  "published_on", "published", "Posting Date"]);
 const dateOnly = (j) => !j.posted_exact && DATE_ONLY_FIELDS.has(j.posted_field);
 function dayLabel(sec) {
   const d = new Date(sec * 1000), now = new Date();
@@ -1647,7 +1654,7 @@ function evidence(j, quote = true) {
       extra.push(" · whole board feed, press Ctrl+F for ", el("code", { text: id }));
     } else if (j.source === "simplify") {
       extra.push(" · large file, press Ctrl+F for the job title");
-    } else if (j.source === "icims" || j.source === "careerpage") {
+    } else if (["icims", "careerpage", "jobvite", "jazzhr", "pinpoint", "successfactors", "avature"].includes(j.source)) {
       extra.push(" · the job page; view its source and search for ", el("code", { text: "datePosted" }));
     }
     add("Check it yourself", el("a", { href: j.verify_url, target: "_blank", rel: "noopener", text: "Open raw source record" }), ...extra);
@@ -3447,7 +3454,9 @@ const LABELS = {
     neutral: ["Neutral", "Friendly and direct, neither chatty nor stiff."],
     formal: ["Formal", "Polished and courteous, few contractions, still plain words."] },
   sources: { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", workday: "Workday", smartrecruiters: "SmartRecruiters",
-    oracle: "Oracle", eightfold: "Eightfold", amazon: "Amazon", icims: "iCIMS" },
+    oracle: "Oracle", eightfold: "Eightfold", amazon: "Amazon", icims: "iCIMS", workable: "Workable", bamboohr: "BambooHR",
+    rippling: "Rippling", breezy: "Breezy HR", paylocity: "Paylocity", adp: "ADP", jobvite: "Jobvite", jazzhr: "JazzHR",
+    pinpoint: "Pinpoint", comeet: "Comeet", successfactors: "SuccessFactors", avature: "Avature", taleo: "Taleo" },
 };
 const cfg = { data: null, companies: null, rid: null, draft: null, adding: false, found: null, boardFilter: "" };
 let uid = 0;
@@ -4094,7 +4103,7 @@ function companiesCard() {
 
   return el("section", { class: "card", "aria-labelledby": "compH" },
     el("h3", { id: "compH", text: "Companies" }),
-    el("p", { text: "Onward reads company job boards directly. Paste a careers page or any job posting link to add a company, or several links, one per line, to add them together: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Oracle, Eightfold and iCIMS are recognized." }),
+    el("p", { text: "Onward reads company job boards directly. Paste a careers page or any job posting link to add a company, or several links, one per line, to add them together: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Oracle, Eightfold, iCIMS, Workable, BambooHR, Rippling, Breezy HR, Paylocity, ADP, Jobvite, JazzHR, Pinpoint, Comeet, SuccessFactors, Avature and Taleo are recognized." }),
     el("div", { class: "rowline" }, url, check), out,
     el("div", { class: "field" }, el("p", { class: "section-h", text: `Companies you added (${added.length})` }),
       added.length ? boardList(added) : el("p", { class: "note", text: "None yet. They're read from the next search on." })),
