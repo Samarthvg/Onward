@@ -362,6 +362,66 @@ class RoleTests(unittest.TestCase):
             self.assertEqual(filters.pay_range(text), want, text)
 
 
+class DescriptionFitTests(unittest.TestCase):
+    """A posting whose title the keywords miss joins the roles whose other
+    rules it passes when its description asks for what the resume has."""
+
+    FIT = ("About the role\nYou will design and build agentic AI workflows with our investment teams.\n"
+           "Requirements\n• Python and PyTorch\n• Experience with LLMs and agent frameworks\n"
+           "• SQL and AWS\n• 0-2 years of experience building software\n")
+    OFF = ("About the role\nYou will run campaigns across our marketing channels and report results.\n"
+           "Requirements\n• Kotlin and Swift\n• Figma\n• Salesforce administration\n• Tableau\n")
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        saved = {k: getattr(radar, k) for k in ("SEARCH", "SETTINGS", "RESUME_DIR")}
+        self.addCleanup(lambda: [setattr(radar, k, v) for k, v in saved.items()])
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        radar.RESUME_DIR = Path(tmp.name)
+        (radar.RESUME_DIR / "scoring.json").write_text(json.dumps({
+            "text": "Built agents with LLMs in Python and PyTorch; SQL on AWS.",
+            "skills": ["Python", "PyTorch", "LLMs", "SQL", "AWS", "LLM Agents"], "off": [], "added": []}),
+            encoding="utf-8")
+        self.conn = sqlite3.connect(":memory:")
+        radar.migrate(self.conn)
+        self.now = time.time()
+        # Stored the way the shared feed delivers them: whatever the user's roles say.
+        radar.SEARCH = filters.Search([role(id="any", name="Any", title_keywords=["builder/specialist/scientist"], countries=[],
+                                            seniority=["entry", "mid", "senior"])])
+
+    def store(self, title: str, desc: str, location: str = "Boston, MA") -> None:
+        job = radar.build_job(company="Acme", title=title, location=location, country=None, remote=False,
+                              url=f"u/{title}/{location}", source="workday", posted_at=self.now - 60,
+                              posted_exact=False, description=desc, apply_url=f"a/{title}/{location}", verify_url="v", posted_field="startDate",
+                              posted_raw="x")
+        radar.store(self.conn, [job], self.now)
+
+    def shown(self) -> dict:
+        class NoH1B:
+            years = []
+
+            def lookup(self, company):
+                return None
+        radar.SEARCH = filters.Search([config.ROLE.default])
+        stats = {"skill_w": {}, "term_w": {}}
+        return {r["title"]: r["roles"] for r in radar.load_for_dashboard(self.conn, self.now, None, NoH1B(), stats)}
+
+    def test_description_fit_joins_the_role(self):
+        self.store("Agentic AI Builder, Officer", self.FIT)
+        self.store("Marketing Operations Specialist", self.OFF)
+        self.store("Agentic AI Builder, Senior Officer", self.FIT)                # senior: level still applies
+        self.store("Agentic AI Builder, Officer", self.FIT, location="London, UK")  # location still applies
+        self.store("Research Scientist", self.FIT + "• PhD in Computer Science required\n")
+        self.assertEqual(self.shown(), {"Agentic AI Builder, Officer": ["software"]})
+
+    def test_no_resume_no_fit(self):
+        (radar.RESUME_DIR / "scoring.json").unlink()
+        self.store("Agentic AI Builder, Officer", self.FIT)
+        self.assertEqual(self.shown(), {})
+
+
 class RadarTaggingTests(unittest.TestCase):
     def setUp(self):
         saved = {k: getattr(radar, k) for k in ("SEARCH", "SETTINGS")}

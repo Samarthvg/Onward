@@ -755,8 +755,15 @@ class Role:
         return not self.allow or c in self.allow
 
     def matches(self, f: Facts) -> bool:
-        if not (self.company_ok(f.company) and self.title_ok(f.title)
-                and self.location_ok(f.location, f.country, f.remote)):
+        return self.title_ok(f.title) and self.matches_besides_title(f)
+
+    def matches_besides_title(self, f: Facts) -> bool:
+        """Every rule but the title keywords: company, location, seniority
+        (from the title's level words and the years the posting asks), the
+        must-have and excluded words, pay. A posting whose title the keywords
+        miss can still join the role when its description fits the resume
+        (radar.description_fits)."""
+        if not (self.company_ok(f.company) and self.location_ok(f.location, f.country, f.remote)):
             return False
         if not (levels(f.title, f.min_yoe, f.entry_hint) & self.seniority):
             return False
@@ -820,3 +827,8 @@ class Search:
         if norm_company(f.company) in self.blocked:
             return []
         return [r.id for r in self.roles if r.matches(f)]
+
+    def matching_besides_title(self, f: Facts) -> list[str]:
+        if norm_company(f.company) in self.blocked:
+            return []
+        return [r.id for r in self.roles if r.matches_besides_title(f)]

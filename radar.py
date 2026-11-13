@@ -135,9 +135,10 @@ SETTINGS: dict = config.defaults()
 
 def configure(store: config.Store) -> None:
     global DB_PATH, DASHBOARD_PATH, LOG_PATH, H1B_DIR, DASHBOARD_DAYS, PROGRAM_DAYS, FETCH_DAYS, STALE_AFTER_DAYS, PURGE_AFTER_DAYS
-    global WORKERS, TIMEOUT, ORACLE_DATE_FACET, SEARCH, SETTINGS
+    global WORKERS, TIMEOUT, ORACLE_DATE_FACET, SEARCH, SETTINGS, RESUME_DIR
     s = SETTINGS = store.load()
     DB_PATH = store.path_for("db")
+    RESUME_DIR = store.path_for("resume_dir")
     DASHBOARD_PATH = store.path_for("dashboard")
     LOG_PATH = store.path_for("logs_dir") / "radar.log"
     H1B_DIR = store.path_for("data_dir")
@@ -2226,6 +2227,52 @@ def closed_postings(conn: sqlite3.Connection, now: float) -> dict[str, list[floa
     return by
 
 
+# --------------------------------------------------------------------------
+# Description fit
+#
+# A role's title keywords miss postings whose title is unusual for the work
+# ("Agentic AI Builder, Officer", "Data Scientist, Fraud Risk Detection").
+# Such a posting still joins every role whose other rules it passes when its
+# description asks for what the resume has: enough of its required skills
+# matched, by count and by share, and a match score (the dashboard's number,
+# match.score_job) at the bar. A hard PhD requirement keeps it out unless
+# the resume has one.
+
+RESUME_DIR = Path("resume")
+FIT_MIN_SCORE = 55              # match score, percent
+FIT_MIN_REQUIRED = 3            # required skills the resume has
+FIT_MIN_SHARE = 0.6             # of the posting's required skills
+
+
+def fit_resume():
+    """The resume the dashboard scores against (resume/scoring.json, else
+    master.tex), or None before there is one."""
+    import match        # resume_tex is heavy; only renders need it
+    scoring, master = RESUME_DIR / "scoring.json", RESUME_DIR / "master.tex"
+    try:
+        if scoring.exists():
+            return match.Resume.from_profile(json.loads(scoring.read_text(encoding="utf-8")))
+        if master.exists():
+            return match.Resume(match.tex_text(master.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def description_fits(job: dict, resume, stats: dict) -> bool:
+    """job: a dashboard row (has_jd, kw, degree, min_yoe, title)."""
+    import match
+    if not (resume and job.get("has_jd") and job.get("kw")):
+        return False
+    deg = job.get("degree") or {}
+    if deg.get("level") == "phd" and not deg.get("or_equivalent") and resume.degree != "phd":
+        return False
+    sc = match.score_job(job, resume, stats["skill_w"], stats["term_w"], SETTINGS.get("scoring"))
+    req = sc.get("req") or {"have": 0, "of": 0}
+    return (sc["pct"] is not None and sc["pct"] >= FIT_MIN_SCORE and req["have"] >= FIT_MIN_REQUIRED
+            and req["have"] >= FIT_MIN_SHARE * req["of"] and not match.no_requirements(sc))
+
+
 def load_for_dashboard(conn: sqlite3.Connection, now: float, prev_run: float | None,
                        h1b: "H1BIndex", stats: dict | None = None, progress: Progress | None = None) -> list[dict]:
     rows = conn.execute(
@@ -2236,6 +2283,7 @@ def load_for_dashboard(conn: sqlite3.Connection, now: float, prev_run: float | N
         (now - STALE_AFTER_DAYS * 86400, now - max(DASHBOARD_DAYS, PROGRAM_DAYS) * 86400),
     ).fetchall()
     term_rx = term_patterns(stats["term_w"]) if stats else {}
+    resume = fit_resume() if stats else None
     closed = closed_postings(conn, now)
     out = []
     for i, r in enumerate(rows):
@@ -2268,9 +2316,13 @@ def load_for_dashboard(conn: sqlite3.Connection, now: float, prev_run: float | N
         # role may want them again) but are not shown.
         pay = filters.pay_range(desc)       # rows stored before pay was read have none saved
         d["pay_min"], d["pay_max"] = pay or (None, None)
-        d["roles"] = SEARCH.matching(filters.Facts(
-            d["company"], d["title"], d["location"], d.pop("country") or None, bool(d["remote"]), desc,
-            d["min_yoe"], bool(d["entry_hint"]), pay))
+        facts = filters.Facts(d["company"], d["title"], d["location"], d.pop("country") or None, bool(d["remote"]),
+                              desc, d["min_yoe"], bool(d["entry_hint"]), pay)
+        d["roles"] = SEARCH.matching(facts)
+        if not d["roles"] and resume:
+            fit = SEARCH.matching_besides_title(facts)
+            if fit and description_fits(d, resume, stats):
+                d["roles"] = fit
         if d["roles"]:
             out.append(d)
     return out
