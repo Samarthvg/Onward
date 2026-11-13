@@ -126,6 +126,10 @@ def write_settings(home: Path) -> dict:
     base["roles"] = [{**like, "id": f"feed-{key}", "name": f"Shared feed: {label}", "title_keywords": keywords}
                      for key, (label, keywords) in filters.ROLE_TEMPLATES.items() if keywords]
     base["active_role"] = base["roles"][0]["id"]
+    # A one-off catch-up (feed.yml's catch_up_days input) reads further back
+    # than the usual week, for open postings earlier runs skipped.
+    if os.environ.get("CATCH_UP_DAYS"):
+        base.setdefault("radar", {})["fetch_days"] = int(os.environ["CATCH_UP_DAYS"])
     (home / "settings.json").write_text(json.dumps(base, indent=1), encoding="utf-8")
     return base
 

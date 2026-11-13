@@ -139,6 +139,20 @@ class RunTests(Base):
         self.assertEqual(s["roles"][0]["seniority"], ["intern", "entry", "mid"])
         self.assertEqual(s["radar"]["feed_url"], "", "the search never reads a feed itself")
 
+    def test_catch_up_reads_further_back(self):
+        def fetch_days(env: dict) -> int:
+            home = self.tmp / f"home-{len(env)}"
+            home.mkdir()
+            base = {k: v for k, v in os.environ.items() if k != "CATCH_UP_DAYS"}
+            with mock.patch.dict(os.environ, {**base, **env}, clear=True):
+                run_feed.write_settings(home)
+            st = config.Store(home / "settings.json", home)
+            s = st.load()
+            self.assertEqual(st.warnings, [])
+            return s["radar"]["fetch_days"]
+        self.assertEqual(fetch_days({}), 7)
+        self.assertEqual(fetch_days({"CATCH_UP_DAYS": "30"}), 30)
+
 
 class H1BTests(Base):
     """The feed's copy of USCIS's H-1B data, published weekly and read by every copy."""

@@ -8,6 +8,11 @@ name: Job feed
 
 on:
   workflow_dispatch:
+    inputs:
+      catch_up_days:
+        description: "One-off catch-up: read this many days back instead of a week (empty for a normal run)"
+        required: false
+        default: ""
   schedule:
     - cron: "47 * * * *"
 
@@ -22,7 +27,8 @@ permissions:
 jobs:
   search:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # A catch-up reads about four weeks of postings and may take a few times as long.
+    timeout-minutes: ${{ inputs.catch_up_days && 150 || 35 }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -37,4 +43,7 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           FEED_BUCKET: ${{ vars.FEED_BUCKET }}
           STATE_BUCKET: ${{ vars.STATE_BUCKET }}
+          CATCH_UP_DAYS: ${{ inputs.catch_up_days }}
+          # Near-miss descriptions a run may read: the usual 300, or enough for a month's backlog.
+          ONWARD_NEAR_PER_RUN: ${{ inputs.catch_up_days && '4000' || '' }}
         run: python packaging/feed/run_feed.py

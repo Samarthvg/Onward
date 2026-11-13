@@ -458,7 +458,7 @@ def is_fresh(posted_at: float | None) -> bool:
 # details costs a request, so at most NEAR_PER_RUN are read per run, and none
 # from a host that has answered 429 this run.
 NEAR = "near"                   # screen()'s answer for a near miss: truthy, but not True
-NEAR_PER_RUN = 300
+NEAR_PER_RUN = int(os.environ.get("ONWARD_NEAR_PER_RUN") or 300)  # a one-off catch-up run reads more
 PUSHED_BACK: set[str] = set()   # hosts that answered 429 this run
 
 
